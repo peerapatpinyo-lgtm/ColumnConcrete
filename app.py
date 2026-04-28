@@ -1,172 +1,158 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 # ==========================================
-# 1. ENGINEERING CALCULATION LOGIC
+# 1. ADVANCED CALCULATION ENGINE
 # ==========================================
 
-def calculate_column_strength(fc, fy, b, h, d_prime, as_total):
-    """
-    คำนวณกำลังของเสา RC แบบ Simplified Interaction Diagram (ACI 318)
-    """
-    phi_comp = 0.65  # สำหรับเสาปลอกเดี่ยว (Tied Column)
-    ag = b * h
-    d = h - d_prime
-    
-    # 1. Pure Compression (Point A)
-    # Po = 0.85 * fc' * (Ag - Ast) + fy * Ast
-    # Pn_max = 0.80 * Po (สำหรับเสาปลอกเดี่ยว)
-    po = (0.85 * fc * (ag - as_total) + fy * as_total) / 1000 # Convert to metric tons
-    phi_pn_max = phi_comp * 0.80 * po
+class RCCalculator:
+    @staticmethod
+    def get_beta1(fc):
+        """คำนวณค่า beta1 ตามมาตรฐาน ACI 318"""
+        if fc <= 280: return 0.85
+        elif fc >= 560: return 0.65
+        else: return 0.85 - (0.05 * (fc - 280) / 70)
 
-    # 2. Balanced Point (Point B)
-    # cb = 6117 / (6117 + fy) * d (Simplified Strain Compatibility)
-    cb = (600 / (600 + fy)) * d
-    ab = 0.85 * cb # beta1 is approx 0.85 for fc' <= 280 ksc
-    
-    # Force components at balanced
-    c_c = 0.85 * fc * ab * b / 1000
-    fs_prime = 600 * (cb - d_prime) / cb
-    fs_prime = min(fs_prime, fy)
-    s_force = (as_total / 2) * (fy - 0.85 * fc) / 1000 # Approximation
-    
-    pn_b = c_c # Simplified balanced axial
-    mn_b = (c_c * (h/2 - ab/2) + s_force * (h/2 - d_prime)) / 100000 # Ton-m
-    
-    phi_pn_b = phi_comp * pn_b
-    phi_mn_b = phi_comp * mn_b
+    @staticmethod
+    def get_phi(epsilon_t, fy):
+        """คำนวณค่า Phi (Strength Reduction Factor) ตามค่า Strain"""
+        epsilon_ty = fy / 2.04e6 # Es = 2.04e6 ksc
+        if epsilon_t <= epsilon_ty: return 0.65 # Compression Controlled
+        if epsilon_t >= 0.005: return 0.90      # Tension Controlled
+        # Transition Zone
+        return 0.65 + (0.90 - 0.65) * (epsilon_t - epsilon_ty) / (0.005 - epsilon_ty)
 
-    # 3. Pure Flexure (Point C)
-    # Mn = As * fy * (d - a/2)
-    a_flex = (as_total/2 * fy) / (0.85 * fc * b)
-    mn_pure = (as_total/2 * fy * (d - a_flex/2)) / 100000
-    phi_mn_pure = 0.90 * mn_pure # Tension controlled
+    @classmethod
+    def calculate_pm_points(cls, fc, fy, b, h, d_prime, as_total):
+        d = h - d_prime
+        as_half = as_total / 2
+        beta1 = cls.get_beta1(fc)
+        es = 2.04e6
+        
+        points = []
 
-    return {
-        "phiPn_max": phi_pn_max,
-        "phiPn_b": phi_pn_b,
-        "phiMn_b": phi_mn_b,
-        "phiMn_pure": phi_mn_pure
-    }
+        # 1. Point A: Pure Compression (Maximum Axial)
+        po = (0.85 * fc * (b * h - as_total) + fy * as_total) / 1000
+        phi_pn_max = 0.65 * 0.80 * po
+        points.append({'m': 0, 'p': phi_pn_max, 'label': 'Max Axial'})
 
-def check_slenderness(k, l, b, h):
-    """เช็คเสาสั้น/เสายาว ตามมาตรฐาน ACI (r = 0.3h สำหรับหน้าตัดสี่เหลี่ยม)"""
-    r = 0.3 * h
-    slenderness_ratio = (k * l) / r
-    is_short = slenderness_ratio < 34 # Simplified check for non-sway
-    return slenderness_ratio, is_short
+        # 2. Point B: Zero Tension (c = h)
+        c = h
+        a = beta1 * c
+        cc = 0.85 * fc * a * b / 1000
+        fs_prime = min(6120 * (c - d_prime) / c, fy)
+        fs = 6120 * (c - d) / c # จะได้ค่าเป็นบวก (แรงอัด)
+        pn = cc + (as_half * fs_prime / 1000) + (as_half * fs / 1000)
+        mn = (cc * (h/2 - a/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) - (as_half * fs / 1000) * (d - h/2)) / 100
+        points.append({'m': 0.65 * mn, 'p': 0.65 * pn, 'label': 'Zero Tension'})
 
-def design_corbel(vu, fc, fy, b, d, av):
-    """
-    คำนวณ Corbel (หูช้าง) เบื้องต้น (Shear Friction Theory)
-    """
-    phi_shear = 0.75
-    # Check depth requirement
-    # Vn must be <= 0.2 * fc * b * d
-    vn_max = (0.2 * fc * b * d) / 1000
-    is_size_ok = (vu / phi_shear) <= vn_max
-    
-    # Required reinforcement (Simplified Shear Friction)
-    mu = 1.4 # Coefficient of friction for normal concrete
-    avf = (vu * 1000) / (phi_shear * fy * mu) # cm2
-    return is_size_ok, avf
+        # 3. Point C: Balanced Point (epsilon_s = epsilon_y)
+        ey = fy / es
+        cb = 0.003 * d / (0.003 + ey)
+        ab = beta1 * cb
+        cc = 0.85 * fc * ab * b / 1000
+        fs_prime = min(6120 * (cb - d_prime) / cb, fy)
+        pn_b = cc + (as_half * fs_prime / 1000) - (as_half * fy / 1000)
+        mn_b = (cc * (h/2 - ab/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) + (as_half * fy / 1000) * (d - h/2)) / 100
+        points.append({'m': 0.65 * mn_b, 'p': 0.65 * pn_b, 'label': 'Balanced'})
+
+        # 4. Point D: Tension Controlled (epsilon_t = 0.005)
+        c005 = 0.003 * d / (0.003 + 0.005)
+        a005 = beta1 * c005
+        cc = 0.85 * fc * a005 * b / 1000
+        fs_prime = min(6120 * (c005 - d_prime) / c005, fy)
+        pn_005 = cc + (as_half * fs_prime / 1000) - (as_half * fy / 1000)
+        mn_005 = (cc * (h/2 - a005/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) + (as_half * fy / 1000) * (d - h/2)) / 100
+        points.append({'m': 0.90 * mn_005, 'p': 0.90 * pn_005, 'label': 'Tension Controlled'})
+
+        # 5. Point E: Pure Flexure (Pn = 0)
+        # Simplified: As*fy = 0.85*fc*a*b
+        a_pure = (as_half * fy) / (0.85 * fc * b)
+        mn_pure = (as_half * fy * (d - a_pure/2)) / 100000
+        points.append({'m': 0.90 * mn_pure, 'p': 0, 'label': 'Pure Moment'})
+
+        return pd.DataFrame(points)
 
 # ==========================================
 # 2. STREAMLIT UI
 # ==========================================
 
-st.set_page_config(page_title="Industrial RC Designer", layout="wide")
-st.title("🏗️ Industrial RC Column & Corbel Designer")
-st.markdown("---")
+st.set_page_config(page_title="Pro RC Design", layout="wide")
+st.title("🏗️ Professional RC Column Design (ACI 318-SDM)")
 
-# --- SIDEBAR INPUTS ---
-st.sidebar.header("🛠️ Input Parameters")
+with st.sidebar:
+    st.header("1. Material & Section")
+    fc = st.number_input("f'c (ksc)", value=280)
+    fy = st.number_input("fy (ksc)", value=4000)
+    b = st.slider("Width b (cm)", 20, 100, 40)
+    h = st.slider("Depth h (cm)", 20, 100, 50)
+    
+    st.header("2. Reinforcement")
+    db = st.selectbox("DB Size (mm)", [12, 16, 20, 25, 28, 32])
+    n_bars = st.number_input("Number of bars", value=8, step=2)
+    cover = st.number_input("Clear Cover (cm)", value=4.0)
+    as_total = (np.pi * (db/20)**2) * n_bars
+    
+    st.header("3. Factored Loads")
+    pu = st.number_input("Pu (tons)", value=80.0)
+    mu = st.number_input("Mu (ton-m)", value=15.0)
 
-# Material Properties
-fc = st.sidebar.number_input("Concrete Strength, $f'_c$ (ksc)", value=280)
-fy = st.sidebar.number_input("Steel Strength, $f_y$ (ksc)", value=4000)
+# Calculations
+calc = RCCalculator()
+df_pm = calc.calculate_pm_points(fc, fy, b, h, cover + db/20, as_total)
 
-# Section Properties
-st.sidebar.subheader("Section Dimensions (cm)")
-col_b = st.sidebar.slider("Width (b)", 20, 100, 40)
-col_h = st.sidebar.slider("Depth (h)", 20, 100, 40)
-cover = st.sidebar.number_input("Covering (cm)", value=4.0)
-
-# Reinforcement
-st.sidebar.subheader("Reinforcement")
-rebar_dia = st.sidebar.selectbox("Bar Diameter (mm)", [12, 16, 20, 25, 28])
-rebar_count = st.sidebar.number_input("Total Number of Bars", value=8, step=2)
-as_total = (np.pi * (rebar_dia/20)**2) * rebar_count
-
-# Loads & Slenderness
-st.sidebar.subheader("Design Loads & Length")
-pu_load = st.sidebar.number_input("Axial Load, $P_u$ (tons)", value=50.0)
-mu_load = st.sidebar.number_input("Moment, $M_u$ (ton-m)", value=10.0)
-col_l = st.sidebar.number_input("Clear Height, $L$ (m)", value=4.0) * 100
-k_factor = st.sidebar.selectbox("Effective Length Factor (k)", [0.7, 1.0, 1.2, 2.0], index=1)
-
-# Corbel Input
-st.sidebar.subheader("Corbel Design (Optional)")
-vu_corbel = st.sidebar.number_input("Corbel Shear, $V_u$ (tons)", value=15.0)
-av_dist = st.sidebar.number_input("Shear Span, $a_v$ (cm)", value=20.0)
-
-# --- CALCULATIONS ---
-results = calculate_column_strength(fc, fy, col_b, col_h, cover + (rebar_dia/20), as_total)
-slend_ratio, is_short = check_slenderness(k_factor, col_l, col_b, col_h)
-corbel_ok, avf_req = design_corbel(vu_corbel, fc, fy, col_b, col_h-cover, av_dist)
-
-# --- DISPLAY MAIN CONTENT ---
-col1, col2 = st.columns([1, 1])
+# Layout
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("📊 Interaction Diagram")
-    
-    # Prepare P-M Curve Points
-    m_points = [0, results['phiMn_b'], results['phiMn_pure']]
-    p_points = [results['phiPn_max'], results['phiPn_b'], 0]
-    
+    st.subheader("Interaction Diagram")
     fig = go.Figure()
-    # P-M Curve
-    fig.add_trace(go.Scatter(x=m_points, y=p_points, mode='lines+markers', name='Capacity Envelope', line=dict(color='royalblue', width=3)))
+    # Draw Curve
+    fig.add_trace(go.Scatter(x=df_pm['m'], y=df_pm['p'], mode='lines+markers', 
+                             name='Capacity Envelope', line=dict(color='blue', shape='spline')))
     # Design Point
-    fig.add_trace(go.Scatter(x=[mu_load], y=[pu_load], mode='markers', name='Design Point (Pu, Mu)', marker=dict(color='red', size=12, symbol='x')))
+    is_safe = False
+    # Simple check if point is inside polygon (Approximation)
+    fig.add_trace(go.Scatter(x=[mu], y=[pu], mode='markers', 
+                             name='Design Point', marker=dict(color='red', size=15, symbol='diamond')))
     
-    fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Load (tons)", height=500)
+    fig.update_layout(xaxis_title="Phi Mn (ton-m)", yaxis_title="Phi Pn (tons)", height=600)
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    st.subheader("断面 Cross-section Visualization")
-    fig_rc, ax = plt.subplots(figsize=(4, 4))
-    rect = plt.Rectangle((0, 0), col_b, col_h, linewidth=2, edgecolor='black', facecolor='lightgrey')
-    ax.add_patch(rect)
-    # Plot bars (simple representation)
-    ax.scatter([cover, col_b-cover]*int(rebar_count/2), 
-               [cover]*2 + [col_h-cover]*2 + [col_h/2]*(rebar_count-4), 
-               color='red', s=100)
-    ax.set_xlim(-5, col_b+5)
-    ax.set_ylim(-5, col_h+5)
-    ax.set_aspect('equal')
-    st.pyplot(fig_rc)
-
-# --- SUMMARY TABLE ---
-st.subheader("📋 Design Summary")
-status = "✅ PASS" if (pu_load <= results['phiPn_max'] and mu_load <= results['phiMn_b']) else "❌ FAIL"
-color = "green" if status == "✅ PASS" else "red"
-
-col_res1, col_res2, col_res3 = st.columns(3)
-col_res1.metric("Slenderness Ratio", f"{slend_ratio:.2f}", "Short Column" if is_short else "Long Column")
-col_res2.metric("Max Axial Capacity", f"{results['phiPn_max']:.2f} tons")
-col_res3.markdown(f"### Status: :{color}[{status}]")
-
-# --- CORBEL RESULT ---
-with st.expander("🏗️ Corbel Design Result"):
-    if corbel_ok:
-        st.success(f"Corbel Size: OK | Required $A_{{vf}}$ = {avf_req:.2f} cm²")
+    st.subheader("Results Summary")
+    # ตรวจสอบเบื้องต้น
+    max_p = df_pm['p'].max()
+    max_m = df_pm['m'].max()
+    
+    st.write(f"**Total Rebar Area:** {as_total:.2f} $cm^2$")
+    st.write(f"**Ratio ($\rho$):** {as_total/(b*h)*100:.2d} %")
+    
+    if (pu <= max_p) and (mu <= max_m):
+        st.success("STATUS: PASS (Preliminary)")
     else:
-        st.error("Corbel size too small for shear friction! Increase depth or width.")
+        st.error("STATUS: FAIL (Out of Bound)")
 
-# Engineering Notes
-st.info(f"Note: Interaction diagram is based on simplified SDM. Φ factor used: {0.65} for compression.")
+    with st.expander("Show Calculation Points"):
+        st.dataframe(df_pm)
+
+# --- CORBEL DESIGN MODULE ---
+st.markdown("---")
+st.subheader("🏗️ Corbel Design (หูช้างรับเครน)")
+cc1, cc2 = st.columns(2)
+with cc1:
+    vu = st.number_input("Vu (tons)", value=20.0)
+    av = st.number_input("Shear Span av (cm)", value=15.0)
+with cc2:
+    # ACI 318 Corbel Check
+    d_corbel = h - cover
+    if av/d_corbel > 1.0:
+        st.warning("Warning: av/d > 1.0. This is not a Corbel (use Beam theory).")
+    
+    # Shear Friction
+    phi_v = 0.75
+    avf = (vu * 1000) / (phi_v * fy * 1.4) # mu = 1.4 for normal weight
+    st.info(f"Required Shear Friction Rebar ($A_{{vf}}$): {avf:.2f} $cm^2$")
