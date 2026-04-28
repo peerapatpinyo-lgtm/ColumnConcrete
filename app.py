@@ -4,117 +4,119 @@ import pandas as pd
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
-# --- CONFIG & STYLING ---
-st.set_page_config(page_title="Senior RC Expert", layout="wide")
-st.markdown("""
-    <style>
-    .metric-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #19376D; }
-    .status-badge { padding: 5px 10px; border-radius: 15px; font-weight: bold; font-size: 0.8rem; }
-    </style>
-""", unsafe_allow_html=True)
-
-class SeniorColumnEngine:
-    def __init__(self, fc, fy, b, h, db, n_bars, cover, L_m, k):
+class SeniorRCEngine:
+    def __init__(self, fc, fy, b, h, db, n_bars, cover):
         self.fc, self.fy, self.b, self.h = fc, fy, b, h
-        self.L, self.k = L_m * 100, k
         self.es = 2.04e6
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
         
-        # Detailing
-        self.ast = n_bars * (np.pi * (db/20)**2)
-        self.rho = self.ast / (b * h)
-        self.d_prime = cover + 0.9 + (db/20)
-        self.d = h - self.d_prime
+        # 1. Discrete Bar Layout (กระจายเหล็ก 4 ด้าน)
+        self.bars = []
+        as_bar = np.pi * (db/20)**2 / 4
+        d_prime = cover + 0.9 + (db/20)
         
-    def check_limits(self):
-        """ ตรวจสอบมาตรฐาน วสท./ACI """
-        checks = {
-            "Steel Ratio (min 1%)": "PASS" if self.rho >= 0.01 else "LOW",
-            "Steel Ratio (max 8%)": "PASS" if self.rho <= 0.08 else "HIGH",
-            "Slenderness (KL/r)": "SHORT" if (self.k * self.L)/(0.3*self.h) <= 22 else "SLENDER"
-        }
-        return checks
+        # วางเหล็ก 4 มุมก่อน
+        self.bars.extend([{'as': as_bar, 'd': d_prime}, {'as': as_bar, 'd': h - d_prime}] * 2)
+        # กระจายเหล็กที่เหลือตรงกลาง (ถ้ามี)
+        remaining = n_bars - 4
+        if remaining > 0:
+            # วางแทรกในเลเยอร์ บน-ล่าง และ ตรงกลาง
+            mid_bars = remaining / 2
+            self.bars.extend([{'as': as_bar, 'd': d_prime}] * int(mid_bars/2))
+            self.bars.extend([{'as': as_bar, 'd': h/2}] * int(remaining - (mid_bars/2)*2))
+            self.bars.extend([{'as': as_bar, 'd': h - d_prime}] * int(mid_bars/2))
 
-    def solve_uniaxial(self, axis_h, axis_b):
-        """ คำนวณ P-M รายแกน """
+    def solve(self):
         points = []
-        c_vals = np.concatenate([np.linspace(axis_h*2, axis_h, 30), np.linspace(axis_h, 0.1, 120)])
-        for c in c_vals:
-            a = min(self.beta1 * c, axis_h)
-            cc = 0.85 * self.fc * a * axis_b
-            # Simplified for 2 layers
-            eps_t = 0.003 * (axis_h - self.d_prime - c) / c
-            phi = 0.65 if eps_t <= (self.fy/self.es) else 0.90 if eps_t >= 0.005 else 0.65 + 0.25*(eps_t - (self.fy/self.es))/(0.005 - (self.fy/self.es))
+        # วนลูปค่า c (Neutral Axis) ให้ละเอียดมาก
+        c_list = np.logspace(np.log10(0.1), np.log10(self.h * 5), 300)
+        
+        for c in c_list:
+            # Concrete Force
+            a = min(self.beta1 * c, self.h)
+            Cc = 0.85 * self.fc * a * self.b
+            Mc = Cc * (self.h/2 - a/2) # Moment รอบกึ่งกลางหน้าตัด
             
-            # Forces (Simplified for illustration)
-            pn = (cc + (self.ast/2 * self.fy) - (self.ast/2 * self.fy))/1000 # Moment logic omitted for brevity
-            mn = (cc * (axis_h/2 - a/2)) / 100000 
-            points.append({'Pn': pn, 'Mn': mn, 'phiPn': phi*pn, 'phiMn': phi*mn})
-        return pd.DataFrame(points)
+            # Steel Forces
+            Pn_s, Mn_s = 0, 0
+            et = 0
+            max_d = max(b['d'] for b in self.bars)
+            
+            for bar in self.bars:
+                eps = 0.003 * (c - bar['d']) / c
+                fs = np.clip(eps * self.es, -self.fy, self.fy)
+                Pn_s += bar['as'] * fs
+                Mn_s += bar['as'] * fs * (self.h/2 - bar['d'])
+                if bar['d'] == max_d: et = abs(eps) if c < bar['d'] else 0
 
-    def biaxial_check(self, Pu, Mux, Muy, Pnx, Pny, Po):
-        """ Bresler Reciprocal Method (1/Pn = 1/Pnx + 1/Pny - 1/Po) """
-        phi = 0.65
-        inv_pn = (1/Pnx) + (1/Pny) - (1/Po)
-        pn_nominal = 1/inv_pn
-        return phi * pn_nominal
+            # Combined
+            Pn, Mn = (Cc + Pn_s)/1000, abs(Mc + Mn_s)/100000
+            
+            # Phi Factor (ACI 318-19)
+            ey = self.fy / self.es
+            phi = 0.65 if et <= ey else 0.90 if et >= 0.005 else 0.65 + 0.25*(et - ey)/(0.005 - ey)
+            
+            points.append({'Pn': Pn, 'Mn': Mn, 'phiPn': phi*Pn, 'phiMn': phi*Mn})
 
-# --- UI LOGIC ---
+        # จุด Pure Tension
+        ast_total = sum(b['as'] for b in self.bars)
+        p_tension = -ast_total * self.fy / 1000
+        points.append({'Pn': p_tension, 'Mn': 0, 'phiPn': 0.9 * p_tension, 'phiMn': 0})
+
+        # จุด Pure Compression (Capped)
+        Po = (0.85 * self.fc * (self.b * self.h - ast_total) + self.fy * ast_total) / 1000
+        phiPn_max = 0.80 * 0.65 * Po
+        
+        df = pd.DataFrame(points).sort_values('Pn', ascending=False)
+        return df, phiPn_max, Po
+
+# --- UI Setup ---
+st.set_page_config(page_title="Senior RC Designer", layout="wide")
+st.title("👨‍💼 Professional RC Column Design System")
+
 with st.sidebar:
-    st.title("👨‍💼 Senior Engineer Input")
-    with st.expander("Design Codes & Material", expanded=True):
-        fc = st.number_input("f'c (Concrete Strength)", 210, 560, 320)
-        fy = st.number_input("fy (Steel Yield)", 3000, 5000, 4000)
-    with st.expander("Section Geometry"):
-        b = st.slider("Width (b)", 30, 100, 40)
-        h = st.slider("Height (h)", 30, 100, 50)
-        L = st.number_input("Clear Height (m)", 1.0, 10.0, 3.5)
-    with st.expander("Reinforcement"):
-        db = st.selectbox("DB Diameter", [16, 20, 25, 28, 32])
-        n_bars = st.number_input("Total Bars", 4, 24, 12, step=4)
+    st.header("Materials & Geometry")
+    fc = st.number_input("f'c (ksc)", 210, 560, 280)
+    fy = st.number_input("fy (ksc)", 3000, 5000, 4000)
+    b = st.slider("Width b (cm)", 20, 100, 40)
+    h = st.slider("Depth h (cm)", 20, 100, 60)
+    db = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2)
+    n_bars = st.number_input("Number of Bars", 4, 32, 8, step=4)
 
-engine = SeniorColumnEngine(fc, fy, b, h, db, n_bars, 4.0, L, 1.0)
-limits = engine.check_limits()
+engine = SeniorRCEngine(fc, fy, b, h, db, n_bars, 4.0)
+df_pm, phi_pn_max, po = engine.solve()
 
-# --- DASHBOARD ---
-st.header("🏢 Professional Column Analysis Dashboard")
+# --- Visual Layout ---
+col_graph, col_data = st.columns([2, 1])
 
-# Top Metrics Row
-c1, c2, c3, c4 = st.columns(4)
-with c1: st.metric("Steel Ratio (ρ)", f"{engine.rho*100:.2f}%")
-with c2: st.write(f"**Code Check:**") ; st.info(f"Ratio: {limits['Steel Ratio (min 1%)']}")
-with c3: st.write(f"**Stability:**") ; st.warning(limits['Slenderness (KL/r)'])
-with c4: 
-    pu_req = st.number_input("Required Pu (ton)", value=100.0)
-
-# Main Content
-tab_graph, tab_detailing, tab_biaxial = st.tabs(["📊 P-M Diagram", "🏗️ Detailing Check", "📐 Biaxial Bending"])
-
-with tab_graph:
-    df = engine.solve_uniaxial(h, b)
+with col_graph:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['phiMn'], y=df['phiPn'], fill='tozeroy', name='Capacity Zone', line=dict(color='#19376D', width=3)))
-    fig.add_hline(y=pu_req, line_dash="dot", line_color="red", annotation_text="Required Pu")
-    fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Force (ton)", height=500, plot_bgcolor='white')
+    # Nominal
+    fig.add_trace(go.Scatter(x=df_pm['Mn'], y=df_pm['Pn'], name="Nominal (Pn-Mn)", 
+                             line=dict(color='gray', dash='dash')))
+    # Design (Capped)
+    # ตัดยอดกราฟที่ phi_pn_max
+    df_design = df_pm[df_pm['phiPn'] <= phi_pn_max].copy()
+    # เพิ่มจุดหักที่เส้น Cap
+    cap_x = np.interp(phi_pn_max, df_pm['phiPn'][::-1], df_pm['phiMn'][::-1])
+    
+    fig.add_trace(go.Scatter(x=[0, cap_x], y=[phi_pn_max, phi_pn_max], 
+                             line=dict(color='navy', width=3), showlegend=False))
+    fig.add_trace(go.Scatter(x=df_design['phiMn'], y=df_design['phiPn'], 
+                             fill='tozeroy', name="Design (ΦPn-ΦMn)", line=dict(color='navy', width=3)))
+
+    fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial (ton)", height=650, plot_bgcolor='white')
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
     st.plotly_chart(fig, use_container_width=True)
 
-with tab_detailing:
-    st.subheader("Detailing Verification (วสท./ACI 318)")
-    detail_data = {
-        "Description": ["Minimum Steel Ratio", "Maximum Steel Ratio", "Min Clear Spacing", "Max Tie Spacing"],
-        "Required": ["1.0%", "8.0%", "> 2.5 cm", "< 30 cm"],
-        "Actual": [f"{engine.rho*100:.2f}%", f"{engine.rho*100:.2f}%", "4.2 cm", "25.0 cm"],
-        "Status": ["PASS" if engine.rho >= 0.01 else "FAIL", "PASS", "PASS", "PASS"]
-    }
-    st.table(pd.DataFrame(detail_data))
-
-with tab_biaxial:
-    st.subheader("Biaxial Loading Check (Bresler's Method)")
-    st.latex(r"\frac{1}{P_{nu}} = \frac{1}{P_{nx}} + \frac{1}{P_{ny}} - \frac{1}{P_o}")
-    sc1, sc2 = st.columns(2)
-    mux = sc1.number_input("Moment X (ton-m)", value=10.0)
-    muy = sc2.number_input("Moment Y (ton-m)", value=5.0)
-    st.info("ระบบกำลังประมวลผลความสามารถในการรับแรงดึง 2 แกน...")
-
-st.divider()
-st.caption("Senior RC Expert System v3.0 | Structural Engineering Division")
+with col_data:
+    st.subheader("Section Properties")
+    st.write(f"**Gross Area ($A_g$):** {b*h} cm²")
+    st.write(f"**Steel Area ($A_{{st}}$):** {sum(b['as'] for b in engine.bars):.2f} cm²")
+    st.write(f"**Steel Ratio ($\rho$):** {(sum(b['as'] for b in engine.bars)/(b*h))*100:.2f}%")
+    
+    st.divider()
+    st.subheader("Key Capacities")
+    st.metric("Max Axial (ΦPn,max)", f"{phi_pn_max:.1f} ton")
+    st.metric("Pure Tension (ΦTn)", f"{0.9 * (sum(b['as'] for b in engine.bars) * fy / 1000):.1f} ton")
