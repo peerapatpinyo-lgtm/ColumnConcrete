@@ -5,154 +5,193 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
 # ==========================================
-# 1. ADVANCED CALCULATION ENGINE
+# 1. CORE ENGINEERING ENGINE (ACI 318-19 SDM)
 # ==========================================
 
 class RCCalculator:
-    @staticmethod
-    def get_beta1(fc):
-        """คำนวณค่า beta1 ตามมาตรฐาน ACI 318"""
-        if fc <= 280: return 0.85
-        elif fc >= 560: return 0.65
-        else: return 0.85 - (0.05 * (fc - 280) / 70)
+    def __init__(self, fc, fy, b, h, db, n_bars, cover):
+        self.fc = fc
+        self.fy = fy
+        self.b = b
+        self.h = h
+        self.d = h - (cover + db/20 + 0.9) # d calculation (approx. stirrup 9mm)
+        self.d_prime = cover + db/20 + 0.9
+        self.as_total = (np.pi * (db/20)**2) * n_bars
+        self.as_side = self.as_total / 2 # Assume equal reinforcement on two faces
+        self.es = 2.04e6 # Elastic modulus of steel (ksc)
+        self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
 
-    @staticmethod
-    def get_phi(epsilon_t, fy):
-        """คำนวณค่า Phi (Strength Reduction Factor) ตามค่า Strain"""
-        epsilon_ty = fy / 2.04e6 # Es = 2.04e6 ksc
-        if epsilon_t <= epsilon_ty: return 0.65 # Compression Controlled
-        if epsilon_t >= 0.005: return 0.90      # Tension Controlled
-        # Transition Zone
-        return 0.65 + (0.90 - 0.65) * (epsilon_t - epsilon_ty) / (0.005 - epsilon_ty)
-
-    @classmethod
-    def calculate_pm_points(cls, fc, fy, b, h, d_prime, as_total):
-        d = h - d_prime
-        as_half = as_total / 2
-        beta1 = cls.get_beta1(fc)
-        es = 2.04e6
+    def get_capacity(self, c):
+        """Calculate Pn and Mn for a given neutral axis depth 'c'"""
+        a = self.beta1 * c
+        # Concrete compression force
+        cc = 0.85 * self.fc * min(a, self.h) * self.b
         
-        points = []
+        # Strain in steel layers
+        eps_s_prime = 0.003 * (c - self.d_prime) / c
+        eps_t = 0.003 * (self.d - c) / c
+        
+        fs_prime = max(-self.fy, min(self.fy, eps_s_prime * self.es))
+        fs = max(-self.fy, min(self.fy, eps_t * self.es))
+        
+        # Nominal Strengths
+        pn = (cc + self.as_side * fs_prime + self.as_side * fs) / 1000 # Metric Tons
+        mn = (cc * (self.h/2 - min(a, self.h)/2) + 
+              self.as_side * fs_prime * (self.h/2 - self.d_prime) - 
+              self.as_side * fs * (self.d - self.h/2)) / 100000 # Ton-m
+        
+        # Strength reduction factor (Phi)
+        eps_ty = self.fy / self.es
+        if eps_t <= eps_ty:
+            phi = 0.65
+        elif eps_t >= 0.005:
+            phi = 0.90
+        else:
+            phi = 0.65 + (0.90 - 0.65) * (eps_t - eps_ty) / (0.005 - eps_ty)
+            
+        return pn, mn, phi, eps_t
 
-        # 1. Point A: Pure Compression (Maximum Axial)
-        po = (0.85 * fc * (b * h - as_total) + fy * as_total) / 1000
+    def generate_diagram(self):
+        """Generates points for the Interaction Diagram"""
+        results = []
+        # Pure Compression point
+        po = (0.85 * self.fc * (self.b * self.h - self.as_total) + self.fy * self.as_total) / 1000
         phi_pn_max = 0.65 * 0.80 * po
-        points.append({'m': 0, 'p': phi_pn_max, 'label': 'Max Axial'})
-
-        # 2. Point B: Zero Tension (c = h)
-        c = h
-        a = beta1 * c
-        cc = 0.85 * fc * a * b / 1000
-        fs_prime = min(6120 * (c - d_prime) / c, fy)
-        fs = 6120 * (c - d) / c # จะได้ค่าเป็นบวก (แรงอัด)
-        pn = cc + (as_half * fs_prime / 1000) + (as_half * fs / 1000)
-        mn = (cc * (h/2 - a/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) - (as_half * fs / 1000) * (d - h/2)) / 100
-        points.append({'m': 0.65 * mn, 'p': 0.65 * pn, 'label': 'Zero Tension'})
-
-        # 3. Point C: Balanced Point (epsilon_s = epsilon_y)
-        ey = fy / es
-        cb = 0.003 * d / (0.003 + ey)
-        ab = beta1 * cb
-        cc = 0.85 * fc * ab * b / 1000
-        fs_prime = min(6120 * (cb - d_prime) / cb, fy)
-        pn_b = cc + (as_half * fs_prime / 1000) - (as_half * fy / 1000)
-        mn_b = (cc * (h/2 - ab/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) + (as_half * fy / 1000) * (d - h/2)) / 100
-        points.append({'m': 0.65 * mn_b, 'p': 0.65 * pn_b, 'label': 'Balanced'})
-
-        # 4. Point D: Tension Controlled (epsilon_t = 0.005)
-        c005 = 0.003 * d / (0.003 + 0.005)
-        a005 = beta1 * c005
-        cc = 0.85 * fc * a005 * b / 1000
-        fs_prime = min(6120 * (c005 - d_prime) / c005, fy)
-        pn_005 = cc + (as_half * fs_prime / 1000) - (as_half * fy / 1000)
-        mn_005 = (cc * (h/2 - a005/2) + (as_half * fs_prime / 1000) * (h/2 - d_prime) + (as_half * fy / 1000) * (d - h/2)) / 100
-        points.append({'m': 0.90 * mn_005, 'p': 0.90 * pn_005, 'label': 'Tension Controlled'})
-
-        # 5. Point E: Pure Flexure (Pn = 0)
-        # Simplified: As*fy = 0.85*fc*a*b
-        a_pure = (as_half * fy) / (0.85 * fc * b)
-        mn_pure = (as_half * fy * (d - a_pure/2)) / 100000
-        points.append({'m': 0.90 * mn_pure, 'p': 0, 'label': 'Pure Moment'})
-
-        return pd.DataFrame(points)
+        
+        # Sweep neutral axis from very large to very small
+        c_values = np.linspace(self.h * 2, self.d * 0.1, 150)
+        for c in c_values:
+            pn, mn, phi, _ = self.get_capacity(c)
+            results.append({'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn})
+        
+        # Add Pure Flexure
+        results.append({'Pn': 0, 'Mn': (self.as_side * self.fy * (self.d - self.d_prime)) / 100000, 
+                        'phiPn': 0, 'phiMn': 0.9 * (self.as_side * self.fy * (self.d - self.d_prime)) / 100000})
+        
+        df = pd.DataFrame(results)
+        # Cap Pn at Pn_max
+        df['phiPn_capped'] = df['phiPn'].clip(upper=phi_pn_max)
+        return df, phi_pn_max
 
 # ==========================================
-# 2. STREAMLIT UI
+# 2. STREAMLIT UI SETUP
 # ==========================================
 
-st.set_page_config(page_title="Pro RC Design", layout="wide")
-st.title("🏗️ Professional RC Column Design (ACI 318-SDM)")
+st.set_page_config(page_title="Advanced RC Column Designer", layout="wide")
+st.markdown("""<style> .main { background-color: #f5f7f9; } </style>""", unsafe_allow_html=True)
 
+st.title("🏗️ Professional RC Column & Corbel Designer")
+st.caption("Standard: ACI 318-19 / WST SDM Method")
+
+# --- SIDEBAR: INPUT ---
 with st.sidebar:
-    st.header("1. Material & Section")
-    fc = st.number_input("f'c (ksc)", value=280)
-    fy = st.number_input("fy (ksc)", value=4000)
-    b = st.slider("Width b (cm)", 20, 100, 40)
-    h = st.slider("Depth h (cm)", 20, 100, 50)
+    st.header("🔍 Input Parameters")
+    with st.expander("Materials", expanded=True):
+        fc = st.number_input("f'c (Concrete - ksc)", 210, 600, 280)
+        fy = st.number_input("fy (Steel - ksc)", 3000, 5000, 4000)
     
-    st.header("2. Reinforcement")
-    db = st.selectbox("DB Size (mm)", [12, 16, 20, 25, 28, 32])
-    n_bars = st.number_input("Number of bars", value=8, step=2)
-    cover = st.number_input("Clear Cover (cm)", value=4.0)
-    as_total = (np.pi * (db/20)**2) * n_bars
+    with st.expander("Section Geometry", expanded=True):
+        b = st.number_input("Width b (cm)", 20, 200, 40)
+        h = st.number_input("Depth h (cm)", 20, 200, 50)
+        cover = st.number_input("Clear Cover (cm)", 2.0, 7.5, 4.0)
     
-    st.header("3. Factored Loads")
-    pu = st.number_input("Pu (tons)", value=80.0)
-    mu = st.number_input("Mu (ton-m)", value=15.0)
-
-# Calculations
-calc = RCCalculator()
-df_pm = calc.calculate_pm_points(fc, fy, b, h, cover + db/20, as_total)
-
-# Layout
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.subheader("Interaction Diagram")
-    fig = go.Figure()
-    # Draw Curve
-    fig.add_trace(go.Scatter(x=df_pm['m'], y=df_pm['p'], mode='lines+markers', 
-                             name='Capacity Envelope', line=dict(color='blue', shape='spline')))
-    # Design Point
-    is_safe = False
-    # Simple check if point is inside polygon (Approximation)
-    fig.add_trace(go.Scatter(x=[mu], y=[pu], mode='markers', 
-                             name='Design Point', marker=dict(color='red', size=15, symbol='diamond')))
+    with st.expander("Reinforcement", expanded=True):
+        db = st.selectbox("DB Main Bar (mm)", [12, 16, 20, 25, 28, 32], index=3)
+        n_bars = st.number_input("Total Bars (Even number)", 4, 40, 8, step=2)
     
-    fig.update_layout(xaxis_title="Phi Mn (ton-m)", yaxis_title="Phi Pn (tons)", height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    with st.expander("Design Loads", expanded=True):
+        pu_req = st.number_input("Factored Pu (tons)", 0.0, 1000.0, 100.0)
+        mu_req = st.number_input("Factored Mu (ton-m)", 0.0, 500.0, 20.0)
+        l_column = st.number_input("Length L (m)", 1.0, 15.0, 4.0)
+        k_factor = st.number_input("Effective Length k", 0.5, 2.1, 1.0)
 
-with col2:
-    st.subheader("Results Summary")
-    # ตรวจสอบเบื้องต้น
-    max_p = df_pm['p'].max()
-    max_m = df_pm['m'].max()
+# --- CALCULATION PROCESS ---
+calc = RCCalculator(fc, fy, b, h, db, n_bars, cover)
+df_diag, pn_max = calc.generate_diagram()
+
+# Slenderness Check
+r = 0.3 * h
+slenderness = (k_factor * l_column * 100) / r
+is_slender = slenderness > 22 # ACI threshold for non-sway
+
+# --- MAIN DISPLAY ---
+tab1, tab2 = st.tabs(["📊 Column Design", "🏗️ Corbel Design"])
+
+with tab1:
+    col1, col2 = st.columns([2, 1])
     
-    st.write(f"**Total Rebar Area:** {as_total:.2f} $cm^2$")
-    st.write(f"**Ratio ($\rho$):** {as_total/(b*h)*100:.2d} %")
+    with col1:
+        st.subheader("Interaction Diagram")
+        fig = go.Figure()
+        # Nominal Curve
+        fig.add_trace(go.Scatter(x=df_diag['Mn'], y=df_diag['Pn'], name='Nominal (Pn-Mn)', 
+                                 line=dict(color='gray', dash='dash')))
+        # Design Curve (Capped)
+        fig.add_trace(go.Scatter(x=df_diag['phiMn'], y=df_diag['phiPn_capped'], name='Design (phiPn-phiMn)', 
+                                 line=dict(color='blue', width=3), fill='tozeroy'))
+        # Design Point
+        fig.add_trace(go.Scatter(x=[mu_req], y=[pu_req], mode='markers', name='Required Load',
+                                 marker=dict(color='red', size=15, symbol='diamond-wide')))
+        
+        fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial (tons)", height=600, 
+                          hovermode="x unified", legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Verification")
+        # Check if inside curve (simplified check)
+        # We check if req_Pu is less than max allowed Pn for the given Mu
+        interp_p = np.interp(mu_req, df_diag['phiMn'], df_diag['phiPn_capped'])
+        is_safe = (pu_req <= interp_p) and (pu_req <= pn_max)
+        
+        if is_safe:
+            st.success("### STATUS: PASS")
+        else:
+            st.error("### STATUS: FAIL")
+        
+        st.metric("Slenderness Ratio (kL/r)", f"{slenderness:.2f}", 
+                  "Long Column" if is_slender else "Short Column", delta_color="inverse")
+        
+        st.write("---")
+        st.write(f"**Section:** {b}x{h} cm")
+        st.write(f"**Steel Ratio:** {(calc.as_total/(b*h)*100):.2f}%")
+        st.caption("Min: 1.0%, Max: 8.0% (ACI)")
+
+# --- CORBEL (BRACKET) MODULE ---
+with tab2:
+    st.subheader("Corbel Reinforcement Design (ACI 318)")
+    c_col1, c_col2 = st.columns(2)
     
-    if (pu <= max_p) and (mu <= max_m):
-        st.success("STATUS: PASS (Preliminary)")
-    else:
-        st.error("STATUS: FAIL (Out of Bound)")
+    with c_col1:
+        vu_c = st.number_input("Factored Shear Vu (tons)", 0.0, 200.0, 30.0)
+        av_c = st.number_input("Distance av (cm)", 5.0, 100.0, 20.0)
+        n_c = st.number_input("Tension Force Nuc (tons)", 0.0, 100.0, 6.0) # 0.2*Vu typical
+        
+    with c_col2:
+        d_c = h - cover # Effective depth of corbel
+        if av_c / d_c > 1.0:
+            st.error("Invalid Geometry: av/d > 1.0 (Not a Corbel, use Beam Theory)")
+        else:
+            # Shear Friction
+            phi_v = 0.75
+            mu_friction = 1.4 # Normal concrete
+            avf = (vu_c * 1000) / (phi_v * fy * mu_friction)
+            
+            # Flexure
+            af = (vu_c * 1000 * av_c + n_c * 1000 * (h-d_c)) / (phi_v * fy * d_c)
+            
+            # Tension
+            an = (n_c * 1000) / (phi_v * fy)
+            
+            # Area of Primary Tension Steel (As)
+            as_primary = max(af + an, (2*avf/3 + an))
+            # Area of Closed Stirrups (Ah)
+            ah = 0.5 * (as_primary - an)
+            
+            st.info(f"**Primary Steel (As):** {as_primary:.2f} cm²")
+            st.info(f"**Horizontal Ties (Ah):** {ah:.2f} cm²")
+            st.write("---")
+            st.caption("Check Vn max: " + str(round(phi_v * 0.2 * fc * b * d_c / 1000, 2)) + " tons")
 
-    with st.expander("Show Calculation Points"):
-        st.dataframe(df_pm)
-
-# --- CORBEL DESIGN MODULE ---
 st.markdown("---")
-st.subheader("🏗️ Corbel Design (หูช้างรับเครน)")
-cc1, cc2 = st.columns(2)
-with cc1:
-    vu = st.number_input("Vu (tons)", value=20.0)
-    av = st.number_input("Shear Span av (cm)", value=15.0)
-with cc2:
-    # ACI 318 Corbel Check
-    d_corbel = h - cover
-    if av/d_corbel > 1.0:
-        st.warning("Warning: av/d > 1.0. This is not a Corbel (use Beam theory).")
-    
-    # Shear Friction
-    phi_v = 0.75
-    avf = (vu * 1000) / (phi_v * fy * 1.4) # mu = 1.4 for normal weight
-    st.info(f"Required Shear Friction Rebar ($A_{{vf}}$): {avf:.2f} $cm^2$")
+st.markdown("💡 **Tip:** สำหรับเสาโรงงานสูงเกิน 6 เมตร โปรดตรวจสอบค่า Moment Magnification ($\delta_{ns}$) หาก Slenderness > 22")
