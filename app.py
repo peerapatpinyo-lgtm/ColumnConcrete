@@ -2,155 +2,131 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 class RCColumnEngine:
     def __init__(self, fc, fy, b, h, db_mm, n_bars, cover_cm, L_m=0, k=1.0):
         self.fc, self.fy, self.b, self.h = fc, fy, b, h
-        self.L, self.k = L_m * 100, k # แปลงเป็น cm
-        self.es = 2.04e6  # modulus of elasticity (ksc)
+        self.L, self.k = L_m * 100, k
+        self.es = 2.04e6 
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
+        self.db_mm = db_mm
+        self.n_bars = n_bars
+        self.cover = cover_cm
         
-        # จัดเลเยอร์เหล็กเสริม (สมมติเป็นเสาสมมาตร จัดวาง 2 แถวขอบบน-ล่าง)
+        # จัดเลเยอร์เหล็ก (Top-Bottom)
         as_single = np.pi * (db_mm/20)**2 / 4
-        d_prime = cover_cm + 0.9 + (db_mm/20) # ระยะถึง ศก. เหล็กบน
-        d = h - d_prime                     # ระยะถึง ศก. เหล็กล่าง
+        self.d_prime = cover_cm + 0.9 + (db_mm/20)
+        self.d = h - self.d_prime
+        self.ast = n_bars * as_single
         
         self.layers = [
-            {'as': (n_bars/2) * as_single, 'd': d_prime},
-            {'as': (n_bars/2) * as_single, 'd': d}
+            {'as': (n_bars/2) * as_single, 'd': self.d_prime},
+            {'as': (n_bars/2) * as_single, 'd': self.d}
         ]
 
-    def solve(self):
+    def solve_interaction(self):
+        # ... (เหมือนเดิมจากโค้ดชุดก่อน) ...
         points = []
-        # วนลูปค่า Neutral Axis (c) ตั้งแต่หน้าตัดรับแรงอัดเต็มๆ จนถึงรับแรงดึงเต็มๆ
-        # เพื่อสร้างกราฟที่สมบูรณ์แบบ
-        c_values = np.concatenate([
-            np.linspace(self.h * 2, self.h, 50),     # ช่วงแรงอัดสูง
-            np.linspace(self.h, 0.1, 200)            # ช่วงรอยต่อจนถึงแรงดึง
-        ])
-
+        c_values = np.concatenate([np.linspace(self.h * 2, self.h, 50), np.linspace(self.h, 0.1, 200)])
         for c in c_values:
-            # 1. แรงอัดคอนกรีต (Whitney Stress Block)
             a = min(self.beta1 * c, self.h)
             force_c = 0.85 * self.fc * a * self.b
-            mom_c = force_c * (self.h/2 - a/2) # Moment รอบจุดศูนย์กลางหน้าตัด (Plastic Centroid)
-
-            # 2. แรงในเหล็กเสริมแต่ละชั้น
-            force_s_total = 0
-            mom_s_total = 0
-            et = 0 # Net tensile strain
-
+            mom_c = force_c * (self.h/2 - a/2)
+            f_s_total, m_s_total, et = 0, 0, 0
             for layer in self.layers:
                 eps = 0.003 * (c - layer['d']) / c
                 fs = np.clip(eps * self.es, -self.fy, self.fy)
-                f_s = layer['as'] * fs
-                force_s_total += f_s
-                mom_s_total += f_s * (self.h/2 - layer['d'])
-                
-                # เก็บค่า strain ของเหล็กชั้นที่อยู่ไกลจากแรงอัดที่สุด (ด้านล่าง)
-                if layer['d'] == max(l['d'] for l in self.layers):
-                    et = abs(0.003 * (layer['d'] - c) / c) if c < layer['d'] else 0
-
-            pn = (force_c + force_s_total) / 1000 # ton
-            mn = (mom_c + mom_s_total) / 100000  # ton-m
-            
-            # 3. คำนวณ Phi Factor (ACI 318-19)
+                f_total = layer['as'] * fs
+                f_s_total += f_total
+                m_s_total += f_total * (self.h/2 - layer['d'])
+                if layer['d'] == self.d: et = abs(0.003 * (self.d - c) / c) if c < self.d else 0
+            pn, mn = (force_c + f_s_total) / 1000, (mom_c + m_s_total) / 100000
             ey = self.fy / self.es
             phi = 0.65 if et <= ey else 0.90 if et >= 0.005 else 0.65 + 0.25*(et - ey)/(0.005 - ey)
-            
-            points.append({'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn, 'et': et})
-
-        # เพิ่มจุด Pure Tension (ด้านล่างสุดของกราฟ)
-        ast_total = sum(l['as'] for l in self.layers)
-        p_tension = -ast_total * self.fy / 1000
-        points.append({'Pn': p_tension, 'Mn': 0, 'phiPn': 0.9 * p_tension, 'phiMn': 0})
-
-        # คำนวณจุด Pure Compression Cap (เส้นหัวตัด)
-        ag = self.b * self.h
-        po = (0.85 * self.fc * (ag - ast_total) + self.fy * ast_total) / 1000
-        phi_pn_max = 0.65 * 0.80 * po # สำหรับเสาปลอกเดี่ยว
-
-        df = pd.DataFrame(points).sort_values('Pn', ascending=False)
-        return df, phi_pn_max
-
-    def check_slenderness(self, pu, mu):
-        """ตรวจสอบผลของเสายาว (Moment Magnification)"""
-        r = 0.3 * self.h
-        slenderness = (self.k * self.L) / r
-        if slenderness <= 22: return mu # เสาสั้น
+            points.append({'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn})
         
-        EI = (0.4 * self.fc * (self.b * self.h**3 / 12)) / (1 + 0.5)
-        pc = (np.pi**2 * EI) / (self.k * self.L)**2 / 1000
-        delta = max(1.0, 1.0 / (1 - (pu / (0.75 * pc))))
-        return mu * delta
+        po = (0.85 * self.fc * (self.b * self.h - self.ast) + self.fy * self.ast) / 1000
+        return pd.DataFrame(points).sort_values('Pn', ascending=False), 0.65 * 0.80 * po
 
-# --- Streamlit Interface ---
-st.set_page_config(page_title="Professional RC Column Designer", layout="wide")
-st.title("🏗️ Professional RC Column Design (Industrial Grade)")
+    def design_shear(self, Vu_ton, stirrup_db=9):
+        """ คำนวณเหล็กปลอกตามแรงเฉือน """
+        phi = 0.75
+        d = self.d
+        # 1. กำลังของคอนกรีต Vc = 0.53 * sqrt(f'c) * b * d
+        vc = 0.53 * np.sqrt(self.fc) * self.b * d / 1000 # ton
+        
+        if Vu_ton <= (phi * vc / 2):
+            return "ไม่ต้องการเหล็กปลอกตามการคำนวณ (ใช้ตามมาตรฐานขั้นต่ำ)", 0, vc
+        
+        vs_required = (Vu_ton / phi) - vc
+        av = 2 * (np.pi * (stirrup_db/20)**2 / 4) # เหล็กปลอก 2 ขา
+        
+        if vs_required <= 0:
+            s_req = min(d/2, 60.0, 16*(self.db_mm/10), 48*(stirrup_db/10), self.b)
+        else:
+            s_calc = (av * self.fy * d / (vs_required * 1000))
+            s_req = min(s_calc, d/2, 60.0)
+            
+        return f"ระยะห่างเหล็กปลอกแนะนำ: {s_req:.1f} cm", s_req, vc
+
+    def draw_section(self):
+        fig, ax = plt.subplots(figsize=(4, 4))
+        # วาดคอนกรีต
+        ax.add_patch(plt.Rectangle((0, 0), self.b, self.h, color='#E0E0E0', ec='black', lw=3))
+        # วาดเหล็กปลอก (Tie)
+        tie_offset = self.cover
+        ax.add_patch(plt.Rectangle((tie_offset, tie_offset), self.b-2*tie_offset, self.h-2*tie_offset, 
+                                   fill=False, ec='red', lw=1.5, ls='--'))
+        # วาดเหล็กยืน (Top & Bottom)
+        x_pos = np.linspace(self.d_prime, self.b - self.d_prime, int(self.n_bars/2))
+        for x in x_pos:
+            ax.add_patch(plt.Circle((x, self.d_prime), self.db_mm/20, color='black'))
+            ax.add_patch(plt.Circle((x, self.h - self.d_prime), self.db_mm/20, color='black'))
+            
+        ax.set_xlim(-5, self.b+5); ax.set_ylim(-5, self.h+5)
+        ax.set_aspect('equal'); ax.axis('off')
+        return fig
+
+# --- Streamlit UI ---
+st.set_page_config(page_title="Industrial Column Pro", layout="wide")
+st.title("🏗️ RC Column Expert System (Level 2)")
 
 with st.sidebar:
-    st.header("⚙️ หน้าตัดและวัสดุ")
-    fc = st.number_input("กำลังอัดคอนกรีต f'c (ksc)", 210, 560, 280)
-    fy = st.number_input("กำลังดึงเหล็ก fy (ksc)", 3000, 5000, 4000)
-    b = st.slider("ความกว้าง b (cm)", 20, 100, 40)
-    h = st.slider("ความลึก h (cm)", 20, 100, 60)
+    st.header("1. Geometry & Materials")
+    fc = st.number_input("f'c (ksc)", value=280)
+    fy = st.number_input("fy (ksc)", value=4000)
+    b, h = st.slider("Width b (cm)", 20, 100, 40), st.slider("Depth h (cm)", 20, 100, 60)
+    db = st.selectbox("Main Bar (mm)", [16, 20, 25, 28, 32], index=2)
+    n_bars = st.number_input("Total Bars", 4, 32, 8, step=2)
     
-    st.header("🔩 เหล็กเสริมยืน")
-    db = st.selectbox("ขนาดเหล็ก (mm)", [16, 20, 25, 28, 32], index=2)
-    n_bars = st.number_input("จำนวนเหล็ก (เส้น)", 4, 32, 8, step=2)
-    
-    st.header("📏 ความสูงและจุดรองรับ")
-    L_m = st.number_input("ความสูงเสา (m)", 1.0, 15.0, 5.0)
-    k_val = st.selectbox("ค่า K (ตามสภาพจุดรองรับ)", [0.7, 1.0, 1.2, 2.0], index=1)
+    st.header("2. Shear Reinforcement")
+    stirrup_db = st.selectbox("Stirrup Size (mm)", [6, 9, 12], index=1)
+    vu_input = st.number_input("Design Shear Vu (ton)", value=15.0)
 
-# คำนวณผล
-engine = RCColumnEngine(fc, fy, b, h, db, n_bars, 4.0, L_m, k_val)
-df_pm, phi_pn_max = engine.solve()
+engine = RCColumnEngine(fc, fy, b, h, db, n_bars, 4.0)
+df_pm, phi_pn_max = engine.solve_interaction()
 
-# ส่วนแสดงผล
-tab1, tab2 = st.tabs(["📉 Interaction Diagram", "📋 รายการคำนวณ"])
+col1, col2 = st.columns([2, 1])
 
-with tab1:
-    st.subheader("P-M Interaction Diagram")
-    
-    # แก้ไขแรงที่กระทำ
-    st.write("ใส่แรงที่กระทำ (Ultimate Load):")
-    load_input = pd.DataFrame([{'Case': 'Load 1', 'Pu (ton)': 150.0, 'Mu (ton-m)': 20.0}], index=[0])
-    edited_loads = st.data_editor(load_input, num_rows="dynamic")
-    
-    # สร้างกราฟ
-    fig = go.Figure()
-    
-    # 1. เส้น Nominal (เส้นประสีเทา - แบบที่เรียนในห้อง)
-    fig.add_trace(go.Scatter(x=df_pm['Mn'], y=df_pm['Pn'], name="Nominal (Pn-Mn)",
-                             line=dict(color='gray', dash='dash')))
-    
-    # 2. เส้น Design (เส้นทึบสีน้ำเงิน - ที่ใช้จริง)
-    fig.add_trace(go.Scatter(x=df_pm['phiMn'], y=df_pm['phiPn'].clip(upper=phi_pn_max),
-                             fill='tozeroy', name="Design (ΦPn-ΦMn)", line=dict(color='navy', width=3)))
-    
-    # 3. พล็อตจุดแรงกระทำ
-    for _, row in edited_loads.iterrows():
-        mu_magnified = engine.check_slenderness(row['Pu (ton)'], row['Mu (ton-m)'])
-        fig.add_trace(go.Scatter(x=[mu_magnified], y=[row['Pu (ton)']], mode='markers+text',
-                                 text=[row['Case']], textposition="top center",
-                                 marker=dict(color='red', size=12, symbol='x'), name="Input Load"))
-
-    fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Load (ton)", height=700)
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-    st.subheader("สถิติหน้าตัดเสา")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("พื้นที่หน้าตัด (Ag)", f"{b*h} cm²")
-    col2.metric("พื้นที่เหล็ก (Ast)", f"{sum(l['as'] for l in engine.layers):.2f} cm²")
-    rho = (sum(l['as'] for l in engine.layers) / (b*h)) * 100
-    col3.metric("อัตราส่วนเหล็ก (ρ)", f"{rho:.2f} %")
-    
-    st.write("---")
-    st.markdown("""
-    **คำอธิบายกราฟ:**
-    * **เส้นประสีเทา (Nominal):**คือกำลังตามทฤษฎี (Pn, Mn) ที่ยังไม่คูณค่าความปลอดภัย เหมือนในตำราเรียน
-    * **เส้นทึบสีน้ำเงิน (Design):** คือกำลังที่ยอมให้ใช้จริง (ΦPn, ΦMn) ซึ่งมีการตัดยอดกราฟ (Compression Cap) และลดกำลังด้วยค่า Φ ตามมาตรฐาน ACI/วสท.
-    * **จุด X สีแดง:** คือแรงที่คุณป้อนเข้าไป หากจุดตกอยู่ในพื้นที่สีน้ำเงิน แสดงว่าเสา **"ปลอดภัย"**
-    """)
+with col1:
+    tab_pm, tab_shear = st.tabs(["📉 Interaction Diagram", "🛡️ Shear Design"])
+    with tab_pm:
+        fig_pm = go.Figure()
+        fig_pm.add_trace(go.Scatter(x=df_pm['phiMn'], y=df_pm['phiPn'].clip(upper=phi_pn_max), 
+                                     fill='tozeroy', name='Design Capacity', line=dict(color='navy')))
+        fig_pm.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Load (ton)")
+        st.plotly_chart(fig_pm, use_container_width=True)
+        
+    with tab_shear:
+        st.subheader("การคำนวณแรงเฉือน")
+        msg, s_spacing, vc_cap = engine.design_shear(vu_input, stirrup_db)
+        st.info(f"กำลังรับแรงเฉือนของคอนกรีต (ΦVc): {0.75 * vc_cap:.2f} ton")
+        st.success(msg)
+        
+with col2:
+    st.subheader("Section Drawing")
+    st.pyplot(engine.draw_section())
+    st.write(f"**Section:** {b}x{h} cm")
+    st.write(f"**Reinforcement:** {n_bars}-DB{db}")
+    st.write(f"**Ties:** RB{stirrup_db} @ {s_spacing if s_spacing > 0 else '-':.0f} cm")
