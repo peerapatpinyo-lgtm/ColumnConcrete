@@ -179,19 +179,15 @@ with col2:
         st.error(f"❌ **UNSAFE:** จุดทำงาน (Pu={Pu} t, Mc={Mc:.1f} t-m) เกินขีดจำกัด (Outside Envelope)")
 
     # --- TABS ---
-    tab1, tab2, tab3 = st.tabs(["📊 P-M Curve (Design)", "📐 Section Diagram", "📚 K-Factor Table"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 P-M Curve", "📐 Section", "📚 K-Factor", "📝 รายการคำนวณ (Report)"])
 
     with tab1:
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=df_design['phiMn'], y=df_design['phiPn'], fill='tozeroy', name="Design Capacity (Φ)", line=dict(color='navy', width=3)))
-        
-        # พล็อตจุด Original Demand
         fig1.add_trace(go.Scatter(x=[Mu], y=[Pu], mode='markers', name="Original (Mu, Pu)", marker=dict(color='orange', size=10, symbol='circle')))
         
-        # พล็อตจุด Magnified Demand (ถ้ามี)
         if delta > 1.0 and delta < 999:
             fig1.add_trace(go.Scatter(x=[Mc], y=[Pu], mode='markers', name="Magnified (Mc, Pu)", marker=dict(color='red', size=12, symbol='x')))
-            # ลากเส้นลูกศรชี้การขยาย
             fig1.add_annotation(x=Mc, y=Pu, ax=Mu, ay=Pu, xref="x", yref="y", axref="x", ayref="y", 
                                 showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="red")
             
@@ -206,14 +202,61 @@ with col2:
     with tab3:
         st.markdown("### 📚 ตารางแนะนำค่า K (Effective Length Factor)")
         st.markdown("""
-        ค่า $K$ ใช้สำหรับปรับแก้ความยาวของเสา ($L_u$) ตามลักษณะการยึดรั้งที่ปลายทั้งสองด้าน
-        
         | สภาพการยึดรั้งปลายเสา (End Conditions) | ค่า K ทางทฤษฎี | ค่า K แนะนำสำหรับออกแบบ |
         | :--- | :---: | :---: |
         | **ยึดแน่น-ยึดแน่น (Fixed-Fixed)** | 0.50 | **0.65** |
         | **ยึดแน่น-หมุนได้ (Fixed-Pinned)** | 0.70 | **0.80** |
         | **หมุนได้-หมุนได้ (Pinned-Pinned)** | 1.00 | **1.00** |
         | **ยึดแน่น-อิสระ (Fixed-Free)** | 2.00 | **2.10** |
-        
-        > **หมายเหตุ:** สำหรับโครงสร้างที่ไม่มีการเซ (Non-sway frame) ค่า $K$ จะอยู่ในช่วง $0.5 \le K \le 1.0$ ส่วนโครงสร้างที่เซได้ (Sway frame) ค่า $K$ จะ $\ge 1.0$ เสมอ
         """)
+
+    with tab4:
+        st.markdown("## 📝 รายการคำนวณออกแบบหน้าตัดเสา (Calculation Report)")
+        st.markdown("เอกสารนี้สร้างขึ้นโดยโปรแกรมออกแบบอัตโนมัติ เพื่อสรุปผลการตรวจสอบพฤติกรรมของเสา")
+        st.markdown("---")
+        
+        st.markdown("#### 1. ข้อมูลหน้าตัดและวัสดุ (Section & Material Properties)")
+        st.markdown(f"- **ขนาดหน้าตัด:** กว้าง $b = {b}$ cm, ลึก $h = {h}$ cm")
+        st.markdown(f"- **พื้นที่หน้าตัดรวม (Gross Area), $A_g$:** `{engine.Ag:,.2f}` cm²")
+        st.markdown(f"- **กำลังอัดคอนกรีต, $f'_c$:** `{fc}` ksc")
+        st.markdown(f"- **กำลังครากเหล็กเสริม, $f_y$:** `{fy}` ksc")
+        
+        st.markdown("#### 2. ข้อมูลเหล็กเสริม (Reinforcement)")
+        st.markdown(f"- **การจัดเหล็กยืน:** `{n_bars}`-DB`{db}`")
+        st.markdown(f"- **ระยะหุ้มคอนกรีต (Covering):** `{cover}` cm")
+        st.markdown(f"- **พื้นที่เหล็กเสริมรวม, $A_{{st}}$:** `{engine.total_as:.2f}` cm²")
+        st.markdown(f"- **อัตราส่วนเหล็กเสริม, $\\rho$:** `{engine.rho*100:.2f}`% (เกณฑ์ 1% - 8%)")
+        
+        st.markdown("#### 3. การตรวจสอบความชะลูด (Slenderness Effect)")
+        st.markdown(f"- **ความยาวเสาไร้การรองรับ, $L_u$:** `{Lu}` m")
+        st.markdown(f"- **ค่าแฟคเตอร์ความยาวประสิทธิผล, $K$:** `{K_factor}`")
+        st.markdown(f"- **รัศมีไจเรชัน (โดยประมาณ), $r \\approx 0.3h$:** `{0.3*h:.2f}` cm")
+        st.markdown(f"- **อัตราส่วนความชะลูด, $KL/r$:** `{kl_r:.2f}`")
+        
+        if kl_r <= 22:
+            st.success("✅ **สรุป:** $KL/r \\le 22$ จัดเป็น **เสาสั้น (Short Column)** ไม่ต้องพิจารณาการขยายโมเมนต์")
+        else:
+            st.warning("⚠️ **สรุป:** $KL/r > 22$ จัดเป็น **เสายาว (Slender Column)** ต้องพิจารณาการขยายโมเมนต์ (Moment Magnification)")
+            
+            st.markdown("#### 4. การขยายโมเมนต์ (Moment Magnification Method)")
+            st.markdown(f"- **โมดูลัสยืดหยุ่นคอนกรีต, $E_c = 15100\\sqrt{{f'_c}}$:** `{engine.Ec:,.0f}` ksc")
+            st.markdown(f"- **โมเมนต์อินเนอร์เชีย, $I_g = bh^3/12$:** `{engine.Ig:,.0f}` cm⁴")
+            
+            EI_val = (0.4 * engine.Ec * engine.Ig) / (1 + beta_d)
+            st.markdown(f"- **Stiffness, $EI$:** `{EI_val:,.0f}` kg-cm²")
+            st.markdown(f"- **น้ำหนักบรรทุกวิกฤตออยเลอร์, $P_c$:** `{Pc:.2f}` ton")
+            st.markdown(f"- **ตัวคูณขยายโมเมนต์, $\\delta$:** `{delta:.3f}`")
+            st.info(f"🔄 **โมเมนต์ออกแบบที่ปรับแก้แล้ว, $M_c = \\delta M_u$:** `{Mc:.2f}` ton-m")
+
+        st.markdown("#### 5. สรุปผลการตรวจสอบกำลังรับน้ำหนัก (Capacity Check)")
+        st.markdown(f"- **แรงอัดประลัย, $P_u$:** `{Pu}` ton")
+        st.markdown(f"- **โมเมนต์ประลัย (ใช้สำหรับออกแบบ), $M_c$:** `{Mc:.2f}` ton-m")
+        st.markdown(f"- **กำลังรับแรงอัดสูงสุดของหน้าตัด, $\\phi P_{{n,max}}$:** `{phi_pn_max:.2f}` ton")
+        
+        if is_safe:
+            st.success("🎯 **ผลการประเมิน:** **ผ่าน (SAFE)** — พิกัดแรงกระทำ ($P_u, M_c$) อยู่ภายในพื้นที่ขอบเขตความปลอดภัยของ P-M Curve")
+        else:
+            st.error("❌ **ผลการประเมิน:** **ไม่ผ่าน (UNSAFE)** — พิกัดแรงกระทำ ($P_u, M_c$) อยู่นอกขอบเขตความปลอดภัยของหน้าตัด")
+            
+        st.markdown("---")
+        st.caption("สามารถกด `Ctrl + P` (หรือ `Cmd + P` บน Mac) เพื่อพิมพ์หรือบันทึกหน้านี้เป็น PDF ได้เลยครับ")
