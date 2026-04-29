@@ -5,33 +5,67 @@ import plotly.graph_objects as go
 from scipy.interpolate import interp1d
 
 class RCColumnProfessional:
-    def __init__(self, fc, fy, b, h, db_mm, n_bars, cover_cm):
-        self.fc, self.fy, self.b, self.h = fc, fy, b, h
+    def __init__(self, shape, layout, b, h, fc, fy, db_mm, n_bars, nx, ny, cover_cm):
+        self.shape = shape
+        self.layout = layout
+        self.b = b
+        self.h = h
+        self.fc, self.fy = fc, fy
         self.Es = 2.04e6
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
         
-        self.Ag = self.b * self.h
-        self.fc_Ag_ton = (self.fc * self.Ag) / 1000 
-        
-        # Concrete Modulus of Elasticity (kg/cm2)
+        # 1. Properties by Shape
+        if self.shape == "Rectangular":
+            self.Ag = self.b * self.h
+            self.Ig = (self.b * self.h**3) / 12  
+        else: # Circular (b and h represent Diameter D)
+            self.D = self.h
+            self.Ag = (np.pi * self.D**2) / 4
+            self.Ig = (np.pi * self.D**4) / 64
+            
         self.Ec = 15100 * np.sqrt(self.fc)
-        self.Ig = (self.b * self.h**3) / 12  # Moment of Inertia (cm4)
         
-        # Rebar layer arrangement (assuming 2 faces)
+        # 2. Rebar Generation (x, y coordinates from center)
         self.db_cm = db_mm / 10
         self.as_single = (np.pi * self.db_cm**2) / 4
-        self.d_prime = cover_cm + 0.9 + (self.db_cm/2)
-        self.d = h - self.d_prime                     
+        self.d_prime = cover_cm + 0.9 + (self.db_cm/2) # 0.9 cm for ties
         
-        self.n_bars = n_bars
-        self.layers = [
-            {'as': (n_bars/2) * self.as_single, 'd': self.d_prime},
-            {'as': (n_bars/2) * self.as_single, 'd': self.d}
-        ]
-        
-        self.total_as = sum(l['as'] for l in self.layers)
+        self.bars = []
+        if self.shape == "Rectangular":
+            x_min, x_max = -self.b/2 + self.d_prime, self.b/2 - self.d_prime
+            y_min, y_max = -self.h/2 + self.d_prime, self.h/2 - self.d_prime
+            
+            if self.layout == "2-Faces (Top/Bottom)":
+                n_face = n_bars // 2
+                x_coords = np.linspace(x_min, x_max, n_face)
+                for x in x_coords:
+                    self.bars.append({'x': x, 'y': y_max}) # Top
+                    self.bars.append({'x': x, 'y': y_min}) # Bottom
+                    
+            elif self.layout == "4-Faces (Uniform)":
+                # Top and Bottom
+                x_coords = np.linspace(x_min, x_max, nx)
+                for x in x_coords:
+                    self.bars.append({'x': x, 'y': y_max}) 
+                    self.bars.append({'x': x, 'y': y_min})
+                # Left and Right (exclude corners)
+                if ny > 2:
+                    y_coords = np.linspace(y_min, y_max, ny)[1:-1]
+                    for y in y_coords:
+                        self.bars.append({'x': x_min, 'y': y})
+                        self.bars.append({'x': x_max, 'y': y})
+                        
+        elif self.shape == "Circular":
+            Rs = self.D/2 - self.d_prime
+            for i in range(n_bars):
+                theta = i * 2 * np.pi / n_bars
+                self.bars.append({'x': Rs * np.sin(theta), 'y': Rs * np.cos(theta)})
+                
+        self.total_as = len(self.bars) * self.as_single
         self.rho = self.total_as / self.Ag 
-        self.dt = max(l['d'] for l in self.layers)
+        
+        # Extreme tension steel depth (dt)
+        self.dt = self.h/2 - min(bar['y'] for bar in self.bars)
 
     def solve_pm(self):
         results = []
@@ -42,52 +76,75 @@ class RCColumnProfessional:
         
         for c in c_values:
             a = min(self.beta1 * c, self.h)
-            Cc = 0.85 * self.fc * a * self.b
-            Mc = Cc * (self.h/2 - a/2)
             
+            # --- Concrete Compression Block Area & Centroid ---
+            if self.shape == "Rectangular":
+                Cc = 0.85 * self.fc * a * self.b
+                Mc = Cc * (self.h/2 - a/2)
+            else: # Circular Math
+                R = self.D / 2
+                if a >= self.D:
+                    Ac, y_bar = np.pi * R**2, 0
+                else:
+                    # Circular segment mechanics
+                    theta = 2 * np.arccos((R - a) / R)
+                    Ac = (R**2 / 2) * (theta - np.sin(theta))
+                    y_bar = (4 * R * np.sin(theta/2)**3) / (3 * (theta - np.sin(theta))) if Ac > 0 else R
+                Cc = 0.85 * self.fc * Ac
+                Mc = Cc * y_bar # y_bar is distance from centroid
+            
+            # --- Steel Contribution ---
             Pn_s, Mn_s = 0, 0
-            for layer in self.layers:
-                eps_s = 0.003 * (c - layer['d']) / c
+            for bar in self.bars:
+                d_i = self.h/2 - bar['y'] # depth from extreme compression fiber
+                eps_s = 0.003 * (c - d_i) / c
                 fs = np.clip(eps_s * self.Es, -self.fy, self.fy)
-                Fsi = layer['as'] * fs
+                
+                Fsi = self.as_single * fs
                 Pn_s += Fsi
-                Mn_s += Fsi * (self.h/2 - layer['d'])
+                Mn_s += Fsi * bar['y'] # Moment arm from center
 
             pn = (Cc + Pn_s) / 1000 
             mn = (Mc + Mn_s) / 100000 
             
+            # Phi factor calculation
             et = 0.003 * (self.dt - c) / c
             ey = self.fy / self.Es
             
+            if self.shape == "Circular": # ACI rules for Spiral/Ties
+                phi_comp = 0.75 if self.layout == "Circular" else 0.65 
+            else:
+                phi_comp = 0.65
+                
             if et >= 0.005: phi = 0.90
-            elif et <= ey: phi = 0.65
-            else: phi = 0.65 + 0.25 * (et - ey) / (0.005 - ey)
+            elif et <= ey: phi = phi_comp
+            else: phi = phi_comp + (0.90 - phi_comp) * (et - ey) / (0.005 - ey)
             
             results.append({'c': c, 'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn})
 
+        # Pure Tension
         tn = -self.total_as * self.fy / 1000
         results.append({'c': 0, 'Pn': tn, 'Mn': 0, 'phiPn': 0.9 * tn, 'phiMn': 0})
 
+        # Maximum Axial Load (Po)
         po = (0.85 * self.fc * (self.Ag - self.total_as) + self.fy * self.total_as) / 1000
-        phi_pn_max = 0.65 * 0.80 * po
+        phi_max_factor = 0.85 if self.shape == "Circular" else 0.80
+        phi_comp = 0.75 if self.shape == "Circular" else 0.65
+        phi_pn_max = phi_comp * phi_max_factor * po
 
         return pd.DataFrame(results).sort_values('Pn', ascending=True), phi_pn_max
         
     def calculate_slenderness(self, Pu, Mu, K_factor, Lu_m, Cm, beta_d):
         Lu_cm = Lu_m * 100
-        r = 0.3 * self.h # ACI Radius of Gyration
+        r = 0.25 * self.h if self.shape == "Circular" else 0.3 * self.h
         kl_r = (K_factor * Lu_cm) / r
         
-        # 0.4 Ec Ig / (1 + beta_d)
         EI = (0.4 * self.Ec * self.Ig) / (1 + beta_d)
-        
-        # Euler Buckling Load (kg -> ton)
         Pc = (np.pi**2 * EI) / (K_factor * Lu_cm)**2 / 1000
         
-        # Calculate Magnification Factor (Delta)
-        phi_k = 0.75 # ACI Stiffness reduction
+        phi_k = 0.75
         if Pu >= (phi_k * Pc):
-            delta = 999.9 # Buckling Failure
+            delta = 999.9 
         else:
             delta = max(1.0, Cm / (1 - (Pu / (phi_k * Pc))))
             
@@ -97,40 +154,67 @@ class RCColumnProfessional:
 # --- FUNCTION: PLOT CROSS-SECTION ---
 def plot_cross_section(engine):
     fig = go.Figure()
-    # Draw concrete edge
-    fig.add_trace(go.Scatter(x=[0, engine.b, engine.b, 0, 0], 
-                             y=[0, 0, engine.h, engine.h, 0], 
-                             mode='lines', name='Concrete Edge', line=dict(color='black', width=2)))
     
-    # Calculate rebar coordinates
-    x_coords = np.linspace(engine.d_prime, engine.b - engine.d_prime, int(engine.n_bars/2))
+    if engine.shape == "Rectangular":
+        fig.add_trace(go.Scatter(x=[-engine.b/2, engine.b/2, engine.b/2, -engine.b/2, -engine.b/2], 
+                                 y=[-engine.h/2, -engine.h/2, engine.h/2, engine.h/2, -engine.h/2], 
+                                 mode='lines', name='Concrete Edge', line=dict(color='black', width=2)))
+    else:
+        # Draw Circle
+        theta = np.linspace(0, 2*np.pi, 100)
+        x_circ = (engine.D/2) * np.cos(theta)
+        y_circ = (engine.D/2) * np.sin(theta)
+        fig.add_trace(go.Scatter(x=x_circ, y=y_circ, mode='lines', name='Concrete Edge', line=dict(color='black', width=2)))
     
-    # Bottom rebars (d)
-    fig.add_trace(go.Scatter(x=x_coords, y=[engine.h - engine.d]*len(x_coords), 
-                             mode='markers', name='Bottom Rebars', marker=dict(color='red', size=10)))
-    # Top rebars (d_prime)
-    fig.add_trace(go.Scatter(x=x_coords, y=[engine.h - engine.d_prime]*len(x_coords), 
-                             mode='markers', name='Top Rebars', marker=dict(color='blue', size=10)))
+    # Draw Rebars
+    x_bars = [bar['x'] for bar in engine.bars]
+    y_bars = [bar['y'] for bar in engine.bars]
+    fig.add_trace(go.Scatter(x=x_bars, y=y_bars, mode='markers', name='Rebars', 
+                             marker=dict(color='red', size=10, line=dict(color='darkred', width=1))))
     
-    fig.update_layout(xaxis_title="Width, b (cm)", yaxis_title="Depth, h (cm)",
-                      yaxis=dict(scaleanchor="x", scaleratio=1), # Lock aspect ratio
-                      plot_bgcolor='whitesmoke', height=400, showlegend=False)
+    axis_limit = max(engine.b, engine.h) * 0.6 if engine.shape == "Rectangular" else engine.D * 0.6
+    fig.update_layout(xaxis_title="Width / X (cm)", yaxis_title="Depth / Y (cm)",
+                      xaxis=dict(range=[-axis_limit, axis_limit]),
+                      yaxis=dict(range=[-axis_limit, axis_limit], scaleanchor="x", scaleratio=1), 
+                      plot_bgcolor='whitesmoke', height=500, showlegend=False)
     return fig
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Ultimate RC Column", layout="wide")
-st.title("🏗️ Ultimate RC Column (With Slenderness Effects)")
+st.title("🏗️ Ultimate RC Column (Pro Edition)")
 
 col1, col2 = st.columns([1, 2.5])
 
 with col1:
     with st.expander("1. Section & Reinforcement", expanded=True):
+        shape = st.radio("Section Shape", ["Rectangular", "Circular"], horizontal=True)
+        st.markdown("---")
+        
         fc = st.number_input("f'c (ksc)", value=280)
         fy = st.number_input("fy (ksc)", value=4000)
-        b = st.number_input("Width, b (cm)", value=40)
-        h = st.number_input("Depth, h (cm)", value=60)
+        
+        if shape == "Rectangular":
+            c1, c2 = st.columns(2)
+            b = c1.number_input("Width, b (cm)", value=40)
+            h = c2.number_input("Depth, h (cm)", value=60)
+            layout = st.selectbox("Rebar Layout", ["2-Faces (Top/Bottom)", "4-Faces (Uniform)"])
+            
+            if layout == "2-Faces (Top/Bottom)":
+                n_bars = st.number_input("Total Bars (Even)", 4, 40, 8, step=2)
+                nx, ny = 0, 0
+            else:
+                c3, c4 = st.columns(2)
+                nx = c3.number_input("Bars in X (Width)", 2, 20, 3)
+                ny = c4.number_input("Bars in Y (Depth)", 2, 20, 4)
+                n_bars = (2 * nx) + (2 * ny) - 4
+                st.info(f"Total Bars Computed: {n_bars}")
+        else:
+            b = h = st.number_input("Diameter, D (cm)", value=50)
+            layout = "Circular"
+            n_bars = st.number_input("Total Bars (min 6)", 6, 60, 8, step=1)
+            nx, ny = 0, 0
+            
         db = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2)
-        n_bars = st.number_input("Total Bars (Even)", 4, 40, 8, step=2)
         cover = st.number_input("Covering (cm)", value=4.0)
 
     with st.expander("2. Loads & Slenderness", expanded=True):
@@ -142,10 +226,9 @@ with col1:
         Cm = st.number_input("Cm factor (1.0 for single curvature)", value=1.0, step=0.1)
         beta_d = st.slider("Beta_d (Sustained Load Ratio)", 0.0, 1.0, 0.6)
 
-engine = RCColumnProfessional(fc, fy, b, h, db, n_bars, cover)
+engine = RCColumnProfessional(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover)
 df, phi_pn_max = engine.solve_pm()
 
-# Calculate slender column effects
 kl_r, Pc, delta, Mc = engine.calculate_slenderness(Pu, Mu, K_factor, Lu, Cm, beta_d)
 
 df_design = df.copy()
@@ -160,11 +243,8 @@ except:
 
 with col2:
     st.markdown("### 📋 Executive Summary")
-    
-    # --- 1. Smart Metric Cards ---
     m1, m2, m3, m4 = st.columns(4)
     
-    # Check steel ratio
     rho_pct = engine.rho * 100
     if rho_pct < 1.0:
         rho_status, rho_color = "⚠️ Below 1%", "inverse"
@@ -179,45 +259,37 @@ with col2:
     m4.metric("Magnifier (δ)", f"{delta:.3f}")
 
     st.markdown("---")
-    
-    # --- 2. Design Diagnostics ---
     st.markdown("#### 🔍 Design Diagnostics")
     
-    # A. Check Minimum Eccentricity
-    e_min_m = 0.015 + 0.03 * (h / 100) # meters
+    e_min_m = 0.015 + 0.03 * (h / 100) 
     M_min = Pu * e_min_m
-    Actual_Mu = max(Mu, M_min) # Select the larger value for design
+    Actual_Mu = max(Mu, M_min) 
     
     if Mu < M_min:
-        st.info(f"💡 **Min. Eccentricity:** The inputted moment is too low. The program applies the minimum moment **Mu,min = {M_min:.2f} t-m** for safety.")
+        st.info(f"💡 **Min. Eccentricity:** The inputted moment is too low. Using minimum **Mu,min = {M_min:.2f} t-m**")
     
-    # B. Check Slenderness and Moment Magnification
     if kl_r > 22:
-        st.warning(f"⚠️ **Slender Column Effect:** The section is slender (KL/r = {kl_r:.1f} > 22)")
+        st.warning(f"⚠️ **Slender Column Effect:** (KL/r = {kl_r:.1f} > 22)")
         if delta > 1.0:
-            # Recalculate Mc based on Actual_Mu
             Mc_display = Actual_Mu * delta
-            st.markdown(f"> 🔄 Design moment is magnified from **{Actual_Mu:.2f} t-m** ➔ **<span style='color:red; font-size:1.1em;'>{Mc_display:.2f} t-m</span>** (increased by {(delta-1)*100:.1f}%)", unsafe_allow_html=True)
+            st.markdown(f"> 🔄 Design moment magnified: **{Actual_Mu:.2f} t-m** ➔ **<span style='color:red; font-size:1.1em;'>{Mc_display:.2f} t-m</span>**", unsafe_allow_html=True)
         else:
             Mc_display = Actual_Mu
     else:
-        st.success(f"✅ **Short Column:** Slenderness is within limits (KL/r = {kl_r:.1f} ≤ 22). No magnification required.")
+        st.success(f"✅ **Short Column:** (KL/r = {kl_r:.1f} ≤ 22). No magnification required.")
         Mc_display = Actual_Mu
         
-    # Update Mc back to the variable for plotting
     Mc = Mc_display 
 
-    # C. Overall Capacity Check
-    st.markdown("<br>", unsafe_allow_html=True) # Line break
+    st.markdown("<br>", unsafe_allow_html=True) 
     if is_safe:
-        st.success(f"### ✅ **STATUS: SAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** is within the capacity envelope of the section.")
+        st.success(f"### ✅ **STATUS: SAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** is within capacity.")
     else:
-        st.error(f"### ❌ **STATUS: UNSAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** exceeds the capacity limit of the section!")
+        st.error(f"### ❌ **STATUS: UNSAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** exceeds capacity!")
 
     st.markdown("---")
 
-    # --- TABS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 P-M Curve", "📐 Section", "📚 K-Factor", "📝 Calculation Report"])
+    tab1, tab2, tab3 = st.tabs(["📊 P-M Curve", "📐 Section Details", "📝 Calculation Report"])
 
     with tab1:
         fig1 = go.Figure()
@@ -226,103 +298,26 @@ with col2:
         
         if delta > 1.0 and delta < 999:
             fig1.add_trace(go.Scatter(x=[Mc], y=[Pu], mode='markers', name="Magnified (Mc, Pu)", marker=dict(color='red', size=12, symbol='x')))
-            fig1.add_annotation(x=Mc, y=Pu, ax=Mu, ay=Pu, xref="x", yref="y", axref="x", ayref="y", 
-                                showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="red")
+            fig1.add_annotation(x=Mc, y=Pu, ax=Mu, ay=Pu, xref="x", yref="y", axref="x", ayref="y", showarrow=True, arrowhead=2, arrowcolor="red")
             
         fig1.update_layout(xaxis_title="Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)", plot_bgcolor='white', height=500)
         st.plotly_chart(fig1, use_container_width=True)
 
     with tab2:
-        st.markdown("### Cross-Section and Rebar Arrangement")
+        st.markdown("### Cross-Section & Rebar Arrangement")
         fig_sec = plot_cross_section(engine)
         st.plotly_chart(fig_sec, use_container_width=True)
 
     with tab3:
-        st.markdown("### 📚 Recommended K-Factors (Effective Length Factor)")
-        st.markdown("""
-        | End Conditions | Theoretical K Value | Recommended K for Design |
-        | :--- | :---: | :---: |
-        | **Fixed-Fixed** | 0.50 | **0.65** |
-        | **Fixed-Pinned** | 0.70 | **0.80** |
-        | **Pinned-Pinned** | 1.00 | **1.00** |
-        | **Fixed-Free** | 2.00 | **2.10** |
-        """)
-
-    with tab4:
         st.markdown("## 📝 Detailed Calculation Report")
-        st.markdown("This automated report summarizes the structural design, slenderness evaluation, and capacity checks for the reinforced concrete column.")
         st.markdown("---")
-        
-        st.markdown("#### 1. Section & Material Properties")
-        st.markdown("**Gross Area ($A_g$):**")
-        st.latex(rf"A_g = b \times h = {b} \times {h} = {engine.Ag:,.2f} \text{{ cm}}^2")
-        
-        st.markdown("**Material Strengths:**")
-        st.latex(rf"f'_c = {fc} \text{{ ksc}}, \quad f_y = {fy} \text{{ ksc}}")
-        
-        st.markdown("#### 2. Reinforcement Details")
-        st.markdown("**Total Steel Area ($A_{st}$):**")
-        st.latex(rf"A_{{st}} = n \times \frac{{\pi d_b^2}}{{4}} = {n_bars} \times \frac{{\pi ({engine.db_cm})^2}}{{4}} = {engine.total_as:.2f} \text{{ cm}}^2")
-        
-        st.markdown("**Reinforcement Ratio ($\\rho$):**")
-        st.latex(rf"\rho = \frac{{A_{{st}}}}{{A_g}} = \frac{{{engine.total_as:.2f}}}{{{engine.Ag:,.2f}}} = {engine.rho:.4f} \quad ({engine.rho*100:.2f}\%)")
-        
-        if 0.01 <= engine.rho <= 0.08:
-            st.success(f"✅ $0.01 \le \rho \le 0.08$ (OK)")
+        st.markdown("#### 1. Section Properties")
+        if shape == "Rectangular":
+            st.latex(rf"A_g = {b} \times {h} = {engine.Ag:,.2f} \text{{ cm}}^2")
+            st.latex(rf"I_g = \frac{{{b} \times {h}^3}}{{12}} = {engine.Ig:,.2f} \text{{ cm}}^4")
         else:
-            st.error(f"❌ $\rho$ is out of bounds (1% - 8%)")
-
-        st.markdown("#### 3. Slenderness Effect Evaluation")
-        Lu_cm = Lu * 100
-        st.markdown("**Radius of Gyration ($r$):**")
-        st.latex(rf"r = 0.3h = 0.3 \times {h} = {0.3*h:.2f} \text{{ cm}}")
-        
-        st.markdown("**Slenderness Ratio ($KL_u/r$):**")
-        st.latex(rf"\frac{{K L_u}}{{r}} = \frac{{{K_factor} \times {Lu_cm:.2f}}}{{{0.3*h:.2f}}} = {kl_r:.2f}")
-        
-        if kl_r <= 22:
-            st.success("✅ **Conclusion:** Since $KL_u/r \le 22$, the column is a **Short Column**. Moment magnification is NOT required.")
-            st.markdown("#### 4. Capacity Check Summary")
-        else:
-            st.warning("⚠️ **Conclusion:** Since $KL_u/r > 22$, the column is a **Slender Column**. Moment magnification is REQUIRED.")
+            st.latex(rf"A_g = \frac{{\pi \times {b}^2}}{{4}} = {engine.Ag:,.2f} \text{{ cm}}^2")
+            st.latex(rf"I_g = \frac{{\pi \times {b}^4}}{{64}} = {engine.Ig:,.2f} \text{{ cm}}^4")
             
-            st.markdown("#### 4. Moment Magnification Method (Non-Sway Frame)")
-            st.markdown("**Concrete Modulus of Elasticity ($E_c$):**")
-            st.latex(rf"E_c = 15100\sqrt{{f'_c}} = 15100\sqrt{{{fc}}} = {engine.Ec:,.2f} \text{{ ksc}}")
-            
-            st.markdown("**Gross Moment of Inertia ($I_g$):**")
-            st.latex(rf"I_g = \frac{{b h^3}}{{12}} = \frac{{{b} \times {h}^3}}{{12}} = {engine.Ig:,.2f} \text{{ cm}}^4")
-            
-            EI_val = (0.4 * engine.Ec * engine.Ig) / (1 + beta_d)
-            st.markdown("**Effective Flexural Stiffness ($EI$):**")
-            st.latex(rf"EI = \frac{{0.4 E_c I_g}}{{1 + \beta_d}} = \frac{{0.4 \times {engine.Ec:,.2f} \times {engine.Ig:,.2f}}}{{1 + {beta_d}}} = {EI_val:,.2f} \text{{ kg-cm}}^2")
-            
-            st.markdown("**Euler Critical Buckling Load ($P_c$):**")
-            st.latex(rf"P_c = \frac{{\pi^2 EI}}{{(K L_u)^2}} \times \frac{{1}}{{1000}} = \frac{{\pi^2 \times {EI_val:,.2f}}}{{({K_factor} \times {Lu_cm})^2}} \times \frac{{1}}{{1000}} = {Pc:.2f} \text{{ ton}}")
-            
-            st.markdown("**Moment Magnification Factor ($\delta$):**")
-            st.latex(rf"\delta = \frac{{C_m}}{{1 - \frac{{P_u}}{{0.75 P_c}}}} = \frac{{{Cm}}}{{1 - \frac{{{Pu}}}{{0.75 \times {Pc:.2f}}}}} = {delta:.3f}")
-            
-            st.markdown("**Magnified Design Moment ($M_c$):**")
-            st.latex(rf"M_c = \delta M_u = {delta:.3f} \times {Mu} = {Mc:.2f} \text{{ ton-m}}")
-            
-            st.markdown("#### 5. Capacity Check Summary")
-
-        po = (0.85 * fc * (engine.Ag - engine.total_as) + fy * engine.total_as) / 1000
-        st.markdown("**Nominal Maximum Axial Strength ($P_o$):**")
-        st.latex(rf"P_o = \left[ 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}} \right] / 1000")
-        st.latex(rf"P_o = \left[ 0.85({fc})({engine.Ag} - {engine.total_as:.2f}) + {fy}({engine.total_as:.2f}) \right] / 1000 = {po:,.2f} \text{{ ton}}")
-        
-        st.markdown("**Design Maximum Axial Strength ($\phi P_{n,\max}$):**")
-        st.latex(rf"\phi P_{{n,\max}} = 0.65 \times 0.80 \times P_o = 0.65 \times 0.80 \times {po:,.2f} = {phi_pn_max:.2f} \text{{ ton}}")
-
-        st.markdown("**Final Demand Check:**")
-        st.latex(rf"P_u = {Pu} \text{{ ton}}, \quad M_c = {Mc:.2f} \text{{ ton-m}}")
-        
-        if is_safe:
-            st.success("🎯 **STATUS: SAFE** — The applied demand ($P_u, M_c$) is strictly within the interaction diagram envelope.")
-        else:
-            st.error("❌ **STATUS: UNSAFE** — The applied demand ($P_u, M_c$) exceeds the structural capacity of the section.")
-            
-        st.markdown("---")
-        st.caption("Press `Ctrl + P` (or `Cmd + P` on Mac) to print or save this calculation report as a PDF.")
+        st.markdown("#### 2. Reinforcement Ratio")
+        st.latex(rf"\rho = \frac{{{engine.total_as:.2f}}}{{{engine.Ag:,.2f}}} = {engine.rho*100:.2f}\%")
