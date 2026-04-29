@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from scipy.interpolate import interp1d
 
 class RCColumnProfessional:
     def __init__(self, fc, fy, b, h, db_mm, n_bars, cover_cm):
@@ -9,33 +10,36 @@ class RCColumnProfessional:
         self.Es = 2.04e6
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
         
-        # จัดเลเยอร์เหล็ก (สมมติจัดสมมาตร 2 ฝั่งเพื่อความเสถียรของกราฟ)
+        # คำนวณพื้นที่เหล็กเสริม
         as_single = (np.pi * (db_mm/10)**2) / 4
-        d_prime = cover_cm + 0.9 + (db_mm/20) # ระยะถึงเหล็กบน
-        d = h - d_prime                     # ระยะถึงเหล็กล่าง
+        d_prime = cover_cm + 0.9 + (db_mm/20) # ระยะถึงศูนย์กลางเหล็ก
+        d = h - d_prime                     
         
+        # จัดเลเยอร์เหล็ก (สมมติจัด 2 ฝั่งเพื่อรับโมเมนต์แกนเดียว)
         self.layers = [
             {'as': (n_bars/2) * as_single, 'd': d_prime},
             {'as': (n_bars/2) * as_single, 'd': d}
         ]
+        
+        self.dt = max(l['d'] for l in self.layers) # ระยะถึงเหล็กชั้นนอกสุด
 
     def solve(self):
         results = []
-        # วนลูปค่า c อย่างเป็นระบบ เพื่อให้ได้เส้นกราฟที่ลากต่อเนื่องกัน (ไม่ตัดไปมา)
-        # ตั้งแต่ c น้อยมาก (เหล็กครากด้วยแรงดึง) จนถึง c มาก (คอนกรีตเต็มหน้าตัด)
-        c_values = np.linspace(0.01, self.h * 2, 500)
+        # ปรับการกระจายค่า c ให้ครอบคลุมตั้งแต่น้อยมากๆ (Pure Tension) จนถึง Infinity (Pure Compression)
+        c_values = np.concatenate([
+            np.linspace(0.001, self.dt, 200), 
+            np.linspace(self.dt, self.h * 3, 200)
+        ])
         
         for c in c_values:
             a = min(self.beta1 * c, self.h)
             
-            # 1. แรงและโมเมนต์จากคอนกรีต
+            # 1. คอนกรีต
             Cc = 0.85 * self.fc * a * self.b
             Mc = Cc * (self.h/2 - a/2)
             
-            # 2. แรงและโมเมนต์จากเหล็กเสริม
-            Pn_s = 0
-            Mn_s = 0
-            et = 0 # Strain เหล็กชั้นล่าง
+            # 2. เหล็กเสริม
+            Pn_s, Mn_s = 0, 0
             
             for layer in self.layers:
                 eps_s = 0.003 * (c - layer['d']) / c
@@ -43,68 +47,103 @@ class RCColumnProfessional:
                 Fsi = layer['as'] * fs
                 Pn_s += Fsi
                 Mn_s += Fsi * (self.h/2 - layer['d'])
-                
-                # หา et เพื่อคำนวณ Phi
-                if layer['d'] == max(l['d'] for l in self.layers):
-                    et = abs(0.003 * (layer['d'] - c) / c) if c < layer['d'] else 0
 
-            # 3. รวมผล (Nominal)
+            # 3. Nominal Strength
             pn = (Cc + Pn_s) / 1000 # ton
             mn = (Mc + Mn_s) / 100000 # ton-m
             
-            # 4. คำนวณ Phi Factor (ACI 318-19)
+            # 4. Strength Reduction Factor (Phi) - ACI 318
+            et = 0.003 * (self.dt - c) / c
             ey = self.fy / self.Es
-            phi = 0.65 if et <= ey else 0.90 if et >= 0.005 else 0.65 + 0.25*(et - ey)/(0.005 - ey)
+            
+            if et >= 0.005:
+                phi = 0.90
+            elif et <= ey:
+                phi = 0.65
+            else:
+                phi = 0.65 + 0.25 * (et - ey) / (0.005 - ey)
             
             results.append({'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn})
 
-        # เพิ่มจุด Pure Tension (สำคัญ: เพื่อให้กราฟมาจบที่แกน Y ด้านล่าง)
         total_as = sum(l['as'] for l in self.layers)
+        
+        # จุด Pure Tension
         tn = -total_as * self.fy / 1000
         results.append({'Pn': tn, 'Mn': 0, 'phiPn': 0.9 * tn, 'phiMn': 0})
 
-        # คำนวณจุด Pure Compression Cap (Pn_max)
+        # จุด Pure Compression
         po = (0.85 * self.fc * (self.b * self.h - total_as) + self.fy * total_as) / 1000
         phi_pn_max = 0.65 * 0.80 * po
-        
-        df = pd.DataFrame(results).sort_values('Pn', ascending=True) # เรียงเพื่อให้ลากเส้นสวยงาม
+
+        df = pd.DataFrame(results).sort_values('Pn', ascending=True)
         return df, phi_pn_max
 
 # --- STREAMLIT UI ---
-st.set_page_config(page_title="Refined Column Design")
-st.title("🏗️ Textbook-Correct Interaction Diagram")
+st.set_page_config(page_title="RC Column Design", layout="wide")
+st.title("🏗️ RC Column Interaction Diagram (P-M Curve)")
 
-with st.sidebar:
+col1, col2 = st.columns([1, 3])
+
+with col1:
+    st.subheader("1. Section Properties")
     fc = st.number_input("f'c (ksc)", value=280)
     fy = st.number_input("fy (ksc)", value=4000)
-    b = st.slider("b (cm)", 20, 100, 40)
-    h = st.slider("h (cm)", 20, 100, 60)
+    b = st.number_input("Width, b (cm)", value=40)
+    h = st.number_input("Depth, h (cm)", value=60)
+    
+    st.subheader("2. Reinforcement")
     db = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2)
-    n_bars = st.number_input("Bars", 4, 32, 8, step=2)
+    n_bars = st.number_input("Total Bars (Even number)", 4, 40, 8, step=2)
+    cover = st.number_input("Covering (cm)", value=4.0)
 
-engine = RCColumnProfessional(fc, fy, b, h, db, n_bars, 4.0)
+    st.subheader("3. Applied Loads (Demand)")
+    Pu = st.number_input("Factored Axial Load, Pu (ton)", value=150.0)
+    Mu = st.number_input("Factored Moment, Mu (ton-m)", value=15.0)
+
+engine = RCColumnProfessional(fc, fy, b, h, db, n_bars, cover)
 df, phi_pn_max = engine.solve()
 
-# --- Plotly Graph ---
-fig = go.Figure()
-
-# 1. เส้น Nominal (Pn-Mn)
-fig.add_trace(go.Scatter(x=df['Mn'], y=df['Pn'], name="Nominal (Pn-Mn)",
-                         line=dict(color='gray', dash='dash')))
-
-# 2. เส้น Design (Phi Pn - Phi Mn) พร้อมตัดยอด Pn_max
+# สร้าง Polygon ของ Design Curve เพื่อตรวจสอบว่า Pu, Mu อยู่ข้างในหรือไม่
 df_design = df.copy()
 df_design['phiPn'] = df_design['phiPn'].clip(upper=phi_pn_max)
 
-fig.add_trace(go.Scatter(x=df_design['phiMn'], y=df_design['phiPn'], 
-                         fill='tozeroy', name="Design (ΦPn-ΦMn)",
-                         line=dict(color='navy', width=3)))
+# กรองข้อมูลเฉพาะฝั่งบวกและลบเพื่อใช้ Interpolate ตรวจสอบความปลอดภัย
+try:
+    # หาระยะ Mn สูงสุดที่ยอมรับได้ ณ ระดับแรง Pn = Pu
+    interp_func = interp1d(df_design['phiPn'], df_design['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+    max_Mu_allowable = interp_func(Pu)
+    is_safe = (Mu <= max_Mu_allowable) and (Pu <= phi_pn_max) and (Pu >= df_design['phiPn'].min())
+except:
+    is_safe = False
 
-fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Load (ton)",
-                  plot_bgcolor='white', height=700)
-fig.update_xaxes(showgrid=True, gridcolor='lightgray')
-fig.update_yaxes(showgrid=True, gridcolor='lightgray')
+with col2:
+    # UI แจ้งเตือนสถานะ
+    if is_safe:
+        st.success(f"✅ **SAFE:** The applied load (Pu={Pu} ton, Mu={Mu} ton-m) is INSIDE the design envelope.")
+    else:
+        st.error(f"❌ **UNSAFE:** The applied load (Pu={Pu} ton, Mu={Mu} ton-m) exceeds the column capacity.")
 
-st.plotly_chart(fig, use_container_width=True)
+    # --- Plotly Graph ---
+    fig = go.Figure()
 
-st.info(f"**Calculated Po:** {phi_pn_max/0.65/0.8:.1f} ton | **ΦPn,max:** {phi_pn_max:.1f} ton")
+    # 1. เส้น Nominal (Pn-Mn)
+    fig.add_trace(go.Scatter(x=df['Mn'], y=df['Pn'], name="Nominal Capacity (Pn-Mn)",
+                             line=dict(color='gray', dash='dash')))
+
+    # 2. เส้น Design (Phi Pn - Phi Mn)
+    fig.add_trace(go.Scatter(x=df_design['phiMn'], y=df_design['phiPn'], 
+                             fill='tozeroy', name="Design Capacity (ΦPn-ΦMn)",
+                             line=dict(color='navy', width=3)))
+
+    # 3. จุดใช้งาน (Demand Point)
+    fig.add_trace(go.Scatter(x=[Mu], y=[Pu], mode='markers', name="Demand (Mu, Pu)",
+                             marker=dict(color='red', size=12, symbol='x')))
+
+    fig.update_layout(xaxis_title="Moment (ton-m)", yaxis_title="Axial Load (ton)",
+                      plot_bgcolor='white', height=600, hovermode="x")
+    fig.update_xaxes(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='black')
+    fig.update_yaxes(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='black')
+
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.info(f"**Max Compressive Capacity (ΦPn,max):** {phi_pn_max:.1f} ton")
