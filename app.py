@@ -471,6 +471,7 @@ with col2:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ---------------------------------------------------------
+        # ---------------------------------------------------------
         st.markdown("#### 5. Biaxial Bending Interaction Check")
         st.markdown("**PCA Load Contour Method** *(Ref: PCA Notes on ACI 318, Chapter 7)*")
         st.markdown(f"At target factored axial load $P_u = {Pu:,.2f}$ ton:")
@@ -485,7 +486,8 @@ with col2:
         st.latex(r"\text{Ratio} = \left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
         
         if phi_Mnox > 0 and phi_Mnoy > 0:
-            st.latex(f"\\text{Ratio} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha}}} = {demand_ratio:,.3f}")
+            # แก้ไขปีกกา {{Ratio}} เรียบร้อยแล้ว
+            st.latex(f"\\text{{Ratio}} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha}}} = {demand_ratio:,.3f}")
             st.caption(f"💻 *Code Variables: `alpha` (={alpha}), `demand_ratio`*")
         else:
             st.warning("⚠️ **Calculation Halted:** Cannot compute Biaxial ratio because $P_u$ exceeds the section's maximum purely axial capacity.")
