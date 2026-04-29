@@ -159,7 +159,6 @@ except:
     is_safe = False
 
 with col2:
-with col2:
     st.markdown("### 📋 Executive Summary")
     
     # --- 1. Metric Cards อัจฉริยะ ---
