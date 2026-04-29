@@ -261,7 +261,8 @@ with col2:
     else:
         st.error(f"### ❌ **STATUS: UNSAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** > 1.0")
 
-    tab1, tab2, tab3 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section"])
+
+    tab1, tab2, tab3, tab4 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section", "📖 คู่มือพารามิเตอร์"])
 
     with tab1:
         st.markdown(f"**Load Contour at Pu = {Pu} ton (α = {alpha})**")
@@ -298,3 +299,24 @@ with col2:
         fig_sec.add_trace(go.Scatter(x=[bar['x'] for bar in engine.bars], y=[bar['y'] for bar in engine.bars], mode='markers', marker=dict(color='red', size=8)))
         fig_sec.update_layout(xaxis_title="Width / X (cm)", yaxis_title="Depth / Y (cm)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', height=450, showlegend=False)
         st.plotly_chart(fig_sec, use_container_width=True)
+
+    with tab4:
+        st.markdown("### 📖 คู่มือคำอธิบายพารามิเตอร์ (Parameter Guide)")
+        st.markdown("---")
+        
+        st.markdown("#### 1. แรงกระทำ (Applied Loads)")
+        st.markdown("* **Pu (Factored Axial Load):** แรงอัดประลัยตามแนวแกนที่กระทำกับเสา ซึ่งผ่านการคูณตัวคูณน้ำหนักบรรทุก (Load Factor) มาแล้ว เช่น 1.2DL + 1.6LL (หน่วย: ตัน)")
+        st.markdown("* **Mux, Muy (Factored Moment):** โมเมนต์ดัดประลัยที่กระทำรอบแกน X และแกน Y ของเสา (หน่วย: ตัน-เมตร)")
+        
+        st.markdown("#### 2. ประเภทของโครงสร้าง (Frame Type)")
+        st.markdown("* **Non-Sway Frame (โครงสร้างแบบไม่เซ หรือ Braced Frame):** โครงสร้างที่มีระบบต้านทานแรงด้านข้างที่แข็งแรงมาก เช่น มีกำแพงรับแรงเฉือน (Shear Wall) หรือปล่องลิฟต์คอนกรีตคอยรับแรงลม/แผ่นดินไหว ทำให้จุดต่อของเสาแทบไม่มีการเคลื่อนตัวทางด้านข้างเลยเมื่อรับแรง")
+        st.markdown("* **Sway Frame (โครงสร้างแบบเซ หรือ Unbraced Frame):** โครงสร้างที่ไม่มีการค้ำยัน ต้องอาศัยความสเถียรของเสาและคานในการต้านทานแรงด้านข้าง ทำให้จุดต่อมีการเคลื่อนตัวทางด้านข้าง และก่อให้เกิดโมเมนต์ส่วนเพิ่มจากผลของ P-Delta Effect")
+        
+        st.markdown("#### 3. พารามิเตอร์ด้านความชะลูด (Slenderness Parameters)")
+        st.markdown("* **Lu (Unsupported Length):** ความยาวเสาที่ไม่มีการรองรับ หรือความยาวสุทธิ (Clear Height) วัดจากหลังพื้น/คานชั้นล่าง ถึง ท้องพื้น/คานชั้นบน (หน่วย: เมตร)")
+        st.markdown("* **K (Effective Length Factor):** ตัวคูณความยาวประสิทธิผล ขึ้นอยู่กับสภาพความยึดรั้งที่ปลายเสาทั้งบนและล่าง")
+        st.markdown("  * **Non-Sway Frame:** ค่า K จะมีค่าอยู่ระหว่าง **0.5 ถึง 1.0**")
+        st.markdown("  * **Sway Frame:** ค่า K จะมีค่าตั้งแต่ **1.0 ขึ้นไป**")
+        st.markdown("* **Cm (Equivalent Moment Factor):** ตัวคูณปรับแก้โมเมนต์เทียบเท่า **(ใช้เฉพาะใน Non-Sway Frame)** เพื่อปรับสภาพของโมเมนต์ดัดที่ปลายบนและล่างของเสาที่ไม่เท่ากัน ให้กลายเป็นโมเมนต์ดัดแบบสม่ำเสมอเทียบเท่า โดยคำนวณจากสูตรมาตรฐาน ACI ดังนี้:")
+        st.latex(r"C_m = 0.6 + 0.4 \left( \frac{M_1}{M_2} \right) \ge 0.4")
+        st.markdown("> *โดย **M1** คือโมเมนต์ค่าน้อย และ **M2** คือโมเมนต์ค่ามาก (หากเสาดัดโค้งทางเดียวหรือ Single Curvature อัตราส่วน M1/M2 จะมีค่าเป็นบวก)*")
