@@ -212,48 +212,74 @@ with col2:
 
     with tab4:
         st.markdown("## 📝 Detailed Calculation Report")
-        st.markdown("This automated report summarizes the structural design, slenderness evaluation, and capacity checks for the reinforced concrete column according to ACI standards.")
+        st.markdown("This automated report summarizes the structural design, slenderness evaluation, and capacity checks for the reinforced concrete column.")
         st.markdown("---")
         
         st.markdown("#### 1. Section & Material Properties")
-        st.markdown(f"- **Dimensions:** Width $b = {b}$ cm, Depth $h = {h}$ cm")
-        st.markdown(f"- **Gross Area ($A_g$):** `{engine.Ag:,.2f}` cm²")
-        st.markdown(f"- **Concrete Compressive Strength ($f'_c$):** `{fc}` ksc")
-        st.markdown(f"- **Steel Yield Strength ($f_y$):** `{fy}` ksc")
+        st.markdown("**Gross Area ($A_g$):**")
+        st.latex(rf"A_g = b \times h = {b} \times {h} = {engine.Ag:,.2f} \text{{ cm}}^2")
+        
+        st.markdown("**Material Strengths:**")
+        st.latex(rf"f'_c = {fc} \text{{ ksc}}, \quad f_y = {fy} \text{{ ksc}}")
         
         st.markdown("#### 2. Reinforcement Details")
-        st.markdown(f"- **Bar Arrangement:** `{n_bars}`-DB`{db}`")
-        st.markdown(f"- **Concrete Covering:** `{cover}` cm")
-        st.markdown(f"- **Total Steel Area ($A_{{st}}$):** `{engine.total_as:.2f}` cm²")
-        st.markdown(f"- **Reinforcement Ratio ($\\rho$):** `{engine.rho*100:.2f}`% (ACI Limits: 1% - 8%)")
+        st.markdown("**Total Steel Area ($A_{st}$):**")
+        st.latex(rf"A_{{st}} = n \times \frac{{\pi d_b^2}}{{4}} = {n_bars} \times \frac{{\pi ({engine.db_cm})^2}}{{4}} = {engine.total_as:.2f} \text{{ cm}}^2")
         
+        st.markdown("**Reinforcement Ratio ($\\rho$):**")
+        st.latex(rf"\rho = \frac{{A_{{st}}}}{{A_g}} = \frac{{{engine.total_as:.2f}}}{{{engine.Ag:,.2f}}} = {engine.rho:.4f} \quad ({engine.rho*100:.2f}\%)")
+        
+        if 0.01 <= engine.rho <= 0.08:
+            st.success(f"✅ $0.01 \le \rho \le 0.08$ (OK)")
+        else:
+            st.error(f"❌ $\rho$ is out of bounds (1% - 8%)")
+
         st.markdown("#### 3. Slenderness Effect Evaluation")
-        st.markdown(f"- **Unsupported Length ($L_u$):** `{Lu}` m")
-        st.markdown(f"- **Effective Length Factor ($K$):** `{K_factor}`")
-        st.markdown(f"- **Radius of Gyration ($r \\approx 0.3h$):** `{0.3*h:.2f}` cm")
-        st.markdown(f"- **Slenderness Ratio ($KL/r$):** `{kl_r:.2f}`")
+        Lu_cm = Lu * 100
+        st.markdown("**Radius of Gyration ($r$):**")
+        st.latex(rf"r = 0.3h = 0.3 \times {h} = {0.3*h:.2f} \text{{ cm}}")
+        
+        st.markdown("**Slenderness Ratio ($KL_u/r$):**")
+        st.latex(rf"\frac{{K L_u}}{{r}} = \frac{{{K_factor} \times {Lu_cm:.2f}}}{{{0.3*h:.2f}}} = {kl_r:.2f}")
         
         if kl_r <= 22:
-            st.success("✅ **Conclusion:** Since $KL/r \\le 22$, the column is classified as a **Short Column**. Moment magnification is NOT required.")
+            st.success("✅ **Conclusion:** Since $KL_u/r \le 22$, the column is a **Short Column**. Moment magnification is NOT required.")
             st.markdown("#### 4. Capacity Check Summary")
         else:
-            st.warning("⚠️ **Conclusion:** Since $KL/r > 22$, the column is classified as a **Slender Column**. Moment magnification is REQUIRED.")
+            st.warning("⚠️ **Conclusion:** Since $KL_u/r > 22$, the column is a **Slender Column**. Moment magnification is REQUIRED.")
             
             st.markdown("#### 4. Moment Magnification Method (Non-Sway Frame)")
-            st.markdown(f"- **Concrete Modulus of Elasticity ($E_c = 15100\\sqrt{{f'_c}}$):** `{engine.Ec:,.0f}` ksc")
-            st.markdown(f"- **Gross Moment of Inertia ($I_g = bh^3/12$):** `{engine.Ig:,.0f}` cm⁴")
+            st.markdown("**Concrete Modulus of Elasticity ($E_c$):**")
+            st.latex(rf"E_c = 15100\sqrt{{f'_c}} = 15100\sqrt{{{fc}}} = {engine.Ec:,.2f} \text{{ ksc}}")
+            
+            st.markdown("**Gross Moment of Inertia ($I_g$):**")
+            st.latex(rf"I_g = \frac{{b h^3}}{{12}} = \frac{{{b} \times {h}^3}}{{12}} = {engine.Ig:,.2f} \text{{ cm}}^4")
             
             EI_val = (0.4 * engine.Ec * engine.Ig) / (1 + beta_d)
-            st.markdown(f"- **Effective Flexural Stiffness ($EI$):** `{EI_val:,.0f}` kg-cm²")
-            st.markdown(f"- **Euler Critical Buckling Load ($P_c = \\pi^2 EI / (KL_u)^2$):** `{Pc:.2f}` ton")
-            st.markdown(f"- **Moment Magnification Factor ($\\delta$):** `{delta:.3f}`")
-            st.info(f"🔄 **Magnified Design Moment ($M_c = \\delta M_u$):** `{Mc:.2f}` ton-m")
+            st.markdown("**Effective Flexural Stiffness ($EI$):**")
+            st.latex(rf"EI = \frac{{0.4 E_c I_g}}{{1 + \beta_d}} = \frac{{0.4 \times {engine.Ec:,.2f} \times {engine.Ig:,.2f}}}{{1 + {beta_d}}} = {EI_val:,.2f} \text{{ kg-cm}}^2")
+            
+            st.markdown("**Euler Critical Buckling Load ($P_c$):**")
+            st.latex(rf"P_c = \frac{{\pi^2 EI}}{{(K L_u)^2}} \times \frac{{1}}{{1000}} = \frac{{\pi^2 \times {EI_val:,.2f}}}{{({K_factor} \times {Lu_cm})^2}} \times \frac{{1}}{{1000}} = {Pc:.2f} \text{{ ton}}")
+            
+            st.markdown("**Moment Magnification Factor ($\delta$):**")
+            st.latex(rf"\delta = \frac{{C_m}}{{1 - \frac{{P_u}}{{0.75 P_c}}}} = \frac{{{Cm}}}{{1 - \frac{{{Pu}}}{{0.75 \times {Pc:.2f}}}}} = {delta:.3f}")
+            
+            st.markdown("**Magnified Design Moment ($M_c$):**")
+            st.latex(rf"M_c = \delta M_u = {delta:.3f} \times {Mu} = {Mc:.2f} \text{{ ton-m}}")
             
             st.markdown("#### 5. Capacity Check Summary")
 
-        st.markdown(f"- **Applied Factored Axial Load ($P_u$):** `{Pu}` ton")
-        st.markdown(f"- **Design Moment Demand ($M_c$):** `{Mc:.2f}` ton-m")
-        st.markdown(f"- **Maximum Compressive Capacity ($\\phi P_{{n,max}}$):** `{phi_pn_max:.2f}` ton")
+        po = (0.85 * fc * (engine.Ag - engine.total_as) + fy * engine.total_as) / 1000
+        st.markdown("**Nominal Maximum Axial Strength ($P_o$):**")
+        st.latex(rf"P_o = \left[ 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}} \right] / 1000")
+        st.latex(rf"P_o = \left[ 0.85({fc})({engine.Ag} - {engine.total_as:.2f}) + {fy}({engine.total_as:.2f}) \right] / 1000 = {po:,.2f} \text{{ ton}}")
+        
+        st.markdown("**Design Maximum Axial Strength ($\phi P_{n,\max}$):**")
+        st.latex(rf"\phi P_{{n,\max}} = 0.65 \times 0.80 \times P_o = 0.65 \times 0.80 \times {po:,.2f} = {phi_pn_max:.2f} \text{{ ton}}")
+
+        st.markdown("**Final Demand Check:**")
+        st.latex(rf"P_u = {Pu} \text{{ ton}}, \quad M_c = {Mc:.2f} \text{{ ton-m}}")
         
         if is_safe:
             st.success("🎯 **STATUS: SAFE** — The applied demand ($P_u, M_c$) is strictly within the interaction diagram envelope.")
@@ -262,3 +288,4 @@ with col2:
             
         st.markdown("---")
         st.caption("Press `Ctrl + P` (or `Cmd + P` on Mac) to print or save this calculation report as a PDF.")
+    
