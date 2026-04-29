@@ -13,11 +13,11 @@ class RCColumnProfessional:
         self.Ag = self.b * self.h
         self.fc_Ag_ton = (self.fc * self.Ag) / 1000 
         
-        # คอนกรีต Modulus of Elasticity (kg/cm2)
+        # Concrete Modulus of Elasticity (kg/cm2)
         self.Ec = 15100 * np.sqrt(self.fc)
         self.Ig = (self.b * self.h**3) / 12  # Moment of Inertia (cm4)
         
-        # จัดเลเยอร์เหล็ก (สมมติจัด 2 ฝั่ง)
+        # Rebar layer arrangement (assuming 2 faces)
         self.db_cm = db_mm / 10
         self.as_single = (np.pi * self.db_cm**2) / 4
         self.d_prime = cover_cm + 0.9 + (self.db_cm/2)
@@ -75,7 +75,7 @@ class RCColumnProfessional:
         
     def calculate_slenderness(self, Pu, Mu, K_factor, Lu_m, Cm, beta_d):
         Lu_cm = Lu_m * 100
-        r = 0.3 * self.h # รัศมีไจเรชัน ACI
+        r = 0.3 * self.h # ACI Radius of Gyration
         kl_r = (K_factor * Lu_cm) / r
         
         # 0.4 Ec Ig / (1 + beta_d)
@@ -84,36 +84,36 @@ class RCColumnProfessional:
         # Euler Buckling Load (kg -> ton)
         Pc = (np.pi**2 * EI) / (K_factor * Lu_cm)**2 / 1000
         
-        # คำนวณ Magnification Factor (Delta)
+        # Calculate Magnification Factor (Delta)
         phi_k = 0.75 # ACI Stiffness reduction
         if Pu >= (phi_k * Pc):
-            delta = 999.9 # พังจากการโก่งเดาะ (Buckling Failure)
+            delta = 999.9 # Buckling Failure
         else:
             delta = max(1.0, Cm / (1 - (Pu / (phi_k * Pc))))
             
         Mc = delta * Mu
         return kl_r, Pc, delta, Mc
 
-# --- FUNCTION วาดรูปหน้าตัด ---
+# --- FUNCTION: PLOT CROSS-SECTION ---
 def plot_cross_section(engine):
     fig = go.Figure()
-    # วาดกรอบคอนกรีต
+    # Draw concrete edge
     fig.add_trace(go.Scatter(x=[0, engine.b, engine.b, 0, 0], 
                              y=[0, 0, engine.h, engine.h, 0], 
                              mode='lines', name='Concrete Edge', line=dict(color='black', width=2)))
     
-    # คำนวณพิกัดเหล็กเสริม
+    # Calculate rebar coordinates
     x_coords = np.linspace(engine.d_prime, engine.b - engine.d_prime, int(engine.n_bars/2))
     
-    # เหล็กชั้นล่าง (d)
+    # Bottom rebars (d)
     fig.add_trace(go.Scatter(x=x_coords, y=[engine.h - engine.d]*len(x_coords), 
                              mode='markers', name='Bottom Rebars', marker=dict(color='red', size=10)))
-    # เหล็กชั้นบน (d_prime)
+    # Top rebars (d_prime)
     fig.add_trace(go.Scatter(x=x_coords, y=[engine.h - engine.d_prime]*len(x_coords), 
                              mode='markers', name='Top Rebars', marker=dict(color='blue', size=10)))
     
     fig.update_layout(xaxis_title="Width, b (cm)", yaxis_title="Depth, h (cm)",
-                      yaxis=dict(scaleanchor="x", scaleratio=1), # ล็อกสัดส่วนให้เป็นจริง
+                      yaxis=dict(scaleanchor="x", scaleratio=1), # Lock aspect ratio
                       plot_bgcolor='whitesmoke', height=400, showlegend=False)
     return fig
 
@@ -145,7 +145,7 @@ with col1:
 engine = RCColumnProfessional(fc, fy, b, h, db, n_bars, cover)
 df, phi_pn_max = engine.solve_pm()
 
-# คำนวณเสายาว
+# Calculate slender column effects
 kl_r, Pc, delta, Mc = engine.calculate_slenderness(Pu, Mu, K_factor, Lu, Cm, beta_d)
 
 df_design = df.copy()
@@ -161,64 +161,63 @@ except:
 with col2:
     st.markdown("### 📋 Executive Summary")
     
-    # --- 1. Metric Cards อัจฉริยะ ---
+    # --- 1. Smart Metric Cards ---
     m1, m2, m3, m4 = st.columns(4)
     
-    # เช็กเปอร์เซ็นต์เหล็ก
+    # Check steel ratio
     rho_pct = engine.rho * 100
     if rho_pct < 1.0:
-        rho_status, rho_color = "⚠️ ต่ำกว่า 1%", "inverse"
+        rho_status, rho_color = "⚠️ Below 1%", "inverse"
     elif rho_pct > 8.0:
-        rho_status, rho_color = "❌ เกิน 8%", "inverse"
+        rho_status, rho_color = "❌ Exceeds 8%", "inverse"
     else:
-        rho_status, rho_color = "✅ ปกติ (OK)", "normal"
+        rho_status, rho_color = "✅ Normal (OK)", "normal"
         
     m1.metric("Steel Ratio (ρ)", f"{rho_pct:.2f} %", rho_status, delta_color=rho_color)
-    m2.metric("Slenderness (KL/r)", f"{kl_r:.1f}", "เสายาว (Slender)" if kl_r > 22 else "เสาสั้น (Short)", delta_color="off")
+    m2.metric("Slenderness (KL/r)", f"{kl_r:.1f}", "Slender" if kl_r > 22 else "Short", delta_color="off")
     m3.metric("Critical Load (Pc)", f"{Pc:,.1f} ton")
     m4.metric("Magnifier (δ)", f"{delta:.3f}")
 
     st.markdown("---")
     
-    # --- 2. การตรวจสอบการออกแบบ (Design Diagnostics) ---
+    # --- 2. Design Diagnostics ---
     st.markdown("#### 🔍 Design Diagnostics")
     
-    # A. ตรวจสอบความเยื้องศูนย์ขั้นต่ำ (Minimum Eccentricity Rule)
-    e_min_m = 0.015 + 0.03 * (h / 100) # เมตร
+    # A. Check Minimum Eccentricity
+    e_min_m = 0.015 + 0.03 * (h / 100) # meters
     M_min = Pu * e_min_m
-    Actual_Mu = max(Mu, M_min) # เลือกค่าที่มากกว่าไปออกแบบ
+    Actual_Mu = max(Mu, M_min) # Select the larger value for design
     
     if Mu < M_min:
-        st.info(f"💡 **Min. Eccentricity:** โมเมนต์ที่ป้อนมีค่าน้อยเกินไป โปรแกรมปรับใช้โมเมนต์ขั้นต่ำ **Mu,min = {M_min:.2f} t-m** เพื่อความปลอดภัย")
+        st.info(f"💡 **Min. Eccentricity:** The inputted moment is too low. The program applies the minimum moment **Mu,min = {M_min:.2f} t-m** for safety.")
     
-    # B. ตรวจสอบความชะลูดและการขยายโมเมนต์
+    # B. Check Slenderness and Moment Magnification
     if kl_r > 22:
-        st.warning(f"⚠️ **Slender Column Effect:** หน้าตัดมีความชะลูด (KL/r = {kl_r:.1f} > 22)")
+        st.warning(f"⚠️ **Slender Column Effect:** The section is slender (KL/r = {kl_r:.1f} > 22)")
         if delta > 1.0:
-            # คำนวณ Mc ใหม่โดยอิงจาก Actual_Mu
+            # Recalculate Mc based on Actual_Mu
             Mc_display = Actual_Mu * delta
-            st.markdown(f"> 🔄 โมเมนต์ออกแบบถูกขยายตัวจาก **{Actual_Mu:.2f} t-m** ➔ **<span style='color:red; font-size:1.1em;'>{Mc_display:.2f} t-m</span>** (เพิ่มขึ้น {(delta-1)*100:.1f}%)", unsafe_allow_html=True)
+            st.markdown(f"> 🔄 Design moment is magnified from **{Actual_Mu:.2f} t-m** ➔ **<span style='color:red; font-size:1.1em;'>{Mc_display:.2f} t-m</span>** (increased by {(delta-1)*100:.1f}%)", unsafe_allow_html=True)
         else:
             Mc_display = Actual_Mu
     else:
-        st.success(f"✅ **Short Column:** ความชะลูดผ่านเกณฑ์ (KL/r = {kl_r:.1f} ≤ 22) ไม่ต้องขยายโมเมนต์")
+        st.success(f"✅ **Short Column:** Slenderness is within limits (KL/r = {kl_r:.1f} ≤ 22). No magnification required.")
         Mc_display = Actual_Mu
         
-    # อัปเดตค่า Mc กลับไปที่ตัวแปรเดิมเพื่อใช้พล็อตในกราฟ
+    # Update Mc back to the variable for plotting
     Mc = Mc_display 
 
-    # C. สรุปผลความปลอดภัย (Overall Capacity Check)
-    st.markdown("<br>", unsafe_allow_html=True) # เว้นบรรทัด
+    # C. Overall Capacity Check
+    st.markdown("<br>", unsafe_allow_html=True) # Line break
     if is_safe:
-        st.success(f"### ✅ **STATUS: SAFE (ปลอดภัย)**\nพิกัดแรงกระทำจริง **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** อยู่ภายในพื้นที่ขอบเขตความสามารถของหน้าตัดเสา")
+        st.success(f"### ✅ **STATUS: SAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** is within the capacity envelope of the section.")
     else:
-        st.error(f"### ❌ **STATUS: UNSAFE (อันตราย)**\nพิกัดแรงกระทำจริง **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** เกินขีดจำกัดความสามารถของหน้าตัดเสา!")
+        st.error(f"### ❌ **STATUS: UNSAFE**\nThe applied demand **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** exceeds the capacity limit of the section!")
 
     st.markdown("---")
 
-
     # --- TABS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 P-M Curve", "📐 Section", "📚 K-Factor", "📝 รายการคำนวณ (Report)"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 P-M Curve", "📐 Section", "📚 K-Factor", "📝 Calculation Report"])
 
     with tab1:
         fig1 = go.Figure()
@@ -234,19 +233,19 @@ with col2:
         st.plotly_chart(fig1, use_container_width=True)
 
     with tab2:
-        st.markdown("### รูปร่างหน้าตัดและการจัดเรียงเหล็ก (Cross-Section)")
+        st.markdown("### Cross-Section and Rebar Arrangement")
         fig_sec = plot_cross_section(engine)
         st.plotly_chart(fig_sec, use_container_width=True)
 
     with tab3:
-        st.markdown("### 📚 ตารางแนะนำค่า K (Effective Length Factor)")
+        st.markdown("### 📚 Recommended K-Factors (Effective Length Factor)")
         st.markdown("""
-        | สภาพการยึดรั้งปลายเสา (End Conditions) | ค่า K ทางทฤษฎี | ค่า K แนะนำสำหรับออกแบบ |
+        | End Conditions | Theoretical K Value | Recommended K for Design |
         | :--- | :---: | :---: |
-        | **ยึดแน่น-ยึดแน่น (Fixed-Fixed)** | 0.50 | **0.65** |
-        | **ยึดแน่น-หมุนได้ (Fixed-Pinned)** | 0.70 | **0.80** |
-        | **หมุนได้-หมุนได้ (Pinned-Pinned)** | 1.00 | **1.00** |
-        | **ยึดแน่น-อิสระ (Fixed-Free)** | 2.00 | **2.10** |
+        | **Fixed-Fixed** | 0.50 | **0.65** |
+        | **Fixed-Pinned** | 0.70 | **0.80** |
+        | **Pinned-Pinned** | 1.00 | **1.00** |
+        | **Fixed-Free** | 2.00 | **2.10** |
         """)
 
     with tab4:
@@ -327,4 +326,3 @@ with col2:
             
         st.markdown("---")
         st.caption("Press `Ctrl + P` (or `Cmd + P` on Mac) to print or save this calculation report as a PDF.")
-    
