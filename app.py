@@ -339,62 +339,66 @@ with col2:
         st.markdown("* **What it is:** The ratio of the maximum factored *sustained* axial load (e.g., permanent Dead Load) to the maximum factored *total* axial load associated with the same load combination.")
         st.latex(r"\beta_d = \frac{\text{Maximum Factored Sustained Axial Load}}{\text{Maximum Factored Total Axial Load}}")
         st.markdown("* **Why it matters (The Creep Effect):** Concrete continuously deforms over time when subjected to sustained loads—a phenomenon known as **Creep**. For slender columns, this long-term deformation worsens lateral deflection, significantly increasing secondary moments. Inputting the correct $\\beta_d$ allows the program to safely reduce the effective stiffness ($EI$) to account for this behavior.")
-        st.markdown("> *Note: For transient, short-term load combinations involving wind or seismic forces, $\\beta_d$ is typically taken as **0**.*")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown("##### $\\delta_s$ (Sway Magnification Factor)")
         st.markdown("* **What it is:** A moment magnification factor used exclusively in **Sway Frames** to amplify the design moments, compensating for lateral drift under horizontal loads.")
         st.markdown("* **Why it matters (The P-$\\Delta$ Effect):** In unbraced frames, lateral forces cause the structural joints to translate horizontally ($\\Delta$). The heavy axial loads ($P$) pushing down on these displaced joints create substantial secondary moments ($P \\times \\Delta$).")
-        st.markdown("* **Practical Tip for Engineers:** Instead of manually computing complex effective lengths ($K$) for sway frames, modern practice often relies on structural analysis software (e.g., ETABS, SAP2000) to capture this.")
-        st.markdown("  * If your analysis software already performs a **Second-Order (P-Delta) Analysis**, you can simply input **`1.0`** here.")
-        st.markdown("  * If you are using a standard **First-Order (Linear) Analysis**, you must input the manually calculated $\\delta_s$ (which is typically **> 1.0**) to ensure safety.")
 
     with tab5:
         st.markdown("### 📝 Detailed Calculation Report")
         st.markdown("---")
 
-        st.markdown("#### 1. Material Properties")
-        st.markdown("**1.1 Concrete Modulus of Elasticity ($E_c$)**")
+        st.markdown("#### 1. Material Properties & Minimum Moments")
+        st.markdown("**1.1 Concrete Modulus of Elasticity, $E_c$ *(Ref: ACI 318-19, Eq. 19.2.2.1.b)***")
         st.latex(r"E_c = 15100 \sqrt{f'_c}")
         st.latex(f"E_c = 15100 \\sqrt{{{fc}}} = {engine.Ec:,.0f} \\text{{ ksc}}")
         st.markdown("<br>", unsafe_allow_html=True)
 
-        st.markdown("#### 2. Slenderness & Moment Magnification (X-Axis)")
+        st.markdown("**1.2 Minimum Design Moments *(Ref: ACI 318-19, Sec. 6.6.4.5.4)***")
+        st.latex(r"M_{u,min} = P_u (0.015 + 0.03h)")
+        st.latex(f"M_{{u,min,x}} = {Pu} (0.015 + 0.03 \\times {h/100}) = {e_min_x:,.2f} \\text{{ ton-m}}")
+        st.latex(f"M_{{ux,dsgn}} = \\max(M_{{ux}}, M_{{u,min,x}}) = \\max({Mux:,.2f}, {e_min_x:,.2f}) = {Mu_x_dsgn:,.2f} \\text{{ ton-m}}")
         
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("#### 2. Slenderness & Moment Magnification (X-Axis)")
         if frame_type == "Non-Sway (Braced)":
             EIx_val = (0.4 * engine.Ec * engine.Igx) / (1 + beta_d)
-            st.markdown("**2.1 Effective Stiffness ($EI_x$)**")
+            
+            st.markdown("**2.1 Effective Stiffness, $EI_x$ *(Ref: ACI 318-19, Eq. 6.6.4.4.4c)***")
             st.latex(r"EI_x = \frac{0.4 E_c I_{gx}}{1 + \beta_d}")
             st.latex(f"EI_x = \\frac{{0.4 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
             
-            st.markdown("**2.2 Euler Critical Buckling Load ($P_{cx}$)**")
+            st.markdown("**2.2 Euler Critical Buckling Load, $P_{cx}$ *(Ref: ACI 318-19, Eq. 6.6.4.4.2)***")
             st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
             st.latex(f"P_{{cx}} = \\frac{{\\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times \\frac{{1}}{{1000}} = {Pcx:,.2f} \\text{{ ton}}")
 
-            st.markdown("**2.3 Moment Magnification Factor ($\delta_x$)**")
+            st.markdown("**2.3 Moment Magnification Factor, $\delta_x$ *(Ref: ACI 318-19, Eq. 6.6.4.5.2)***")
             st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
             if Pcx > 0 and Pu < 0.75 * Pcx:
                 st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
             else:
-                st.latex(f"\\delta_x = {del_x:,.3f} \\text{{ (Pu exceeds 0.75 Pcx limits)}}")
+                st.latex(f"\\delta_x = {del_x:,.3f} \\text{{ (Note: }} P_u \\text{{ exceeds limit 0.75}} P_{{cx}} \\text{{)}}")
 
-            st.markdown("**2.4 Magnified Design Moment ($M_{cx}$)**")
+            st.markdown("**2.4 Magnified Design Moment, $M_{cx}$ *(Ref: ACI 318-19, Eq. 6.6.4.5.1)***")
             st.latex(r"M_{cx} = \delta_x M_{ux,dsgn}")
             st.latex(f"M_{{cx}} = {del_x:,.3f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
             
         else:
-            st.markdown("**2.1 Sway Moment Magnifier ($\delta_{sx}$)**")
-            st.markdown(f"> *User-defined $\delta_{{sx}}$ from P-Delta analysis = **{delta_sx:,.2f}***")
+            st.markdown("**2.1 Sway Moment Magnifier, $\delta_{sx}$ *(User Input from P-Delta Analysis)***")
+            st.latex(f"\\delta_{{sx}} = {delta_sx:,.2f}")
             
-            st.markdown("**2.2 Magnified Design Moment ($M_{cx}$)**")
+            st.markdown("**2.2 Magnified Design Moment, $M_{cx}$ *(Ref: ACI 318-19, Eq. 6.6.4.6.1)***")
             st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
             st.latex(f"M_{{cx}} = {delta_sx:,.3f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown("#### 3. Biaxial Bending Check")
-        st.markdown(f"Based on **PCA Load Contour Method** at axial load $P_u = {Pu:,.2f}$ ton:")
+        st.markdown("**PCA Load Contour Method *(Ref: PCA Notes on ACI 318, Chapter 7)***")
+        st.markdown(f"At target factored axial load $P_u = {Pu:,.2f}$ ton:")
         st.latex(r"\left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
         
         if phi_Mnox > 0 and phi_Mnoy > 0:
@@ -402,10 +406,3 @@ with col2:
         else:
             st.warning("⚠️ Cannot compute Biaxial equation because $P_u$ exceeds the maximum axial capacity.")
             st.latex(f"P_u ({Pu:,.2f} \\text{{ ton}}) > \\phi P_{{n,max}} ({phi_pn_max:,.2f} \\text{{ ton}})")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        if is_safe:
-            st.success(f"✅ **Conclusion:** Demand/Capacity Ratio = **{demand_ratio:,.3f} ≤ 1.0** $\\rightarrow$ **Section is SAFE**")
-        else:
-            st.error(f"❌ **Conclusion:** Demand/Capacity Ratio = **{demand_ratio:,.3f} > 1.0** $\\rightarrow$ **Section is UNSAFE**")
