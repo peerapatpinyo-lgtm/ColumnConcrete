@@ -211,52 +211,54 @@ with col2:
         """)
 
     with tab4:
-        st.markdown("## 📝 รายการคำนวณออกแบบหน้าตัดเสา (Calculation Report)")
-        st.markdown("เอกสารนี้สร้างขึ้นโดยโปรแกรมออกแบบอัตโนมัติ เพื่อสรุปผลการตรวจสอบพฤติกรรมของเสา")
+        st.markdown("## 📝 Detailed Calculation Report")
+        st.markdown("This automated report summarizes the structural design, slenderness evaluation, and capacity checks for the reinforced concrete column according to ACI standards.")
         st.markdown("---")
         
-        st.markdown("#### 1. ข้อมูลหน้าตัดและวัสดุ (Section & Material Properties)")
-        st.markdown(f"- **ขนาดหน้าตัด:** กว้าง $b = {b}$ cm, ลึก $h = {h}$ cm")
-        st.markdown(f"- **พื้นที่หน้าตัดรวม (Gross Area), $A_g$:** `{engine.Ag:,.2f}` cm²")
-        st.markdown(f"- **กำลังอัดคอนกรีต, $f'_c$:** `{fc}` ksc")
-        st.markdown(f"- **กำลังครากเหล็กเสริม, $f_y$:** `{fy}` ksc")
+        st.markdown("#### 1. Section & Material Properties")
+        st.markdown(f"- **Dimensions:** Width $b = {b}$ cm, Depth $h = {h}$ cm")
+        st.markdown(f"- **Gross Area ($A_g$):** `{engine.Ag:,.2f}` cm²")
+        st.markdown(f"- **Concrete Compressive Strength ($f'_c$):** `{fc}` ksc")
+        st.markdown(f"- **Steel Yield Strength ($f_y$):** `{fy}` ksc")
         
-        st.markdown("#### 2. ข้อมูลเหล็กเสริม (Reinforcement)")
-        st.markdown(f"- **การจัดเหล็กยืน:** `{n_bars}`-DB`{db}`")
-        st.markdown(f"- **ระยะหุ้มคอนกรีต (Covering):** `{cover}` cm")
-        st.markdown(f"- **พื้นที่เหล็กเสริมรวม, $A_{{st}}$:** `{engine.total_as:.2f}` cm²")
-        st.markdown(f"- **อัตราส่วนเหล็กเสริม, $\\rho$:** `{engine.rho*100:.2f}`% (เกณฑ์ 1% - 8%)")
+        st.markdown("#### 2. Reinforcement Details")
+        st.markdown(f"- **Bar Arrangement:** `{n_bars}`-DB`{db}`")
+        st.markdown(f"- **Concrete Covering:** `{cover}` cm")
+        st.markdown(f"- **Total Steel Area ($A_{{st}}$):** `{engine.total_as:.2f}` cm²")
+        st.markdown(f"- **Reinforcement Ratio ($\\rho$):** `{engine.rho*100:.2f}`% (ACI Limits: 1% - 8%)")
         
-        st.markdown("#### 3. การตรวจสอบความชะลูด (Slenderness Effect)")
-        st.markdown(f"- **ความยาวเสาไร้การรองรับ, $L_u$:** `{Lu}` m")
-        st.markdown(f"- **ค่าแฟคเตอร์ความยาวประสิทธิผล, $K$:** `{K_factor}`")
-        st.markdown(f"- **รัศมีไจเรชัน (โดยประมาณ), $r \\approx 0.3h$:** `{0.3*h:.2f}` cm")
-        st.markdown(f"- **อัตราส่วนความชะลูด, $KL/r$:** `{kl_r:.2f}`")
+        st.markdown("#### 3. Slenderness Effect Evaluation")
+        st.markdown(f"- **Unsupported Length ($L_u$):** `{Lu}` m")
+        st.markdown(f"- **Effective Length Factor ($K$):** `{K_factor}`")
+        st.markdown(f"- **Radius of Gyration ($r \\approx 0.3h$):** `{0.3*h:.2f}` cm")
+        st.markdown(f"- **Slenderness Ratio ($KL/r$):** `{kl_r:.2f}`")
         
         if kl_r <= 22:
-            st.success("✅ **สรุป:** $KL/r \\le 22$ จัดเป็น **เสาสั้น (Short Column)** ไม่ต้องพิจารณาการขยายโมเมนต์")
+            st.success("✅ **Conclusion:** Since $KL/r \\le 22$, the column is classified as a **Short Column**. Moment magnification is NOT required.")
+            st.markdown("#### 4. Capacity Check Summary")
         else:
-            st.warning("⚠️ **สรุป:** $KL/r > 22$ จัดเป็น **เสายาว (Slender Column)** ต้องพิจารณาการขยายโมเมนต์ (Moment Magnification)")
+            st.warning("⚠️ **Conclusion:** Since $KL/r > 22$, the column is classified as a **Slender Column**. Moment magnification is REQUIRED.")
             
-            st.markdown("#### 4. การขยายโมเมนต์ (Moment Magnification Method)")
-            st.markdown(f"- **โมดูลัสยืดหยุ่นคอนกรีต, $E_c = 15100\\sqrt{{f'_c}}$:** `{engine.Ec:,.0f}` ksc")
-            st.markdown(f"- **โมเมนต์อินเนอร์เชีย, $I_g = bh^3/12$:** `{engine.Ig:,.0f}` cm⁴")
+            st.markdown("#### 4. Moment Magnification Method (Non-Sway Frame)")
+            st.markdown(f"- **Concrete Modulus of Elasticity ($E_c = 15100\\sqrt{{f'_c}}$):** `{engine.Ec:,.0f}` ksc")
+            st.markdown(f"- **Gross Moment of Inertia ($I_g = bh^3/12$):** `{engine.Ig:,.0f}` cm⁴")
             
             EI_val = (0.4 * engine.Ec * engine.Ig) / (1 + beta_d)
-            st.markdown(f"- **Stiffness, $EI$:** `{EI_val:,.0f}` kg-cm²")
-            st.markdown(f"- **น้ำหนักบรรทุกวิกฤตออยเลอร์, $P_c$:** `{Pc:.2f}` ton")
-            st.markdown(f"- **ตัวคูณขยายโมเมนต์, $\\delta$:** `{delta:.3f}`")
-            st.info(f"🔄 **โมเมนต์ออกแบบที่ปรับแก้แล้ว, $M_c = \\delta M_u$:** `{Mc:.2f}` ton-m")
+            st.markdown(f"- **Effective Flexural Stiffness ($EI$):** `{EI_val:,.0f}` kg-cm²")
+            st.markdown(f"- **Euler Critical Buckling Load ($P_c = \\pi^2 EI / (KL_u)^2$):** `{Pc:.2f}` ton")
+            st.markdown(f"- **Moment Magnification Factor ($\\delta$):** `{delta:.3f}`")
+            st.info(f"🔄 **Magnified Design Moment ($M_c = \\delta M_u$):** `{Mc:.2f}` ton-m")
+            
+            st.markdown("#### 5. Capacity Check Summary")
 
-        st.markdown("#### 5. สรุปผลการตรวจสอบกำลังรับน้ำหนัก (Capacity Check)")
-        st.markdown(f"- **แรงอัดประลัย, $P_u$:** `{Pu}` ton")
-        st.markdown(f"- **โมเมนต์ประลัย (ใช้สำหรับออกแบบ), $M_c$:** `{Mc:.2f}` ton-m")
-        st.markdown(f"- **กำลังรับแรงอัดสูงสุดของหน้าตัด, $\\phi P_{{n,max}}$:** `{phi_pn_max:.2f}` ton")
+        st.markdown(f"- **Applied Factored Axial Load ($P_u$):** `{Pu}` ton")
+        st.markdown(f"- **Design Moment Demand ($M_c$):** `{Mc:.2f}` ton-m")
+        st.markdown(f"- **Maximum Compressive Capacity ($\\phi P_{{n,max}}$):** `{phi_pn_max:.2f}` ton")
         
         if is_safe:
-            st.success("🎯 **ผลการประเมิน:** **ผ่าน (SAFE)** — พิกัดแรงกระทำ ($P_u, M_c$) อยู่ภายในพื้นที่ขอบเขตความปลอดภัยของ P-M Curve")
+            st.success("🎯 **STATUS: SAFE** — The applied demand ($P_u, M_c$) is strictly within the interaction diagram envelope.")
         else:
-            st.error("❌ **ผลการประเมิน:** **ไม่ผ่าน (UNSAFE)** — พิกัดแรงกระทำ ($P_u, M_c$) อยู่นอกขอบเขตความปลอดภัยของหน้าตัด")
+            st.error("❌ **STATUS: UNSAFE** — The applied demand ($P_u, M_c$) exceeds the structural capacity of the section.")
             
         st.markdown("---")
-        st.caption("สามารถกด `Ctrl + P` (หรือ `Cmd + P` บน Mac) เพื่อพิมพ์หรือบันทึกหน้านี้เป็น PDF ได้เลยครับ")
+        st.caption("Press `Ctrl + P` (or `Cmd + P` on Mac) to print or save this calculation report as a PDF.")
