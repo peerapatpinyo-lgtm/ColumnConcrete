@@ -320,3 +320,20 @@ with col2:
         st.markdown("* **Cm (Equivalent Moment Factor):** Used **exclusively for Non-Sway frames**. This factor converts varying actual bending moments at the column ends into an equivalent uniform bending moment along the column's length. It is calculated using the standard ACI formula:")
         st.latex(r"C_m = 0.6 + 0.4 \left( \frac{M_1}{M_2} \right) \ge 0.4")
         st.markdown("> *Note: **M1** is the smaller end moment and **M2** is the larger end moment. The ratio M1/M2 is considered **positive** if the column bends in **single curvature**, and negative for double curvature.*")
+
+        st.markdown("#### 4. Advanced Slenderness Parameters")
+        
+        st.markdown("##### $\\beta_d$ (Sustained Load Ratio)")
+        st.markdown("* **What it is:** The ratio of the maximum factored *sustained* axial load (e.g., permanent Dead Load) to the maximum factored *total* axial load associated with the same load combination.")
+        st.latex(r"\beta_d = \frac{\text{Maximum Factored Sustained Axial Load}}{\text{Maximum Factored Total Axial Load}}")
+        st.markdown("* **Why it matters (The Creep Effect):** Concrete continuously deforms over time when subjected to sustained loads—a phenomenon known as **Creep**. For slender columns, this long-term deformation worsens lateral deflection, significantly increasing secondary moments. Inputting the correct $\\beta_d$ allows the program to safely reduce the effective stiffness ($EI$) to account for this behavior.")
+        st.markdown("> *Note: For transient, short-term load combinations involving wind or seismic forces, $\\beta_d$ is typically taken as **0**.*")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("##### $\\delta_s$ (Sway Magnification Factor)")
+        st.markdown("* **What it is:** A moment magnification factor used exclusively in **Sway Frames** to amplify the design moments, compensating for lateral drift under horizontal loads.")
+        st.markdown("* **Why it matters (The P-$\\Delta$ Effect):** In unbraced frames, lateral forces cause the structural joints to translate horizontally ($\\Delta$). The heavy axial loads ($P$) pushing down on these displaced joints create substantial secondary moments ($P \\times \\Delta$).")
+        st.markdown("* **Practical Tip for Engineers:** Instead of manually computing complex effective lengths ($K$) for sway frames, modern practice often relies on structural analysis software (e.g., ETABS, SAP2000) to capture this.")
+        st.markdown("  * If your analysis software already performs a **Second-Order (P-Delta) Analysis**, you can simply input **`1.0`** here.")
+        st.markdown("  * If you are using a standard **First-Order (Linear) Analysis**, you must input the manually calculated $\\delta_s$ (which is typically **> 1.0**) to ensure safety.")
