@@ -315,8 +315,18 @@ with col2:
         st.markdown("#### 3. Slenderness Parameters")
         st.markdown("* **Lu (Unsupported Length):** The clear height of the column, measured from the top of the floor or beam below to the bottom of the floor or beam above. *(Unit: m)*")
         st.markdown("* **K (Effective Length Factor):** A coefficient that modifies the column's length based on the degree of rotational restraint at its top and bottom ends.")
-        st.markdown("  * **Non-Sway Frame:** K ranges from **0.5 to 1.0**.")
-        st.markdown("  * **Sway Frame:** K is **1.0 or greater**.")
+        
+        st.markdown("""
+        | End Conditions (Top - Bottom) | Theoretical $K$ | Recommended Design $K$ | Frame Type |
+        | :--- | :---: | :---: | :---: |
+        | **Pinned - Pinned** (Hinged at both ends) | 1.0 | **1.0** | Non-Sway |
+        | **Fixed - Fixed** (Fully restrained at both ends) | 0.5 | **0.65** | Non-Sway |
+        | **Fixed - Pinned** (Restrained at one end, hinged at other) | 0.7 | **0.80** | Non-Sway |
+        | **Fixed - Free** (Cantilever column, e.g., flagpole) | 2.0 | **2.10** | Sway |
+        | **Fixed - Fixed** (Sway allowed) | 1.0 | **1.20** | Sway |
+        | **Fixed - Pinned** (Sway allowed) | 2.0 | **2.00** | Sway |
+        """)
+        
         st.markdown("* **Cm (Equivalent Moment Factor):** Used **exclusively for Non-Sway frames**. This factor converts varying actual bending moments at the column ends into an equivalent uniform bending moment along the column's length. It is calculated using the standard ACI formula:")
         st.latex(r"C_m = 0.6 + 0.4 \left( \frac{M_1}{M_2} \right) \ge 0.4")
         st.markdown("> *Note: **M1** is the smaller end moment and **M2** is the larger end moment. The ratio M1/M2 is considered **positive** if the column bends in **single curvature**, and negative for double curvature.*")
