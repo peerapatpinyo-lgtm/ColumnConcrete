@@ -159,24 +159,64 @@ except:
     is_safe = False
 
 with col2:
-    # --- Status Board ---
+with col2:
+    st.markdown("### 📋 Executive Summary")
+    
+    # --- 1. Metric Cards อัจฉริยะ ---
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Steel Ratio (ρ)", f"{engine.rho*100:.2f} %")
-    m2.metric("Slenderness (KL/r)", f"{kl_r:.1f}")
-    m3.metric("Critical Load (Pc)", f"{Pc:.1f} ton")
+    
+    # เช็กเปอร์เซ็นต์เหล็ก
+    rho_pct = engine.rho * 100
+    if rho_pct < 1.0:
+        rho_status, rho_color = "⚠️ ต่ำกว่า 1%", "inverse"
+    elif rho_pct > 8.0:
+        rho_status, rho_color = "❌ เกิน 8%", "inverse"
+    else:
+        rho_status, rho_color = "✅ ปกติ (OK)", "normal"
+        
+    m1.metric("Steel Ratio (ρ)", f"{rho_pct:.2f} %", rho_status, delta_color=rho_color)
+    m2.metric("Slenderness (KL/r)", f"{kl_r:.1f}", "เสายาว (Slender)" if kl_r > 22 else "เสาสั้น (Short)", delta_color="off")
+    m3.metric("Critical Load (Pc)", f"{Pc:,.1f} ton")
     m4.metric("Magnifier (δ)", f"{delta:.3f}")
 
+    st.markdown("---")
+    
+    # --- 2. การตรวจสอบการออกแบบ (Design Diagnostics) ---
+    st.markdown("#### 🔍 Design Diagnostics")
+    
+    # A. ตรวจสอบความเยื้องศูนย์ขั้นต่ำ (Minimum Eccentricity Rule)
+    e_min_m = 0.015 + 0.03 * (h / 100) # เมตร
+    M_min = Pu * e_min_m
+    Actual_Mu = max(Mu, M_min) # เลือกค่าที่มากกว่าไปออกแบบ
+    
+    if Mu < M_min:
+        st.info(f"💡 **Min. Eccentricity:** โมเมนต์ที่ป้อนมีค่าน้อยเกินไป โปรแกรมปรับใช้โมเมนต์ขั้นต่ำ **Mu,min = {M_min:.2f} t-m** เพื่อความปลอดภัย")
+    
+    # B. ตรวจสอบความชะลูดและการขยายโมเมนต์
     if kl_r > 22:
-        st.warning(f"⚠️ **Slender Column:** KL/r = {kl_r:.1f} > 22. จำเป็นต้องขยายโมเมนต์ (Moment Magnified).")
+        st.warning(f"⚠️ **Slender Column Effect:** หน้าตัดมีความชะลูด (KL/r = {kl_r:.1f} > 22)")
         if delta > 1.0:
-            st.info(f"🔄 โมเมนต์ถูกขยายจาก **{Mu} ton-m** เป็น **{Mc:.2f} ton-m** (เพิ่มขึ้น {(delta-1)*100:.1f}%)")
+            # คำนวณ Mc ใหม่โดยอิงจาก Actual_Mu
+            Mc_display = Actual_Mu * delta
+            st.markdown(f"> 🔄 โมเมนต์ออกแบบถูกขยายตัวจาก **{Actual_Mu:.2f} t-m** ➔ **<span style='color:red; font-size:1.1em;'>{Mc_display:.2f} t-m</span>** (เพิ่มขึ้น {(delta-1)*100:.1f}%)", unsafe_allow_html=True)
+        else:
+            Mc_display = Actual_Mu
     else:
-        st.success(f"✅ **Short Column:** KL/r = {kl_r:.1f} ≤ 22 (ไม่ต้องขยายโมเมนต์)")
+        st.success(f"✅ **Short Column:** ความชะลูดผ่านเกณฑ์ (KL/r = {kl_r:.1f} ≤ 22) ไม่ต้องขยายโมเมนต์")
+        Mc_display = Actual_Mu
+        
+    # อัปเดตค่า Mc กลับไปที่ตัวแปรเดิมเพื่อใช้พล็อตในกราฟ
+    Mc = Mc_display 
 
+    # C. สรุปผลความปลอดภัย (Overall Capacity Check)
+    st.markdown("<br>", unsafe_allow_html=True) # เว้นบรรทัด
     if is_safe:
-        st.success(f"✅ **SAFE:** จุดทำงาน (Pu={Pu} t, Mc={Mc:.1f} t-m) อยู่ในโค้งความสามารถ (Inside Envelope)")
+        st.success(f"### ✅ **STATUS: SAFE (ปลอดภัย)**\nพิกัดแรงกระทำจริง **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** อยู่ภายในพื้นที่ขอบเขตความสามารถของหน้าตัดเสา")
     else:
-        st.error(f"❌ **UNSAFE:** จุดทำงาน (Pu={Pu} t, Mc={Mc:.1f} t-m) เกินขีดจำกัด (Outside Envelope)")
+        st.error(f"### ❌ **STATUS: UNSAFE (อันตราย)**\nพิกัดแรงกระทำจริง **(Pu = {Pu} ton, Mc = {Mc:.2f} ton-m)** เกินขีดจำกัดความสามารถของหน้าตัดเสา!")
+
+    st.markdown("---")
+
 
     # --- TABS ---
     tab1, tab2, tab3, tab4 = st.tabs(["📊 P-M Curve", "📐 Section", "📚 K-Factor", "📝 รายการคำนวณ (Report)"])
