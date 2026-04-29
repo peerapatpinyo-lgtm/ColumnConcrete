@@ -230,8 +230,8 @@ try:
     fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', fill_value=0, bounds_error=False)
     fy_interp = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', fill_value=0, bounds_error=False)
     
-    phi_Mnox = fx(Pu)
-    phi_Mnoy = fy_interp(Pu)
+    phi_Mnox = float(fx(Pu))
+    phi_Mnoy = float(fy_interp(Pu))
     
     if shape == "Circular":
         alpha = 2.0
@@ -244,6 +244,9 @@ try:
 except:
     is_safe = False
     demand_ratio = 999
+    phi_Mnox = 0
+    phi_Mnoy = 0
+    alpha = 1.5
 
 with col2:
     st.markdown("### 📋 Executive Biaxial Summary")
@@ -261,8 +264,8 @@ with col2:
     else:
         st.error(f"### ❌ **STATUS: UNSAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** > 1.0")
 
-
-    tab1, tab2, tab3, tab4 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section", "📖 คู่มือพารามิเตอร์"])
+    # --- เพิ่ม Tab 5 ที่นี่ ---
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section", "📖 คู่มือพารามิเตอร์", "📝 รายการคำนวณ"])
 
     with tab1:
         st.markdown(f"**Load Contour at Pu = {Pu} ton (α = {alpha})**")
@@ -347,3 +350,64 @@ with col2:
         st.markdown("* **Practical Tip for Engineers:** Instead of manually computing complex effective lengths ($K$) for sway frames, modern practice often relies on structural analysis software (e.g., ETABS, SAP2000) to capture this.")
         st.markdown("  * If your analysis software already performs a **Second-Order (P-Delta) Analysis**, you can simply input **`1.0`** here.")
         st.markdown("  * If you are using a standard **First-Order (Linear) Analysis**, you must input the manually calculated $\\delta_s$ (which is typically **> 1.0**) to ensure safety.")
+
+    # --- โค้ดของ Tab 5 (รายการคำนวณอย่างละเอียด) ---
+    with tab5:
+        st.markdown("### 📝 รายการคำนวณอย่างละเอียด (Detailed Calculation Report)")
+        st.markdown("---")
+
+        st.markdown("#### 1. คุณสมบัติของวัสดุ (Material Properties)")
+        st.markdown("**1.1 โมดูลัสยืดหยุ่นของคอนกรีต ($E_c$)**")
+        st.latex(r"E_c = 15100 \sqrt{f'_c}")
+        st.latex(f"E_c = 15100 \\sqrt{{{fc}}} = {engine.Ec:,.0f} \\text{{ ksc}}")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("#### 2. การคำนวณความชะลูดและขยายโมเมนต์ แกน X (Slenderness X-Axis)")
+        
+        if frame_type == "Non-Sway (Braced)":
+            EIx_val = (0.4 * engine.Ec * engine.Igx) / (1 + beta_d)
+            st.markdown("**2.1 สติฟเนสประสิทธิผล ($EI_x$)**")
+            st.latex(r"EI_x = \frac{0.4 E_c I_{gx}}{1 + \beta_d}")
+            st.latex(f"EI_x = \\frac{{0.4 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
+            
+            st.markdown("**2.2 แรงอัดวิกฤตออยเลอร์ ($P_{cx}$)**")
+            st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
+            st.latex(f"P_{cx} = \\frac{{\\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times \\frac{{1}}{{1000}} = {Pcx:,.2f} \\text{{ ton}}")
+
+            st.markdown("**2.3 ตัวคูณขยายโมเมนต์ ($\delta_x$)**")
+            st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
+            if Pcx > 0 and Pu < 0.75 * Pcx:
+                st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
+            else:
+                st.latex(f"\\delta_x = {del_x:,.3f} \\text{{ (Pu exceeds 0.75 Pcx limits)}}")
+
+            st.markdown("**2.4 โมเมนต์ออกแบบหลังขยายค่า ($M_{cx}$)**")
+            st.latex(r"M_{cx} = \delta_x M_{ux,dsgn}")
+            st.latex(f"M_{cx} = {del_x:,.3f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+            
+        else:
+            st.markdown("**2.1 ตัวคูณขยายโมเมนต์แบบ Sway ($\delta_{sx}$)**")
+            st.markdown(f"> *ผู้ใช้กำหนดค่า $\delta_{{sx}}$ โดยตรงจากผลการวิเคราะห์ P-Delta = **{delta_sx:,.2f}***")
+            
+            st.markdown("**2.2 โมเมนต์ออกแบบหลังขยายค่า ($M_{cx}$)**")
+            st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
+            st.latex(f"M_{cx} = {delta_sx:,.3f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("#### 3. การตรวจสอบกำลังรับแรงดัดสองทิศทาง (Biaxial Bending Check)")
+        st.markdown(f"อ้างอิงสมการ **PCA Load Contour Method** ที่ระดับแรงอัด $P_u = {Pu:,.2f}$ ton:")
+        st.latex(r"\left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
+        
+        if phi_Mnox > 0 and phi_Mnoy > 0:
+            st.latex(f"\\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha}}} = {demand_ratio:,.3f}")
+        else:
+            st.warning("⚠️ ไม่สามารถคำนวณสมการ Biaxial ได้ เนื่องจากแรงอัด $P_u$ เกินขีดความสามารถรับแรงอัดสูงสุดของหน้าตัด")
+            st.latex(f"P_u ({Pu:,.2f} \\text{{ ton}}) > \\phi P_{{n,max}} ({phi_pn_max:,.2f} \\text{{ ton}})")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        if is_safe:
+            st.success(f"✅ **สรุปผล (Conclusion):** อัตราส่วนความเค้น (Demand/Capacity Ratio) = **{demand_ratio:,.3f} ≤ 1.0** $\\rightarrow$ **หน้าตัดปลอดภัย (SAFE)**")
+        else:
+            st.error(f"❌ **สรุปผล (Conclusion):** อัตราส่วนความเค้น (Demand/Capacity Ratio) = **{demand_ratio:,.3f} > 1.0** $\\rightarrow$ **หน้าตัดไม่ปลอดภัย (UNSAFE)**")
