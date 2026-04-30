@@ -11,6 +11,7 @@ class RCColumnProBiaxial:
         self.b, self.h = b, h
         self.fc, self.fy = fc, fy
         self.Es = 2.04e6
+        # หมายเหตุ: สูตรนี้ถูกต้องแล้วกรณี fc เป็น ksc เพราะอัตราส่วน 70 ksc ~ 7 MPa
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
         
         if self.shape == "Rectangular":
@@ -86,7 +87,9 @@ class RCColumnProBiaxial:
                 if a >= self.D:
                     Ac, y_bar = np.pi * R**2, 0
                 else:
-                    theta = 2 * np.arccos((R - a) / R)
+                    # 🎯 FIX 1: ป้องกัน Error arccos(>1 หรือ <-1) ด้วย np.clip
+                    ratio = np.clip((R - a) / R, -1.0, 1.0)
+                    theta = 2 * np.arccos(ratio)
                     Ac = (R**2 / 2) * (theta - np.sin(theta))
                     y_bar = (4 * R * np.sin(theta/2)**3) / (3 * (theta - np.sin(theta))) if Ac > 0 else R
                 Cc = 0.85 * self.fc * Ac
@@ -180,50 +183,58 @@ class RCColumnProBiaxial:
         is_ok = actual_spacing >= min_req
         return actual_spacing, min_req, is_ok
 
+    def get_dynamic_alpha(self, Pu, phi_pn_max):
+        """
+        🎯 FIX 2: ประเมินค่า Alpha แบบ Dynamic ตามพฤติกรรมของโครงสร้าง
+        (ใช้เรียกข้างนอกคลาส ตอนเช็ค Interaction Equation)
+        """
+        if self.shape == "Circular":
+            return 2.0
+        else:
+            # Interpolate ระหว่าง 1.15 ถึง 1.5 อิงตามสัดส่วนของ Axial Load
+            pu_ratio = Pu / phi_pn_max if phi_pn_max > 0 else 1.0
+            if pu_ratio < 0.1:
+                return 1.15
+            else:
+                return min(1.5, 1.15 + (pu_ratio - 0.1) * (0.35 / 0.9))
+
     def generate_3d_surface(self, df_x, df_y, alpha):
         """
         สร้าง Mesh Grid สำหรับ 3D Interaction Surface 
         โดยอิงตาม PCA Load Contour Theory
         """
-        # สร้างช่วงของ P จาก Tension ไปจนถึง Po
-        p_min = df_x['phiPn'].min()
-        p_max = df_x['phiPn'].max()
+        # สร้างช่วงของ P จาก Tension ไปจนถึง Po (บีบขอบเข้ามาเล็กน้อยกัน Error ตอนทำ Interpolation)
+        p_min = df_x['phiPn'].min() + 0.001
+        p_max = df_x['phiPn'].max() - 0.001
         p_steps = np.linspace(p_min, p_max, 50)
         
-        # เตรียม Interpolation function
-        fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', fill_value=0, bounds_error=False)
-        fy = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+        # 🎯 FIX 3: ตั้งค่า bounds_error=True บังคับให้ไม่ดึงค่าหลุดจาก DataFrame
+        fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', bounds_error=True)
+        fy = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', bounds_error=True)
         
-        P_mesh = []
-        Mx_mesh = []
-        My_mesh = []
+        theta = np.linspace(0, np.pi/2, 30)
+        X, Y, Z = [], [], []
 
         for p in p_steps:
-            mno_x = float(fx(p))
-            mno_y = float(fy(p))
+            mx_cap = fx(p)
+            my_cap = fy(p)
+            x_row, y_row, z_row = [], [], []
             
-            # สร้างวงรอบของ Moment (0 to 360 degrees)
-            thetas = np.linspace(0, 2*np.pi, 40)
-            p_row = []
-            mx_row = []
-            my_row = []
-            
-            for t in thetas:
-                # PCA Equation: (Mx/Mox)^a + (My/Moy)^a = 1
-                # แปลงเป็น Polar: Mx = Mox * cos(t)^(2/a), My = Moy * sin(t)^(2/a)
-                # เพื่อความง่ายและเสถียรของกราฟ ใช้การประมาณการทรงกลมที่ปรับรูปด้วย alpha
-                mx = mno_x * np.sign(np.cos(t)) * (np.abs(np.cos(t))**(2/alpha))
-                my = mno_y * np.sign(np.sin(t)) * (np.abs(np.sin(t))**(2/alpha))
+            for t in theta:
+                if mx_cap > 0 and my_cap > 0:
+                    denom = ((np.cos(t) / mx_cap)**alpha + (np.sin(t) / my_cap)**alpha)**(1/alpha)
+                    r = 1 / denom
+                else:
+                    r = 0
+                x_row.append(r * np.cos(t))
+                y_row.append(r * np.sin(t))
+                z_row.append(p)
                 
-                p_row.append(p)
-                mx_row.append(mx)
-                my_row.append(my)
-                
-            P_mesh.append(p_row)
-            Mx_mesh.append(mx_row)
-            My_mesh.append(my_row)
+            X.append(x_row)
+            Y.append(y_row)
+            Z.append(z_row)
             
-        return np.array(Mx_mesh), np.array(My_mesh), np.array(P_mesh)
+        return np.array(X), np.array(Y), np.array(Z)
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Ultimate RC Column", layout="wide")
