@@ -1,23 +1,23 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # นำเข้าเพียงครั้งเดียว
 from scipy.interpolate import interp1d
 
 class RCColumnProBiaxial:
+    # ... (ฟังก์ชัน __init__ คงเดิมตามที่อัปเดตไปก่อนหน้า) ...
     def __init__(self, shape, layout, b, h, fc, fy, db_mm, n_bars, nx, ny, cover_cm):
         self.shape = shape
         self.layout = layout
         self.b, self.h = b, h
         self.fc, self.fy = fc, fy
         self.Es = 2.04e6
-        # หมายเหตุ: สูตรนี้ถูกต้องแล้วกรณี fc เป็น ksc เพราะอัตราส่วน 70 ksc ~ 7 MPa
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (fc - 280) / 70))
         
         if self.shape == "Rectangular":
             self.Ag = self.b * self.h
-            self.Igx = (self.b * self.h**3) / 12  # Bending about X (depth = h)
-            self.Igy = (self.h * self.b**3) / 12  # Bending about Y (depth = b)
+            self.Igx = (self.b * self.h**3) / 12  
+            self.Igy = (self.h * self.b**3) / 12  
             self.rx = 0.3 * self.h
             self.ry = 0.3 * self.b
         else: 
@@ -70,15 +70,20 @@ class RCColumnProBiaxial:
                 get_y = lambda bar: bar['y']
             else:
                 depth, width = self.b, self.h
-                get_y = lambda bar: bar['x'] # Swap axis for Y-bending
+                get_y = lambda bar: bar['x']
 
-        dt = depth/2 - min(get_y(bar) for bar in self.bars)
+        # 🎯 FIX 4: แปลง List ของเหล็กเสริมให้เป็น NumPy Array เพื่อทำ Vectorization
+        y_bars = np.array([get_y(bar) for bar in self.bars])
+        d_bars = depth / 2 - y_bars
+        dt = np.max(d_bars) # ระยะ d ที่ลึกที่สุด (เหล็กรับแรงดึงชั้นนอกสุด)
+
         results = []
         c_values = np.concatenate([np.linspace(0.001, dt, 200), np.linspace(dt, depth * 3, 200)])
         
         for c in c_values:
             a = min(self.beta1 * c, depth)
             
+            # --- Concrete Contribution ---
             if self.shape == "Rectangular":
                 Cc = 0.85 * self.fc * a * width
                 Mc = Cc * (depth/2 - a/2)
@@ -87,7 +92,6 @@ class RCColumnProBiaxial:
                 if a >= self.D:
                     Ac, y_bar = np.pi * R**2, 0
                 else:
-                    # 🎯 FIX 1: ป้องกัน Error arccos(>1 หรือ <-1) ด้วย np.clip
                     ratio = np.clip((R - a) / R, -1.0, 1.0)
                     theta = 2 * np.arccos(ratio)
                     Ac = (R**2 / 2) * (theta - np.sin(theta))
@@ -95,18 +99,19 @@ class RCColumnProBiaxial:
                 Cc = 0.85 * self.fc * Ac
                 Mc = Cc * y_bar 
             
-            Pn_s, Mn_s = 0, 0
-            for bar in self.bars:
-                d_i = depth/2 - get_y(bar) 
-                eps_s = 0.003 * (c - d_i) / c
-                fs = np.clip(eps_s * self.Es, -self.fy, self.fy)
-                Fsi = self.as_single * fs
-                Pn_s += Fsi
-                Mn_s += Fsi * get_y(bar) 
+            # 🎯 FIX 4: Vectorized Steel Contribution คำนวณรวดเดียวทั้ง Array
+            eps_s = 0.003 * (c - d_bars) / c
+            fs = np.clip(eps_s * self.Es, -self.fy, self.fy)
+            Fsi = self.as_single * fs
+            
+            Pn_s = np.sum(Fsi)
+            Mn_s = np.sum(Fsi * y_bars)
 
+            # --- Total Capacity ---
             pn = (Cc + Pn_s) / 1000 
             mn = (Mc + Mn_s) / 100000 
             
+            # --- Phi Factor (Strain Limit) ---
             et = 0.003 * (dt - c) / c
             ey = self.fy / self.Es
             phi_comp = 0.75 if self.shape == "Circular" else 0.65 
@@ -117,6 +122,7 @@ class RCColumnProBiaxial:
             
             results.append({'c': c, 'Pn': pn, 'Mn': mn, 'phiPn': phi * pn, 'phiMn': phi * mn})
 
+        # --- Pure Tension & Pure Compression Points ---
         tn = -self.total_as * self.fy / 1000
         results.append({'c': 0, 'Pn': tn, 'Mn': 0, 'phiPn': 0.9 * tn, 'phiMn': 0})
 
@@ -127,8 +133,9 @@ class RCColumnProBiaxial:
 
         df = pd.DataFrame(results).sort_values('Pn', ascending=True)
         df['phiPn'] = df['phiPn'].clip(upper=phi_pn_max)
-        return df, phi_pn_max
         
+        return df, phi_pn_max
+       
     def slenderness_magnifier(self, Pu, K, Lu_m, axis, Cm, beta_d):
         Lu_cm = Lu_m * 100
         r = self.rx if axis == 'X' else self.ry
