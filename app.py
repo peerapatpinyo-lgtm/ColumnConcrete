@@ -180,6 +180,51 @@ class RCColumnProBiaxial:
         is_ok = actual_spacing >= min_req
         return actual_spacing, min_req, is_ok
 
+    def generate_3d_surface(self, df_x, df_y, alpha):
+        """
+        สร้าง Mesh Grid สำหรับ 3D Interaction Surface 
+        โดยอิงตาม PCA Load Contour Theory
+        """
+        # สร้างช่วงของ P จาก Tension ไปจนถึง Po
+        p_min = df_x['phiPn'].min()
+        p_max = df_x['phiPn'].max()
+        p_steps = np.linspace(p_min, p_max, 50)
+        
+        # เตรียม Interpolation function
+        fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+        fy = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+        
+        P_mesh = []
+        Mx_mesh = []
+        My_mesh = []
+
+        for p in p_steps:
+            mno_x = float(fx(p))
+            mno_y = float(fy(p))
+            
+            # สร้างวงรอบของ Moment (0 to 360 degrees)
+            thetas = np.linspace(0, 2*np.pi, 40)
+            p_row = []
+            mx_row = []
+            my_row = []
+            
+            for t in thetas:
+                # PCA Equation: (Mx/Mox)^a + (My/Moy)^a = 1
+                # แปลงเป็น Polar: Mx = Mox * cos(t)^(2/a), My = Moy * sin(t)^(2/a)
+                # เพื่อความง่ายและเสถียรของกราฟ ใช้การประมาณการทรงกลมที่ปรับรูปด้วย alpha
+                mx = mno_x * np.sign(np.cos(t)) * (np.abs(np.cos(t))**(2/alpha))
+                my = mno_y * np.sign(np.sin(t)) * (np.abs(np.sin(t))**(2/alpha))
+                
+                p_row.append(p)
+                mx_row.append(mx)
+                my_row.append(my)
+                
+            P_mesh.append(p_row)
+            Mx_mesh.append(mx_row)
+            My_mesh.append(my_row)
+            
+        return np.array(Mx_mesh), np.array(My_mesh), np.array(P_mesh)
+
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Ultimate RC Column", layout="wide")
 st.title("🏗️ RC Column (Biaxial & Sway Analysis)")
@@ -265,28 +310,50 @@ else:
     Mcy = delta_sy * Mu_y_dsgn
 
 # --- Biaxial Interaction Check (PCA Load Contour) ---
-try:
-    fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', fill_value=0, bounds_error=False)
-    fy_interp = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', fill_value=0, bounds_error=False)
-    
-    phi_Mnox = float(fx(Pu))
-    phi_Mnoy = float(fy_interp(Pu))
-    
-    if shape == "Circular":
-        alpha = 2.0
-        demand_ratio = (Mcx / phi_Mnox)**2 + (Mcy / phi_Mnoy)**2 if phi_Mnox > 0 else 999
-    else:
-        alpha = 1.5 # standard for rectangular
-        demand_ratio = (Mcx / phi_Mnox)**alpha + (Mcy / phi_Mnoy)**alpha if phi_Mnox > 0 else 999
-        
-    is_safe = (demand_ratio <= 1.0) and (Pu <= phi_pn_max)
-except:
+import plotly.graph_objects as go # อย่าลืม import plotly หากยังไม่ได้ทำด้านบน
+
+# --- Biaxial Interaction Check (PCA Load Contour) ---
+error_status = None # ตัวแปรเก็บข้อความแจ้งเตือน
+
+# ดักจับกรณีที่ Pu เกินกำลังรับสูงสุดก่อนเข้า try-except
+if Pu > phi_pn_max:
+    error_status = f"Axial load exceeds section capacity (Pu = {Pu:.1f} t > φPn,max = {phi_pn_max:.1f} t)"
     is_safe = False
-    demand_ratio = 999
+    demand_ratio = 999.0
     phi_Mnox = 0
     phi_Mnoy = 0
     alpha = 1.5
-    
+else:
+    try:
+        fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+        fy_interp = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', fill_value=0, bounds_error=False)
+        
+        phi_Mnox = float(fx(Pu))
+        phi_Mnoy = float(fy_interp(Pu))
+        
+        # เช็คกรณีค่า Pu ตกไปอยู่ในช่วงที่ไม่มี Moment Capacity
+        if phi_Mnox <= 0 or phi_Mnoy <= 0:
+            error_status = "Axial load is out of bound for moment interaction."
+            is_safe = False
+            demand_ratio = 999.0
+            alpha = 2.0 if shape == "Circular" else 1.5
+        else:
+            if shape == "Circular":
+                alpha = 2.0
+                demand_ratio = (Mcx / phi_Mnox)**2 + (Mcy / phi_Mnoy)**2
+            else:
+                alpha = 1.5 # standard for rectangular
+                demand_ratio = (Mcx / phi_Mnox)**alpha + (Mcy / phi_Mnoy)**alpha
+                
+            is_safe = (demand_ratio <= 1.0)
+    except Exception as e:
+        error_status = f"Calculation Error: {str(e)}"
+        is_safe = False
+        demand_ratio = 999.0
+        phi_Mnox = 0
+        phi_Mnoy = 0
+        alpha = 1.5
+
 actual_space, min_req_space, space_ok = engine.check_clear_spacing(nx, ny)
 
 with col2:
@@ -310,7 +377,10 @@ with col2:
     if not space_ok:
         st.warning(f"⚠️ **Constructability Warning:** ระยะห่างเหล็กเสริมจริง ({actual_space:.2f} cm) น้อยกว่าค่ามาตรฐานที่กำหนด ({min_req_space:.2f} cm) อาจทำให้เทคอนกรีตได้ยากและเกิดรอยโพรง (Honeycomb)")
     
-    if is_safe:
+    # แสดง Error ที่ชัดเจนแทนการโชว์ Demand Ratio = 999
+    if error_status:
+        st.error(f"### ❌ **STATUS: CAPACITY EXCEEDED**\n{error_status}")
+    elif is_safe:
         st.success(f"### ✅ **STATUS: SAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** ≤ 1.0")
     else:
         st.error(f"### ❌ **STATUS: UNSAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** > 1.0")
@@ -318,20 +388,47 @@ with col2:
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section", "📖 Parameter Guide", "📝 Calculation Report"])
 
     with tab1:
-        st.markdown(f"**Load Contour at Pu = {Pu} ton (α = {alpha})**")
-        fig_bi = go.Figure()
-        
-        # Plot Contour
-        if phi_Mnox > 0 and phi_Mnoy > 0:
-            x_vals = np.linspace(0, phi_Mnox, 100)
-            y_vals = phi_Mnoy * (1 - (x_vals/phi_Mnox)**alpha)**(1/alpha)
-            fig_bi.add_trace(go.Scatter(x=x_vals, y=y_vals, fill='tozeroy', name='Capacity Envelope', line=dict(color='purple', width=2)))
-        
-        # Plot Demand
-        fig_bi.add_trace(go.Scatter(x=[Mcx], y=[Mcy], mode='markers', name='Applied Demand (Mcx, Mcy)', marker=dict(color='red', size=12, symbol='x')))
-        
-        fig_bi.update_layout(xaxis_title="Moment X-axis, Mcx (ton-m)", yaxis_title="Moment Y-axis, Mcy (ton-m)", plot_bgcolor='whitesmoke', height=450)
-        st.plotly_chart(fig_bi, use_container_width=True)
+        # แทรกกราฟ 3D Interaction Surface
+        if not error_status:
+            try:
+                # เรียกใช้ Method สร้างตาข่าย 3D ที่เพิ่มเข้าไปในคลาส (อิงตาม PCA Load Contour)
+                mx_m, my_m, p_m = engine.generate_3d_surface(df_x, df_y, alpha)
+                
+                fig_3d = go.Figure()
+                
+                # 1. พลอตตัวผิว (Surface) ของ Interaction
+                fig_3d.add_trace(go.Surface(
+                    x=mx_m, y=my_m, z=p_m,
+                    colorscale='Viridis',
+                    opacity=0.7,
+                    name='Capacity Surface',
+                    showscale=False
+                ))
+                
+                # 2. พลอตจุด Demand Load ของผู้ใช้งาน (จุดสีแดง)
+                fig_3d.add_trace(go.Scatter3d(
+                    x=[Mcx], y=[Mcy], z=[Pu],
+                    mode='markers',
+                    marker=dict(size=8, color='red', symbol='diamond'),
+                    name='Applied Demand (Mcx, Mcy, Pu)'
+                ))
+                
+                fig_3d.update_layout(
+                    scene=dict(
+                        xaxis_title='Mx (t-m)',
+                        yaxis_title='My (t-m)',
+                        zaxis_title='Axial P (ton)',
+                        aspectmode='manual',
+                        aspectratio=dict(x=1, y=1, z=1.2)
+                    ),
+                    margin=dict(l=0, r=0, b=0, t=0),
+                    height=550
+                )
+                st.plotly_chart(fig_3d, use_container_width=True)
+            except Exception as e:
+                st.info("ℹ️ กำลังรอคำนวณข้อมูล 3D Surface...")
+        else:
+            st.info("⚠️ ไม่สามารถจำลอง 3D Surface ได้ เนื่องจากแรงแนวแกน (Pu) เกินขีดจำกัดหน้าตัด")
 
     with tab2:
         fig_pm = go.Figure()
