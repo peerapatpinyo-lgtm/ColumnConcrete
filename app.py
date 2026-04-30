@@ -203,20 +203,34 @@ class RCColumnProBiaxial:
         is_ok = actual_spacing >= min_req
         return actual_spacing, min_req, is_ok
 
-    def get_dynamic_alpha(self, Pu, phi_pn_max):
+    def get_dynamic_alpha(self, Pu):
         """
-        🎯 FIX 2: ประเมินค่า Alpha แบบ Dynamic ตามพฤติกรรมของโครงสร้าง
-        (ใช้เรียกข้างนอกคลาส ตอนเช็ค Interaction Equation)
+        คำนวณค่า Alpha Factor สำหรับ Biaxial Bending
+        แปรผันตามสัดส่วนของแรงแนวแกน อ้างอิงตาม PCA Notes
         """
         if self.shape == "Circular":
-            return 2.0
+            return 2.0  # สำหรับเสากลมใช้ 2.0 ได้เลยตามทฤษฎี
         else:
-            # Interpolate ระหว่าง 1.15 ถึง 1.5 อิงตามสัดส่วนของ Axial Load
-            pu_ratio = Pu / phi_pn_max if phi_pn_max > 0 else 1.0
-            if pu_ratio < 0.1:
+            # คำนวณ P_o ตามสมการ ACI
+            po = (0.85 * self.fc * (self.Ag - self.total_as) + self.fy * self.total_as) / 1000
+            phi_comp = 0.65  # สำหรับ Tied column
+            phi_po = phi_comp * po
+            
+            if phi_po <= 0:
+                return 1.15
+                
+            # หาอัตราส่วน Pu ต่อกำลังรับแรงอัดสูงสุดทางทฤษฎี
+            ratio = Pu / phi_po
+            
+            if ratio < 0.1:
                 return 1.15
             else:
-                return min(1.5, 1.15 + (pu_ratio - 0.1) * (0.35 / 0.9))
+                # Interpolate เป็นเส้นตรงระหว่าง 1.15 ถึง 1.55 
+                # (สมมติช่วง ratio จาก 0.1 ถึง 1.0)
+                alpha = 1.15 + (ratio - 0.1) * (1.55 - 1.15) / (1.0 - 0.1)
+                
+                # ควบคุมไม่ให้ค่าหลุดกรอบ
+                return min(1.55, max(1.15, alpha))
 
     def generate_3d_surface(self, df_x, df_y, alpha):
         """
