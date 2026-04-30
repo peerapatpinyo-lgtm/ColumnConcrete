@@ -126,13 +126,26 @@ class RCColumnProBiaxial:
         tn = -self.total_as * self.fy / 1000
         results.append({'c': 0, 'Pn': tn, 'Mn': 0, 'phiPn': 0.9 * tn, 'phiMn': 0})
 
+        # --- จุด Pure Compression (Po) ---
         po = (0.85 * self.fc * (self.Ag - self.total_as) + self.fy * self.total_as) / 1000
         phi_max_factor = 0.85 if self.shape == "Circular" else 0.80
         phi_comp = 0.75 if self.shape == "Circular" else 0.65
+        
+        # ขีดจำกัดกำลังรับแรงอัดสูงสุดตามมาตรฐาน (Flat top)
         phi_pn_max = phi_comp * phi_max_factor * po
+        
+        # แทรกจุด Po ลงไปเพื่อปิดขอบเขตบนสุดของกราฟให้สมบูรณ์
+        results.append({'c': 9999, 'Pn': po, 'Mn': 0, 'phiPn': phi_comp * po, 'phiMn': 0})
 
+        # สร้าง DataFrame และเรียงค่าจาก Tension ไป Compression
         df = pd.DataFrame(results).sort_values('Pn', ascending=True)
+        
+        # 1. ตัดยอด (Clip) ไม่เกินกำลังรับแรงอัดสูงสุดตามมาตรฐาน
         df['phiPn'] = df['phiPn'].clip(upper=phi_pn_max)
+        
+        # 2. ป้องกัน interp1d พังด้วยการ Drop ค่า phiPn ที่ซ้ำกันที่จุด Flat top
+        # การ keep='first' หมายความว่าเราจะเก็บ "จุดมุม" ของ Flat top ที่มี phiMn สูงสุดไว้
+        df = df.drop_duplicates(subset=['phiPn'], keep='first')
         
         return df, phi_pn_max
        
