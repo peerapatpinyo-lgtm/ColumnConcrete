@@ -235,18 +235,20 @@ class RCColumnProBiaxial:
     def generate_3d_surface(self, df_x, df_y, alpha):
         """
         สร้าง Mesh Grid สำหรับ 3D Interaction Surface 
-        โดยอิงตาม PCA Load Contour Theory
+        (ปรับลดความละเอียด Mesh เป็น 30x20 เพื่อประสิทธิภาพของ Streamlit UI)
         """
-        # สร้างช่วงของ P จาก Tension ไปจนถึง Po (บีบขอบเข้ามาเล็กน้อยกัน Error ตอนทำ Interpolation)
         p_min = df_x['phiPn'].min() + 0.001
         p_max = df_x['phiPn'].max() - 0.001
-        p_steps = np.linspace(p_min, p_max, 50)
         
-        # 🎯 FIX 3: ตั้งค่า bounds_error=True บังคับให้ไม่ดึงค่าหลุดจาก DataFrame
+        # ปรับลดจาก 50 เหลือ 30 ชั้น
+        p_steps = np.linspace(p_min, p_max, 30) 
+        
         fx = interp1d(df_x['phiPn'], df_x['phiMn'], kind='linear', bounds_error=True)
         fy = interp1d(df_y['phiPn'], df_y['phiMn'], kind='linear', bounds_error=True)
         
-        theta = np.linspace(0, np.pi/2, 30)
+        # ปรับลดจาก 30 เหลือ 20 มุม (เฉพาะ 1 ควอดแรนต์)
+        theta = np.linspace(0, np.pi/2, 20) 
+        
         X, Y, Z = [], [], []
 
         for p in p_steps:
