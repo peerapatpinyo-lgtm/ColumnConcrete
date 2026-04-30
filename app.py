@@ -131,8 +131,17 @@ class RCColumnProBiaxial:
         r = self.rx if axis == 'X' else self.ry
         Ig = self.Igx if axis == 'X' else self.Igy
         
+        # คำนวณ Ise (Moment of Inertia ของเหล็กเสริมรอบแกนสะเทิน)
+        if axis == 'X':
+            Ise = sum(self.as_single * (bar['y']**2) for bar in self.bars)
+        else:
+            Ise = sum(self.as_single * (bar['x']**2) for bar in self.bars)
+        
         kl_r = (K * Lu_cm) / r
-        EI = (0.4 * self.Ec * Ig) / (1 + beta_d)
+        
+        # ใช้สมการที่แม่นยำขึ้น (0.2EcIg + EsIse)
+        EI = (0.2 * self.Ec * Ig + self.Es * Ise) / (1 + beta_d)
+        
         Pc = (np.pi**2 * EI) / (K * Lu_cm)**2 / 1000
         
         if Pu >= (0.75 * Pc):
@@ -398,10 +407,15 @@ with col2:
         # --- ส่วนที่ 3: กำลังดัดที่ขยายตัว (X-Axis) ---
         with st.expander(f"3. Moment Magnification (X-Axis) - {frame_type}", expanded=False):
             if frame_type == "Non-Sway (Braced)":
-                st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4c)*")
-                st.latex(r"EI_x = \frac{0.4 E_c I_{gx}}{1 + \beta_d}")
-                EIx_val = (0.4 * engine.Ec * engine.Igx) / (1 + beta_d)
-                st.latex(f"EI_x = \\frac{{0.4 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
+                st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4)*")
+                st.latex(r"EI_x = \frac{0.2 E_c I_{gx} + E_s I_{se,x}}{1 + \beta_d}")
+                
+                # คำนวณ Ise_x สำหรับโชว์ใน Report
+                Ise_x = sum(engine.as_single * (bar['y']**2) for bar in engine.bars)
+                EIx_val = (0.2 * engine.Ec * engine.Igx + engine.Es * Ise_x) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,x}} = {Ise_x:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_x = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}) + ({engine.Es:,.0f} \\times {Ise_x:,.2f})}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
                 
                 st.markdown("**3.2 Euler Critical Load ($P_{cx}$):**")
                 st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
@@ -417,14 +431,20 @@ with col2:
                 st.markdown("**Sway Frame Design:**")
                 st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
                 st.latex(f"M_{{cx}} = {delta_sx} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
-            st.caption("💻 *Code Vars: `Pcx`, `del_x`, `Mcx`*")
+            st.caption("💻 *Code Vars: `Ise_x`, `Pcx`, `del_x`, `Mcx`*")
 
         # --- ส่วนที่ 4: กำลังดัดที่ขยายตัว (Y-Axis) ---
         with st.expander(f"4. Moment Magnification (Y-Axis) - {frame_type}", expanded=False):
             if frame_type == "Non-Sway (Braced)":
                 st.markdown("**4.1 Effective Stiffness ($EI_y$):**")
-                EIy_val = (0.4 * engine.Ec * engine.Igy) / (1 + beta_d)
-                st.latex(f"EI_y = \\frac{{0.4 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}}}{{1 + {beta_d}}} = {EIy_val:,.0f} \\text{{ kg-cm}}^2")
+                st.latex(r"EI_y = \frac{0.2 E_c I_{gy} + E_s I_{se,y}}{1 + \beta_d}")
+                
+                # คำนวณ Ise_y สำหรับโชว์ใน Report
+                Ise_y = sum(engine.as_single * (bar['x']**2) for bar in engine.bars)
+                EIy_val = (0.2 * engine.Ec * engine.Igy + engine.Es * Ise_y) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,y}} = {Ise_y:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_y = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}) + ({engine.Es:,.0f} \\times {Ise_y:,.2f})}}{{1 + {beta_d}}} = {EIy_val:,.0f} \\text{{ kg-cm}}^2")
                 
                 st.markdown("**4.2 Euler Critical Load ($P_{cy}$):**")
                 st.latex(f"P_{{cy}} = \\frac{{\pi^2 \\times {EIy_val:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
@@ -438,7 +458,7 @@ with col2:
                 st.markdown("**Sway Frame Design:**")
                 st.latex(r"M_{cy} = \delta_{sy} M_{uy,dsgn}")
                 st.latex(f"M_{{cy}} = {delta_sy} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
-            st.caption("💻 *Code Vars: `Pcy`, `del_y`, `Mcy`*")
+            st.caption("💻 *Code Vars: `Ise_y`, `Pcy`, `del_y`, `Mcy`*")
 
         # --- ส่วนที่ 5: ตรวจสอบแรงดัดสองแกน ---
         with st.expander("5. Biaxial Bending Interaction (PCA Method)", expanded=True):
