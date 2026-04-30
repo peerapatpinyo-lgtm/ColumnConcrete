@@ -150,6 +150,36 @@ class RCColumnProBiaxial:
             delta = max(1.0, Cm / (1 - (Pu / (0.75 * Pc))))
         return kl_r, Pc, delta
 
+    def check_clear_spacing(self, nx, ny):
+        # ระยะห่างที่ต้องการขั้นต่ำ (2.5 cm หรือ 1.5 * db)
+        min_req = max(2.5, 1.5 * self.db_cm)
+        
+        if self.shape == "Rectangular":
+            s_x = 999.0
+            s_y = 999.0
+            
+            # หาระยะห่างในแกน X
+            if self.layout == "2-Faces (Top/Bottom)":
+                n_x_face = len(self.bars) // 2
+                if n_x_face > 1:
+                    s_x = (self.b - 2 * self.d_prime) / (n_x_face - 1) - self.db_cm
+            elif self.layout == "4-Faces (Uniform)":
+                if nx > 1:
+                    s_x = (self.b - 2 * self.d_prime) / (nx - 1) - self.db_cm
+                if ny > 1:
+                    s_y = (self.h - 2 * self.d_prime) / (ny - 1) - self.db_cm
+            
+            actual_spacing = min(s_x, s_y)
+            
+        elif self.shape == "Circular":
+            # สำหรับเสากลม ใช้ความยาวคอร์ด (Chord Length) ระหว่างเหล็ก 2 เส้นที่ติดกัน
+            Rs = self.D / 2 - self.d_prime
+            chord_length = 2 * Rs * np.sin(np.pi / len(self.bars))
+            actual_spacing = chord_length - self.db_cm
+            
+        is_ok = actual_spacing >= min_req
+        return actual_spacing, min_req, is_ok
+
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Ultimate RC Column", layout="wide")
 st.title("🏗️ RC Column (Biaxial & Sway Analysis)")
@@ -260,13 +290,23 @@ except:
 with col2:
     st.markdown("### 📋 Executive Biaxial Summary")
     
-    m1, m2, m3 = st.columns(3)
+    # ขยายเป็น 4 คอลัมน์เพื่อเพิ่มช่อง Clear Spacing
+    m1, m2, m3, m4 = st.columns(4) 
     rho_pct = engine.rho * 100
+    
     m1.metric("Steel Ratio (ρ)", f"{rho_pct:.2f} %", "OK" if 1 <= rho_pct <= 8 else "Fail", delta_color="normal" if 1 <= rho_pct <= 8 else "inverse")
-    m2.metric("Design Mcx", f"{Mcx:.2f} t-m", f"Magnifier: {max(Mcx/Mu_x_dsgn, 1.0):.2f}x", delta_color="off")
-    m3.metric("Design Mcy", f"{Mcy:.2f} t-m", f"Magnifier: {max(Mcy/Mu_y_dsgn, 1.0):.2f}x", delta_color="off")
+    
+    # เพิ่ม Metric ตัวใหม่ที่นี่
+    m2.metric("Clear Spacing", f"{actual_space:.2f} cm", "OK" if space_ok else "Tight!", delta_color="normal" if space_ok else "inverse")
+    
+    m3.metric("Design Mcx", f"{Mcx:.2f} t-m", f"Magnifier: {max(Mcx/Mu_x_dsgn, 1.0):.2f}x", delta_color="off")
+    m4.metric("Design Mcy", f"{Mcy:.2f} t-m", f"Magnifier: {max(Mcy/Mu_y_dsgn, 1.0):.2f}x", delta_color="off")
 
     st.markdown("---")
+    
+    # เพิ่มแถบแจ้งเตือนเรื่อง Constructability ก่อนโชว์สถานะ Safe/Unsafe
+    if not space_ok:
+        st.warning(f"⚠️ **Constructability Warning:** ระยะห่างเหล็กเสริมจริง ({actual_space:.2f} cm) น้อยกว่าค่ามาตรฐานที่กำหนด ({min_req_space:.2f} cm) อาจทำให้เทคอนกรีตได้ยากและเกิดรอยโพรง (Honeycomb)")
     
     if is_safe:
         st.success(f"### ✅ **STATUS: SAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** ≤ 1.0")
