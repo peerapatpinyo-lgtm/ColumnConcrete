@@ -613,9 +613,9 @@ with col2:
             st.latex(f"E_c = 15100 \\sqrt{{{fc}}} = {engine.Ec:,.0f} \\text{{ ksc}}")
             st.caption("💻 *Code Vars: `fc`, `self.Ec`*")
 
-        # --- ส่วนที่ 2: โมเมนต์ขั้นต่ำ ---
+        # --- Part 2: Minimum Design Moments ---
         with st.expander("2. Minimum Design Moments (ACI 318-19, 6.6.4.5.4)", expanded=False):
-            st.markdown("คำนวณโมเมนต์ขั้นต่ำเพื่อป้องกันผลจากความไม่สมบูรณ์ของโครงสร้าง ($e_{min} = 15 + 0.03h$ mm)")
+            st.markdown("Calculate minimum moment to account for structural imperfections ($e_{min} = 15 + 0.03h$ mm)")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -628,14 +628,14 @@ with col2:
                 st.latex(f"M_{{uy,dsgn}} = \\max({Muy:,.2f}, {e_min_y:,.3f}) = {Mu_y_dsgn:,.2f} \\text{{ t-m}}")
             st.caption("💻 *Code Vars: `e_min_x`, `e_min_y`, `Mu_x_dsgn`, `Mu_y_dsgn`*")
 
-        # --- ส่วนที่ 3: กำลังดัดที่ขยายตัว (X-Axis) ---
+        # --- Part 3: Moment Magnification (X-Axis) ---
         with st.expander(f"3. Moment Magnification (X-Axis) - {frame_type}", expanded=False):
             if frame_type == "Non-Sway (Braced)":
                 st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4)*")
                 st.latex(r"EI_x = \frac{0.2 E_c I_{gx} + E_s I_{se,x}}{1 + \beta_d}")
                 
-                # คำนวณ Ise_x สำหรับโชว์ใน Report
-                Ise_x = sum(engine.as_single * (bar['y']**2) for bar in engine.bars)
+                # 🎯 REFACTOR: Retrieve Ise_x directly from the engine attribute
+                Ise_x = engine.Ise_x
                 EIx_val = (0.2 * engine.Ec * engine.Igx + engine.Es * Ise_x) / (1 + beta_d)
                 
                 st.latex(f"I_{{se,x}} = {Ise_x:,.2f} \\text{{ cm}}^4")
@@ -650,7 +650,7 @@ with col2:
                     st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
                     st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
                 else:
-                    st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} ≤ 22)")
+                    st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} $\le$ 22)")
                     st.latex(r"\delta_x = 1.0")
 
                 st.markdown("**3.4 Final Magnified Moment ($M_{cx}$):**")
