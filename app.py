@@ -60,6 +60,10 @@ class RCColumnProBiaxial:
         self.total_as = len(self.bars) * self.as_single
         self.rho = self.total_as / self.Ag 
 
+        # 🎯 REFACTOR: คำนวณ Ise_x และ Ise_y เก็บเป็น Class Attribute ทันที
+        self.Ise_x = sum(self.as_single * (bar['y']**2) for bar in self.bars)
+        self.Ise_y = sum(self.as_single * (bar['x']**2) for bar in self.bars)
+
     def solve_pm(self, axis='X'):
         if self.shape == "Circular":
             depth, width = self.D, self.D
