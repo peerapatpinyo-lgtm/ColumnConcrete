@@ -375,23 +375,27 @@ Mu_x_dsgn = max(Mux, e_min_x)
 Mu_y_dsgn = max(Muy, e_min_y)
 
 if frame_type == "Non-Sway (Braced)":
-    # --- Non-Sway Mode (เหมือนเดิม) ---
-    kl_rx, Pcx, del_x = engine.slenderness_magnifier(Pu, K_x, Lu_x, 'X', Cm_x, beta_d)
-    kl_ry, Pcy, del_y = engine.slenderness_magnifier(Pu, K_y, Lu_y, 'Y', Cm_y, beta_d)
+    # --- Non-Sway Mode ---
+    # 🎯 FIX: Unpack 5 values for both X and Y axes
+    kl_rx, Pcx, del_x, Ise_x, EIx = engine.slenderness_magnifier(Pu, K_x, Lu_x, 'X', Cm_x, beta_d)
+    kl_ry, Pcy, del_y, Ise_y, EIy = engine.slenderness_magnifier(Pu, K_y, Lu_y, 'Y', Cm_y, beta_d)
+    
     Mcx = del_x * Mu_x_dsgn if kl_rx > 22 else Mu_x_dsgn
     Mcy = del_y * Mu_y_dsgn if kl_ry > 22 else Mu_y_dsgn
+    
 else:
     # --- Sway Mode (Unbraced) ---
-    # 1. ขยาย Moment ด้วย Global Sway Factor (delta_s) ก่อน
+    # 1. Magnify Moment with Global Sway Factor (delta_s) first
     M_sway_x = delta_sx * Mu_x_dsgn
     M_sway_y = delta_sy * Mu_y_dsgn
     
-    # 2. ตรวจสอบ Local Slenderness ระหว่างชั้น (Non-Sway condition) 
-    # หมายเหตุ: K ที่ใช้ตรงนี้ควรเป็น K ของการ Braced (<= 1.0)
-    kl_rx, Pcx, del_x_ns = engine.slenderness_magnifier(Pu, K_x, Lu_x, 'X', Cm_x, beta_d)
-    kl_ry, Pcy, del_y_ns = engine.slenderness_magnifier(Pu, K_y, Lu_y, 'Y', Cm_y, beta_d)
+    # 2. Check Local Slenderness between floors (Non-Sway condition) 
+    # Note: The K used here should be the Braced K (<= 1.0)
+    # 🎯 FIX: Unpack 5 values here as well
+    kl_rx, Pcx, del_x_ns, Ise_x, EIx = engine.slenderness_magnifier(Pu, K_x, Lu_x, 'X', Cm_x, beta_d)
+    kl_ry, Pcy, del_y_ns, Ise_y, EIy = engine.slenderness_magnifier(Pu, K_y, Lu_y, 'Y', Cm_y, beta_d)
     
-    # 3. ขยายซ้ำด้วย Local Magnifier หากเสาชะลูดเกินไป (kl/r > 22)
+    # 3. Magnify again with Local Magnifier if the column is too slender (kl/r > 22)
     Mcx = del_x_ns * M_sway_x if kl_rx > 22 else M_sway_x
     Mcy = del_y_ns * M_sway_y if kl_ry > 22 else M_sway_y
 
