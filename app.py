@@ -282,12 +282,36 @@ with col1:
             
             beta_d = st.slider("Beta_d (Sustained Load Ratio)", 0.0, 1.0, 0.6)
             delta_sx, delta_sy = 1.0, 1.0
+        
         else:
-            st.warning("For Sway Frames, enter the Sway Magnification Factor (δs) directly.")
-            cs1, cs2 = st.columns(2)
-            delta_sx = cs1.number_input("δs (X-axis)", value=1.2, step=0.05)
-            delta_sy = cs2.number_input("δs (Y-axis)", value=1.2, step=0.05)
-            Lu_x = K_x = Cm_x = Lu_y = K_y = Cm_y = beta_d = 0 # Not used for direct sway
+            # --- ปรับปรุง Sway Logic ให้เลือกวิธีคำนวณได้ ---
+            st.write("Sway Magnification Factor (δs) Parameters")
+            sway_method = st.radio("Sway Calculation Method", ["Stability Index (Q)", "Sum of Loads (ΣPu, ΣPc)", "Direct Input"], horizontal=True)
+            
+            if sway_method == "Stability Index (Q)":
+                Q_val = st.number_input("Stability Index (Q)", min_value=0.0, max_value=0.99, value=0.05, step=0.01)
+                delta_s_auto = 1 / (1 - Q_val)
+                delta_sx = delta_sy = max(1.0, delta_s_auto)
+                st.info(f"Calculated δs = {delta_sx:.3f}")
+                
+            elif sway_method == "Sum of Loads (ΣPu, ΣPc)":
+                cs1, cs2 = st.columns(2)
+                sum_Pu = cs1.number_input("ΣPu (ton)", min_value=0.1, value=500.0)
+                sum_Pc = cs2.number_input("ΣPc (ton)", min_value=0.1, value=2000.0)
+                if sum_Pu < 0.75 * sum_Pc:
+                    delta_s_auto = 1 / (1 - (sum_Pu / (0.75 * sum_Pc)))
+                else:
+                    delta_s_auto = 999.0
+                    st.error("⚠️ ΣPu exceeds 0.75ΣPc, frame is unstable.")
+                delta_sx = delta_sy = max(1.0, delta_s_auto)
+                st.info(f"Calculated δs = {delta_sx:.3f}")
+                
+            else: # Direct Input (เหมือนแบบดั้งเดิม)
+                cs1, cs2 = st.columns(2)
+                delta_sx = cs1.number_input("δs (X-axis)", value=1.2, step=0.05)
+                delta_sy = cs2.number_input("δs (Y-axis)", value=1.2, step=0.05)
+                
+            Lu_x = K_x = Cm_x = Lu_y = K_y = Cm_y = beta_d = 0 # Not used for sway
 
 # --- Create Engine and Solve ---
 engine = RCColumnProBiaxial(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover)
