@@ -158,11 +158,8 @@ class RCColumnProBiaxial:
         r = self.rx if axis == 'X' else self.ry
         Ig = self.Igx if axis == 'X' else self.Igy
         
-        # คำนวณ Ise (Moment of Inertia ของเหล็กเสริมรอบแกนสะเทิน)
-        if axis == 'X':
-            Ise = sum(self.as_single * (bar['y']**2) for bar in self.bars)
-        else:
-            Ise = sum(self.as_single * (bar['x']**2) for bar in self.bars)
+        # 🎯 REFACTOR: เรียกใช้ค่าจาก Attribute ได้เลย
+        Ise = self.Ise_x if axis == 'X' else self.Ise_y
         
         kl_r = (K * Lu_cm) / r
         
@@ -175,7 +172,9 @@ class RCColumnProBiaxial:
             delta = 999.9 
         else:
             delta = max(1.0, Cm / (1 - (Pu / (0.75 * Pc))))
-        return kl_r, Pc, delta
+            
+        # คืนค่า Ise และ EI ออกไปเผื่อ UI นำไปแสดงผลด้วย
+        return kl_r, Pc, delta, Ise, EI
 
     def check_clear_spacing(self, nx, ny):
         # ระยะห่างที่ต้องการขั้นต่ำ (2.5 cm หรือ 1.5 * db)
