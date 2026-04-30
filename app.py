@@ -289,6 +289,7 @@ with col1:
             delta_sy = cs2.number_input("δs (Y-axis)", value=1.2, step=0.05)
             Lu_x = K_x = Cm_x = Lu_y = K_y = Cm_y = beta_d = 0 # Not used for direct sway
 
+# --- Create Engine and Solve ---
 engine = RCColumnProBiaxial(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover)
 df_x, phi_pn_max = engine.solve_pm(axis='X')
 df_y, _ = engine.solve_pm(axis='Y')
@@ -302,6 +303,7 @@ Mu_y_dsgn = max(Muy, e_min_y)
 if frame_type == "Non-Sway (Braced)":
     kl_rx, Pcx, del_x = engine.slenderness_magnifier(Pu, K_x, Lu_x, 'X', Cm_x, beta_d)
     kl_ry, Pcy, del_y = engine.slenderness_magnifier(Pu, K_y, Lu_y, 'Y', Cm_y, beta_d)
+    # ขยายโมเมนต์เฉพาะเมื่อ kl/r > 22 (ตามมาตรฐาน)
     Mcx = del_x * Mu_x_dsgn if kl_rx > 22 else Mu_x_dsgn
     Mcy = del_y * Mu_y_dsgn if kl_ry > 22 else Mu_y_dsgn
 else:
@@ -529,8 +531,7 @@ with col2:
 
         # --- ส่วนที่ 2: โมเมนต์ขั้นต่ำ ---
         with st.expander("2. Minimum Design Moments (ACI 318-19, 6.6.4.5.4)", expanded=False):
-            st.markdown("คำนวณโมเมนต์ขั้นต่ำเพื่อป้องกันผลจากความไม่สมบูรณ์ของโครงสร้าง")
-            st.latex(r"M_{u,min} = P_u (0.015 + 0.03h)")
+            st.markdown("คำนวณโมเมนต์ขั้นต่ำเพื่อป้องกันผลจากความไม่สมบูรณ์ของโครงสร้าง ($e_{min} = 15 + 0.03h$ mm)")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -561,15 +562,19 @@ with col2:
                 st.latex(f"P_{{cx}} = \\frac{{\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times 10^{{-3}} = {Pcx:,.2f} \\text{{ ton}}")
                 
                 st.markdown("**3.3 Magnification Factor ($\delta_x$):**")
-                st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
-                st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
-                
+                if kl_rx > 22:
+                    st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
+                    st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
+                else:
+                    st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} ≤ 22)")
+                    st.latex(r"\delta_x = 1.0")
+
                 st.markdown("**3.4 Final Magnified Moment ($M_{cx}$):**")
-                st.latex(f"M_{{cx}} = {del_x:,.3f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+                st.latex(f"M_{{cx}} = \\delta_x \\times M_{{ux,dsgn}} = {Mcx:,.2f} \\text{{ ton-m}}")
             else:
                 st.markdown("**Sway Frame Design:**")
                 st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
-                st.latex(f"M_{{cx}} = {delta_sx} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+                st.latex(f"M_{{cx}} = {delta_sx:.2f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
             st.caption("💻 *Code Vars: `Ise_x`, `Pcx`, `del_x`, `Mcx`*")
 
         # --- ส่วนที่ 4: กำลังดัดที่ขยายตัว (Y-Axis) ---
@@ -589,14 +594,19 @@ with col2:
                 st.latex(f"P_{{cy}} = \\frac{{\pi^2 \\times {EIy_val:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
                 
                 st.markdown("**4.3 Magnification Factor ($\delta_y$):**")
-                st.latex(f"\\delta_y = \\frac{{{Cm_y}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcy:,.2f}}}}} = {del_y:,.3f}")
-                
+                if kl_ry > 22:
+                    st.latex(r"\delta_y = \frac{C_{my}}{1 - \frac{P_u}{0.75 P_{cy}}} \ge 1.0")
+                    st.latex(f"\\delta_y = \\frac{{{Cm_y}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcy:,.2f}}}}} = {del_y:,.3f}")
+                else:
+                    st.write(f"Slenderness ignored (kl/r = {kl_ry:.2f} ≤ 22)")
+                    st.latex(r"\delta_y = 1.0")
+
                 st.markdown("**4.4 Final Magnified Moment ($M_{cy}$):**")
-                st.latex(f"M_{{cy}} = {del_y:,.3f} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
+                st.latex(f"M_{{cy}} = \\delta_y \\times M_{{uy,dsgn}} = {Mcy:,.2f} \\text{{ ton-m}}")
             else:
                 st.markdown("**Sway Frame Design:**")
                 st.latex(r"M_{cy} = \delta_{sy} M_{uy,dsgn}")
-                st.latex(f"M_{{cy}} = {delta_sy} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
+                st.latex(f"M_{{cy}} = {delta_sy:.2f} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
             st.caption("💻 *Code Vars: `Ise_y`, `Pcy`, `del_y`, `Mcy`*")
 
         # --- ส่วนที่ 5: ตรวจสอบแรงดัดสองแกน ---
@@ -611,7 +621,7 @@ with col2:
             
             if phi_Mnox > 0 and phi_Mnoy > 0:
                 st.markdown("**แทนค่าการคำนวณ:**")
-                # แก้ไขตัวหนังสือ Ratio ใน latex ให้เป็นข้อความธรรมดา
+                # แสดงค่า Ratio โดยใช้ \text{} เพื่อให้ตัวหนังสือไม่อ่านเป็นตัวแปรคณิตศาสตร์
                 st.latex(f"\\text{{Ratio}} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha}}} = {demand_ratio:,.3f}")
                 st.caption(f"💻 *Code Vars: `alpha` (={alpha}), `demand_ratio`, `phi_Mnox`, `phi_Mnoy`*")
             else:
