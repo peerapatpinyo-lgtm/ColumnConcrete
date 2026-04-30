@@ -286,6 +286,8 @@ except:
     phi_Mnox = 0
     phi_Mnoy = 0
     alpha = 1.5
+    
+actual_space, min_req_space, space_ok = engine.check_clear_spacing(nx, ny)
 
 with col2:
     st.markdown("### 📋 Executive Biaxial Summary")
