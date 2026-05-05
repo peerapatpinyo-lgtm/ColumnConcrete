@@ -406,67 +406,107 @@ with col2:
             st.info("⚠️ ไม่สามารถจำลอง 3D Surface ได้ เนื่องจากแรงแนวแกน (Pu) เกินขีดจำกัดหน้าตัด")
 
     with tab2:
-        # --- คำนวณเส้นอ้างอิง 1% และ 8% เพื่อใช้เป็นขอบเขต (Optimal Range) ---
-        # สร้าง Engine ชั่วคราวเพื่อหา P-M Curve ที่ 1% และ 8%
-        # โดยใช้เหล็กเสริมแบบกระจายรอบด้าน (4-Faces) เป็นมาตรฐานในการเปรียบเทียบ
+        st.markdown("### 📊 P-M Interaction Diagram & Design Boundaries")
+        st.markdown("Evaluate the column's capacity against the applied demands. The shaded area represents the ACI code-compliant reinforcement limits (**1% to 8%**).")
+        st.markdown("---")
+
+        # --- Calculate Reference Curves (1% and 8% Limits) ---
         def get_ref_curve(target_rho):
             target_as = target_rho * engine.Ag
-            # ประมาณการจำนวนเหล็กเพื่อให้ได้ Rho ที่ต้องการ (ใช้เหล็ก DB20 เป็นตัวอ้างอิง)
+            # Estimate number of DB20 bars needed to achieve the target Rho
             ref_n_bars = max(4, int(target_as / 3.14)) 
+            
             if shape == "Rectangular":
-                # กระจายเหล็กแบบ Uniform ง่ายๆ เพื่อทำเส้น Guide
+                # Distribute bars uniformly for the reference boundary
                 ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
                 ref_ny = max(2, int(ref_n_bars / 2) - ref_nx + 2)
                 ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
             else:
                 ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
             
-            # คำนวณ P-M เฉพาะแกน X เพื่อใช้เป็นตัวแทนขอบเขต
+            # Solve P-M for X-axis to use as the boundary proxy
             ref_df, _ = ref_engine.solve_pm(axis='X')
             return ref_df
 
-        with st.spinner("Calculating optimal range boundaries..."):
+        with st.spinner("Generating optimal range boundaries..."):
             df_1pct = get_ref_curve(0.01)
             df_8pct = get_ref_curve(0.08)
 
-        # --- สร้างกราฟ Plotly ---
+        # --- Create High-Quality Plotly Chart ---
         fig_pm = go.Figure()
         
-        # 1. เส้นขอบเขต 1% (Lower Bound - Economy)
+        # 1. Lower Bound (1% Reinforcement)
         fig_pm.add_trace(go.Scatter(
             x=df_1pct['phiMn'], y=df_1pct['phiPn'],
-            name="Minimum Limit (ρ=1%)",
-            line=dict(color='rgba(0,0,0,0.3)', width=2, dash='dash'),
-            fill=None
+            name="Min Limit (ρ = 1%)",
+            mode='lines',
+            line=dict(color='rgba(150, 150, 150, 0.8)', width=1.5, dash='dash'),
+            hoverinfo='skip'
         ))
         
-        # 2. เส้นขอบเขต 8% (Upper Bound - Practical Limit)
+        # 2. Upper Bound (8% Reinforcement) with Shading
         fig_pm.add_trace(go.Scatter(
             x=df_8pct['phiMn'], y=df_8pct['phiPn'],
-            name="Maximum Limit (ρ=8%)",
-            line=dict(color='rgba(255,0,0,0.2)', width=2, dash='dash'),
-            fill='tonexty', # ระบายสีพื้นที่ระหว่าง 1% และ 8%
-            fillcolor='rgba(0, 255, 0, 0.05)' # สีเขียวจางๆ แสดงโซนที่เหมาะสม
+            name="Max Limit (ρ = 8%)",
+            mode='lines',
+            line=dict(color='rgba(255, 99, 71, 0.6)', width=1.5, dash='dash'),
+            fill='tonexty', # Fills the area between the 1% and 8% curves
+            fillcolor='rgba(46, 204, 113, 0.1)', # Very light, sleek green
+            hoverinfo='skip'
         ))
 
-        # 3. เส้น Capacity จริงของหน้าตัดที่ออกแบบ
-        fig_pm.add_trace(go.Scatter(x=df_x['phiMn'], y=df_x['phiPn'], name="X-axis Capacity (Actual)", line=dict(color='navy', width=3)))
-        fig_pm.add_trace(go.Scatter(x=df_y['phiMn'], y=df_y['phiPn'], name="Y-axis Capacity (Actual)", line=dict(color='forestgreen', width=3, dash='dot')))
+        # 3. Actual Designed Capacity (X-Axis)
+        fig_pm.add_trace(go.Scatter(
+            x=df_x['phiMn'], y=df_x['phiPn'], 
+            name=f"Capacity X-Axis (ρ = {engine.rho*100:.2f}%)", 
+            mode='lines',
+            line=dict(color='#2C3E50', width=3)
+        ))
         
-        # 4. จุดสถานะ Load ปัจจุบัน
-        fig_pm.add_trace(go.Scatter(x=[Mcx, Mcy], y=[Pu, Pu], mode='markers', name="Design Demands", 
-                                   marker=dict(color=['blue', 'green'], size=12, symbol='x')))
+        # 4. Actual Designed Capacity (Y-Axis)
+        fig_pm.add_trace(go.Scatter(
+            x=df_y['phiMn'], y=df_y['phiPn'], 
+            name=f"Capacity Y-Axis (ρ = {engine.rho*100:.2f}%)", 
+            mode='lines',
+            line=dict(color='#2980B9', width=3, dash='dot')
+        ))
+        
+        # 5. Applied Design Demands (Factored Loads)
+        fig_pm.add_trace(go.Scatter(
+            x=[Mcx, Mcy], y=[Pu, Pu], 
+            mode='markers', 
+            name="Factored Demands (Pu, Mc)", 
+            marker=dict(color=['#E74C3C', '#E67E22'], size=12, symbol='diamond', line=dict(width=1, color='white')),
+            hovertemplate="Moment: %{x:.2f} t-m<br>Axial: %{y:.2f} ton<extra></extra>"
+        ))
 
+        # --- Chart Aesthetics & Layout ---
         fig_pm.update_layout(
-            title="P-M Interaction Diagram with ρ Boundaries",
-            xaxis_title="Design Moment, φMn (ton-m)",
-            yaxis_title="Design Axial Strength, φPn (ton)",
+            xaxis_title="<b>Design Moment, φMn (ton-m)</b>",
+            yaxis_title="<b>Design Axial Strength, φPn (ton)</b>",
             plot_bgcolor='white',
-            height=600,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            paper_bgcolor='white',
+            height=650,
+            legend=dict(
+                orientation="h", 
+                yanchor="bottom", y=1.02, 
+                xanchor="center", x=0.5,
+                bgcolor='rgba(255, 255, 255, 0.8)',
+                bordercolor='rgba(0, 0, 0, 0.1)',
+                borderwidth=1
+            ),
+            margin=dict(l=20, r=20, t=60, b=20),
+            hovermode="closest"
         )
+        
+        # Add clean gridlines
+        fig_pm.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(200, 200, 200, 0.3)', zeroline=True, zerolinewidth=1.5, zerolinecolor='rgba(0,0,0,0.2)')
+        fig_pm.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(200, 200, 200, 0.3)', zeroline=True, zerolinewidth=1.5, zerolinecolor='rgba(0,0,0,0.2)')
+
         st.plotly_chart(fig_pm, use_container_width=True)
-        st.caption("💡 พื้นที่สีเขียวจางๆ แสดงช่วงการออกแบบที่เหมาะสม (Optimal Range: ρ = 1% - 8%)")
+        
+        # --- Contextual Info Box ---
+        st.info("💡 **Design Tip:** The light green shaded area represents the optimal ACI code limit. If your solid capacity curves fall below the gray dashed line, your section might be **oversized** (ρ < 1%). If they fall outside the red dashed line, the section is **too heavily reinforced** (ρ > 8%), which may cause concrete honeycombing.")
 
     with tab3:
         fig_sec = go.Figure()
