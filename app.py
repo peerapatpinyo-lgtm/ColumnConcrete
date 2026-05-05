@@ -750,31 +750,31 @@ with col2:
         )
         
     with tab3:
-        st.markdown("### 📐 Section Geometry & Reinforcement Details")
-        st.markdown("Visual representation of the reinforced concrete section, including principal axes and individual rebar coordinates.")
+        st.markdown("### 📐 Advanced Section Detailing")
+        st.markdown("Interactive CAD-style representation of the section geometry, confinement boundary, and precise rebar positioning.")
         
         # --- คำนวณพื้นที่เหล็กเสริมรวม (Ast) เพื่อป้องกัน Error ---
         total_ast = engine.Ag * engine.rho
 
-        # --- แถบสรุปข้อมูลหน้าตัด (Quick Metrics) ---
+        # --- แถบสรุปข้อมูลหน้าตัด (Modern Dashboard) ---
         st.markdown(
             f"""
-            <div style="display: flex; justify-content: space-between; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; padding: 20px; background: linear-gradient(to right, #ffffff, #f8f9fa); border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 25px;">
                 <div style="text-align: center; width: 25%;">
-                    <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Shape / Size</p>
-                    <h4 style="margin: 0; color: #2c3e50;">{shape} ({b}x{h if shape == 'Rectangular' else b})</h4>
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase;">Section Size</p>
+                    <h3 style="margin: 5px 0 0 0; color: #0f172a;">{shape} {b}x{h if shape == 'Rectangular' else b}</h3>
                 </div>
-                <div style="text-align: center; border-left: 1px solid #dee2e6; width: 25%;">
-                    <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Gross Area (A_g)</p>
-                    <h4 style="margin: 0; color: #2980b9;">{engine.Ag:,.1f} cm²</h4>
+                <div style="text-align: center; border-left: 2px dashed #e2e8f0; width: 25%;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase;">Gross Area (Ag)</p>
+                    <h3 style="margin: 5px 0 0 0; color: #0284c7;">{engine.Ag:,.1f} <span style="font-size: 16px;">cm²</span></h3>
                 </div>
-                <div style="text-align: center; border-left: 1px solid #dee2e6; width: 25%;">
-                    <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Total Steel Area (A_st)</p>
-                    <h4 style="margin: 0; color: #c0392b;">{total_ast:,.2f} cm²</h4>
+                <div style="text-align: center; border-left: 2px dashed #e2e8f0; width: 25%;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase;">Steel Area (Ast)</p>
+                    <h3 style="margin: 5px 0 0 0; color: #b91c1c;">{total_ast:,.2f} <span style="font-size: 16px;">cm²</span></h3>
                 </div>
-                <div style="text-align: center; border-left: 1px solid #dee2e6; width: 25%;">
-                    <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Steel Ratio (ρ)</p>
-                    <h4 style="margin: 0; color: {'#27ae60' if 0.01 <= engine.rho <= 0.08 else '#e74c3c'};">{engine.rho*100:.2f}%</h4>
+                <div style="text-align: center; border-left: 2px dashed #e2e8f0; width: 25%;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase;">Steel Ratio (ρ)</p>
+                    <h3 style="margin: 5px 0 0 0; color: {'#15803d' if 0.01 <= engine.rho <= 0.08 else '#dc2626'};">{engine.rho*100:.2f}%</h3>
                 </div>
             </div>
             """, unsafe_allow_html=True
@@ -782,69 +782,82 @@ with col2:
 
         fig_sec = go.Figure()
 
-        # คำนวณระยะขอบเขตของกราฟเพื่อจัดหน้าจอให้สวยงาม
+        # คำนวณระยะขอบเขตและออฟเซ็ตสำหรับวาดเส้นบอกระยะ (Dimensions)
         max_dim = max(b, h) if shape == "Rectangular" else b
-        axis_limit = (max_dim / 2) * 1.4  # เผื่อพื้นที่รอบๆ 40%
+        axis_limit = (max_dim / 2) * 1.5  # ขยายขอบเขตกราฟออก 50% ให้มีที่ว่างวาด Dimension
+        cv = 4.0 # สมมติระยะหุ้มคอนกรีต (Covering) มาตรฐานที่ 4 ซม. สำหรับวาดภาพ
 
-        # 1. วาดเส้นแกนหลัก (Principal Axes - Centerlines)
-        fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(0,0,0,0.3)', width=1.5, dash='dashdot'), name='X-Axis', hoverinfo='skip'))
-        fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(0,0,0,0.3)', width=1.5, dash='dashdot'), name='Y-Axis', hoverinfo='skip'))
+        # 1. วาดเส้นแกนหลัก (Centerlines)
+        fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='X-Axis', hoverinfo='skip'))
+        fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='Y-Axis', hoverinfo='skip'))
 
-        # 2. วาดขอบเขตคอนกรีต (Concrete Section) พร้อมแรเงา
+        # 2. วาดคอนกรีตและเส้นเหล็กปลอก (Concrete & Stirrup)
         if shape == "Rectangular":
+            # Concrete
             x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
             y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
-            sec_label = f"Concrete ({b}x{h} cm)"
+            # Stirrup (Confined Core)
+            x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
+            y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
         else:
             theta = np.linspace(0, 2*np.pi, 100)
             x_conc = (b/2)*np.cos(theta)
             y_conc = (b/2)*np.sin(theta)
-            sec_label = f"Concrete (Ø{b} cm)"
+            x_st = ((b/2)-cv)*np.cos(theta)
+            y_st = ((b/2)-cv)*np.sin(theta)
 
+        # ลงสีคอนกรีต
         fig_sec.add_trace(go.Scatter(
-            x=x_conc, y=y_conc, 
-            mode='lines', 
-            line=dict(color='#34495e', width=3), 
-            fill='toself', fillcolor='rgba(149, 165, 166, 0.15)', # สีเทาอ่อนโปร่งแสง
-            name=sec_label,
-            hoverinfo='skip'
+            x=x_conc, y=y_conc, mode='lines', 
+            line=dict(color='#34495e', width=2.5), fill='toself', fillcolor='rgba(223, 230, 233, 0.4)', 
+            name='Concrete Section', hoverinfo='skip'
+        ))
+        
+        # ลงเส้นเหล็กปลอก (ประ)
+        fig_sec.add_trace(go.Scatter(
+            x=x_st, y=y_st, mode='lines', 
+            line=dict(color='#7f8c8d', width=1.5, dash='dot'), 
+            name=f'Stirrup/Tie (Cover ~{cv}cm)', hoverinfo='skip'
         ))
 
-        # 3. วาดเหล็กเสริม (Rebars)
+        # 3. วาดเส้นบอกระยะ (Auto-Dimensions) สไตล์ CAD
+        dim_offset = 15 # ระยะห่างของเส้นบอกระยะจากขอบคอนกรีต
+        
+        if shape == "Rectangular":
+            # Dimension ความกว้าง (b) - ด้านล่าง
+            y_dim_b = -h/2 - dim_offset
+            fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), name='Dim: Width', showlegend=False, hoverinfo='skip'))
+            fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>{b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+            
+            # Dimension ความลึก (h) - ด้านซ้าย
+            x_dim_h = -b/2 - dim_offset
+            fig_sec.add_trace(go.Scatter(x=[x_dim_h, x_dim_h], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), name='Dim: Depth', showlegend=False, hoverinfo='skip'))
+            fig_sec.add_annotation(x=x_dim_h, y=0, text=f"<b>{h} cm</b>", showarrow=False, textangle=-90, xshift=-15, font=dict(color="#2c3e50"))
+        else:
+            # Dimension เส้นผ่านศูนย์กลางกลม (Diameter) - ด้านล่าง
+            y_dim_b = -b/2 - dim_offset
+            fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
+            fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>Ø {b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+
+        # 4. วาดเหล็กเสริม (Rebars) พร้อม Indexing
         bar_x = [bar['x'] for bar in engine.bars]
         bar_y = [bar['y'] for bar in engine.bars]
+        hover_texts = [f"<b>Bar No. {i+1}</b><br>X: {x:.2f} cm<br>Y: {y:.2f} cm" for i, (x, y) in enumerate(zip(bar_x, bar_y))]
+        
         fig_sec.add_trace(go.Scatter(
-            x=bar_x, y=bar_y, 
-            mode='markers', 
-            marker=dict(
-                color='#c0392b', # สีแดงเข้ม
-                size=14, 
-                line=dict(color='white', width=2), # ขอบสีขาวให้ดูมีมิติ
-                symbol='circle'
-            ), 
-            name=f'Rebars ({len(engine.bars)} bars)',
-            hovertemplate="<b>Rebar Pos</b><br>X: %{x:.2f} cm<br>Y: %{y:.2f} cm<extra></extra>"
+            x=bar_x, y=bar_y, mode='markers', 
+            marker=dict(color='#c0392b', size=14, line=dict(color='#ffffff', width=2.5), symbol='circle'), 
+            name=f'Longitudinal Bars ({len(engine.bars)} total)',
+            text=hover_texts,
+            hoverinfo="text"
         ))
 
-        # 4. ตกแต่ง Layout ให้เหมือนแบบแปลนวิศวกรรม (Blueprint Style)
+        # 5. ตกแต่ง Layout ขั้นสุด (Minimalist CAD Style)
         fig_sec.update_layout(
-            xaxis=dict(
-                title="<b>Width / X-Axis (cm)</b>", 
-                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', 
-                zeroline=False, range=[-axis_limit, axis_limit]
-            ),
-            yaxis=dict(
-                title="<b>Depth / Y-Axis (cm)</b>", 
-                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', 
-                zeroline=False, range=[-axis_limit, axis_limit],
-                scaleanchor="x", scaleratio=1 # บังคับสัดส่วน 1:1 เสมอ
-            ),
-            plot_bgcolor='white', paper_bgcolor='white', height=600,
-            hovermode='closest',
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-                bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1
-            ),
+            xaxis=dict(title="<b>Width / X-Axis (cm)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', zeroline=False, range=[-axis_limit, axis_limit]),
+            yaxis=dict(title="<b>Depth / Y-Axis (cm)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', zeroline=False, range=[-axis_limit, axis_limit], scaleanchor="x", scaleratio=1),
+            plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', height=650, hovermode='closest',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor='rgba(255,255,255,0.9)', font=dict(size=12)),
             margin=dict(l=40, r=40, t=60, b=40)
         )
 
