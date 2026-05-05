@@ -753,6 +753,9 @@ with col2:
         st.markdown("### 📐 Section Geometry & Reinforcement Details")
         st.markdown("Visual representation of the reinforced concrete section, including principal axes and individual rebar coordinates.")
         
+        # --- คำนวณพื้นที่เหล็กเสริมรวม (Ast) เพื่อป้องกัน Error ---
+        total_ast = engine.Ag * engine.rho
+
         # --- แถบสรุปข้อมูลหน้าตัด (Quick Metrics) ---
         st.markdown(
             f"""
@@ -767,7 +770,7 @@ with col2:
                 </div>
                 <div style="text-align: center; border-left: 1px solid #dee2e6; width: 25%;">
                     <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Total Steel Area (A_st)</p>
-                    <h4 style="margin: 0; color: #c0392b;">{engine.Ast:,.2f} cm²</h4>
+                    <h4 style="margin: 0; color: #c0392b;">{total_ast:,.2f} cm²</h4>
                 </div>
                 <div style="text-align: center; border-left: 1px solid #dee2e6; width: 25%;">
                     <p style="margin: 0; color: #7f8c8d; font-size: 14px;">Steel Ratio (ρ)</p>
