@@ -392,6 +392,10 @@ with col2:
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 3D/Biaxial Interaction", "📊 P-M Curves", "📐 Section", "📖 Parameter Guide", "📝 Calculation Report"])
 
     with tab1:
+        st.markdown("### 🌐 3D Biaxial Interaction & PCA Contour")
+        st.markdown("Interactive 3D Failure Surface and 2D Cross-Section Slice at the specific factored axial load ($P_u$).")
+        
+        # --- ส่วนที่ 1: กราฟ 3D Surface (จากโค้ดเดิมของคุณ) ---
         if not error_status:
             try:
                 mx_m, my_m, p_m = engine.generate_3d_surface(df_x, df_y, alpha)
@@ -401,9 +405,123 @@ with col2:
                 fig_3d.update_layout(scene=dict(xaxis_title='Mx (t-m)', yaxis_title='My (t-m)', zaxis_title='Axial P (ton)', aspectmode='manual', aspectratio=dict(x=1, y=1, z=1.2)), margin=dict(l=0, r=0, b=0, t=0), height=550)
                 st.plotly_chart(fig_3d, use_container_width=True)
             except Exception as e:
-                st.info("ℹ️ กำลังรอคำนวณข้อมูล 3D Surface...")
+                st.info("ℹ️ Calculating 3D Surface data...")
         else:
-            st.info("⚠️ ไม่สามารถจำลอง 3D Surface ได้ เนื่องจากแรงแนวแกน (Pu) เกินขีดจำกัดหน้าตัด")
+            st.error("⚠️ Cannot generate 3D Surface because the applied axial load ($P_u$) exceeds the section's ultimate capacity.")
+
+        st.markdown("---")
+
+        # --- ส่วนที่ 2: Biaxial PCA Contour & Dashboard (อัปเกรดใหม่) ---
+        st.markdown(f"#### 🎯 2D PCA Contour Slice at $P_u$ = {Pu:,.2f} ton")
+        
+        col1, col2, col3 = st.columns([1, 1, 1.5])
+        
+        with col1:
+            st.metric(label="Demand Ratio", value=f"{demand_ratio:.3f}", delta="SAFE" if is_safe else "UNSAFE", delta_color="inverse")
+            st.caption(f"Limit: $\\le 1.0$")
+            
+        with col2:
+            st.metric(label="Contour Exponent (α)", value=f"{alpha:.3f}")
+            st.caption("PCA Parameter")
+
+        with col3:
+            # Gauge Chart
+            fig_gauge = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = demand_ratio,
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                title = {'text': "Capacity Utilization", 'font': {'size': 14}},
+                gauge = {
+                    'axis': {'range': [0, 1.5], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                    'bar': {'color': "#2c3e50"},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'steps': [
+                        {'range': [0, 0.8], 'color': 'rgba(46, 204, 113, 0.3)'},   
+                        {'range': [0.8, 1.0], 'color': 'rgba(241, 196, 15, 0.3)'}, 
+                        {'range': [1.0, 1.5], 'color': 'rgba(231, 76, 60, 0.3)'}   
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 1.0
+                    }
+                }
+            ))
+            fig_gauge.update_layout(height=180, margin=dict(l=20, r=20, t=30, b=10))
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+        if phi_Mnox > 0 and phi_Mnoy > 0:
+            mx_vals = np.linspace(0, phi_Mnox, 100)
+            my_vals = []
+            for mx in mx_vals:
+                ratio_x = (mx / phi_Mnox) ** alpha
+                if ratio_x > 1.0: ratio_x = 1.0
+                my = phi_Mnoy * ((1 - ratio_x) ** (1 / alpha))
+                my_vals.append(my)
+
+            fig_contour = go.Figure()
+
+            # Capacity Boundary
+            fig_contour.add_trace(go.Scatter(
+                x=mx_vals, y=my_vals,
+                mode='lines',
+                name=f"Capacity Boundary (α={alpha:.2f})",
+                line=dict(color='#8e44ad', width=3),
+                fill='tozeroy',
+                fillcolor='rgba(142, 68, 173, 0.1)',
+                hovertemplate="<b>Boundary</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"
+            ))
+
+            # Uniaxial Capacities
+            fig_contour.add_trace(go.Scatter(
+                x=[phi_Mnox, 0], y=[0, phi_Mnoy],
+                mode='markers+text',
+                name="Uniaxial Capacities",
+                marker=dict(color='#2c3e50', size=8, symbol='square'),
+                text=[f"φMnox = {phi_Mnox:.2f}", f"φMnoy = {phi_Mnoy:.2f}"],
+                textposition=["top right", "top right"]
+            ))
+
+            # Design Demand
+            marker_color = '#2ecc71' if is_safe else '#e74c3c'
+            fig_contour.add_trace(go.Scatter(
+                x=[Mcx], y=[Mcy],
+                mode='markers+text',
+                name="Factored Demand",
+                marker=dict(color=marker_color, size=14, symbol='cross', line=dict(width=2, color='white')),
+                text=["Design Point"],
+                textposition="top right",
+                hovertemplate="<b>Demand</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"
+            ))
+
+            # Vector Line
+            fig_contour.add_shape(
+                type="line", x0=0, y0=0, x1=Mcx, y1=Mcy,
+                line=dict(color=marker_color, width=2, dash="dashdot")
+            )
+
+            fig_contour.update_layout(
+                xaxis=dict(
+                    title="<b>Magnified Moment X-Axis, Mcx (ton-m)</b>",
+                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
+                    range=[0, max(phi_Mnox, Mcx) * 1.2]
+                ),
+                yaxis=dict(
+                    title="<b>Magnified Moment Y-Axis, Mcy (ton-m)</b>",
+                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
+                    range=[0, max(phi_Mnoy, Mcy) * 1.2]
+                ),
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                height=500,
+                legend=dict(x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.8)', bordercolor='gray', borderwidth=1),
+                margin=dict(l=40, r=40, t=20, b=40)
+            )
+            st.plotly_chart(fig_contour, use_container_width=True)
 
     with tab2:
         st.markdown("### 📊 Advanced P-M Interaction Diagram")
