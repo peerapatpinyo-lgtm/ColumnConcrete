@@ -395,30 +395,65 @@ with col2:
         st.markdown("### 🌐 3D Biaxial Interaction & PCA Contour")
         st.markdown("Interactive 3D Failure Surface and 2D Cross-Section Slice at the specific factored axial load ($P_u$).")
         
-        # --- ส่วนที่ 1: กราฟ 3D Surface (จากโค้ดเดิมของคุณ) ---
+        # --- ส่วนที่ 1: กราฟ 3D Surface (Premium Lighting & Shadow) ---
         if not error_status:
             try:
                 mx_m, my_m, p_m = engine.generate_3d_surface(df_x, df_y, alpha)
                 fig_3d = go.Figure()
-                fig_3d.add_trace(go.Surface(x=mx_m, y=my_m, z=p_m, colorscale='Viridis', opacity=0.7, name='Capacity Surface', showscale=False))
-                fig_3d.add_trace(go.Scatter3d(x=[Mcx], y=[Mcy], z=[Pu], mode='markers', marker=dict(size=8, color='red', symbol='diamond'), name='Applied Demand'))
-                fig_3d.update_layout(scene=dict(xaxis_title='Mx (t-m)', yaxis_title='My (t-m)', zaxis_title='Axial P (ton)', aspectmode='manual', aspectratio=dict(x=1, y=1, z=1.2)), margin=dict(l=0, r=0, b=0, t=0), height=550)
+                
+                # 3D Capacity Surface
+                fig_3d.add_trace(go.Surface(
+                    x=mx_m, y=my_m, z=p_m, 
+                    colorscale='Viridis', opacity=0.8, 
+                    name='Capacity Surface', showscale=False,
+                    lighting=dict(ambient=0.6, diffuse=0.8, roughness=0.5, specular=0.5, fresnel=0.2)
+                ))
+                
+                # Design Point
+                marker_color = '#2ecc71' if is_safe else '#e74c3c'
+                fig_3d.add_trace(go.Scatter3d(
+                    x=[Mcx], y=[Mcy], z=[Pu], 
+                    mode='markers+text', 
+                    marker=dict(size=8, color=marker_color, symbol='diamond', line=dict(width=2, color='white')), 
+                    name='Factored Demand',
+                    text=["Demand (Mux, Muy, Pu)"], textposition="top center"
+                ))
+                
+                # Drop Line to XY Plane (ช่วยให้ดูพิกัดง่ายขึ้น)
+                fig_3d.add_trace(go.Scatter3d(
+                    x=[Mcx, Mcx], y=[Mcy, Mcy], z=[0, Pu],
+                    mode='lines', line=dict(color=marker_color, width=3, dash='dot'), showlegend=False
+                ))
+
+                fig_3d.update_layout(
+                    scene=dict(
+                        xaxis_title='<b>Mx (t-m)</b>', 
+                        yaxis_title='<b>My (t-m)</b>', 
+                        zaxis_title='<b>Axial P (ton)</b>',
+                        xaxis=dict(showbackground=True, backgroundcolor="rgb(240, 240, 240)", gridcolor="white"),
+                        yaxis=dict(showbackground=True, backgroundcolor="rgb(240, 240, 240)", gridcolor="white"),
+                        zaxis=dict(showbackground=True, backgroundcolor="rgb(230, 230, 230)", gridcolor="white"),
+                        aspectmode='manual', aspectratio=dict(x=1, y=1, z=1.2),
+                        camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
+                    ), 
+                    margin=dict(l=0, r=0, b=0, t=0), height=600
+                )
                 st.plotly_chart(fig_3d, use_container_width=True)
             except Exception as e:
                 st.info("ℹ️ Calculating 3D Surface data...")
         else:
-            st.error("⚠️ Cannot generate 3D Surface because the applied axial load ($P_u$) exceeds the section's ultimate capacity.")
+            st.error("⚠️ Cannot generate 3D Surface because the applied axial load ($P_u$) far exceeds the section's ultimate capacity.")
 
         st.markdown("---")
 
-        # --- ส่วนที่ 2: Biaxial PCA Contour & Dashboard (อัปเกรดใหม่) ---
+        # --- ส่วนที่ 2: Biaxial PCA Contour & Dashboard ---
         st.markdown(f"#### 🎯 2D PCA Contour Slice at $P_u$ = {Pu:,.2f} ton")
         
         col1, col2, col3 = st.columns([1, 1, 1.5])
         
         with col1:
             st.metric(label="Demand Ratio", value=f"{demand_ratio:.3f}", delta="SAFE" if is_safe else "UNSAFE", delta_color="inverse")
-            st.caption(f"Limit: $\\le 1.0$")
+            st.caption("Limit: $\\le 1.0$")
             
         with col2:
             st.metric(label="Contour Exponent (α)", value=f"{alpha:.3f}")
@@ -442,16 +477,45 @@ with col2:
                         {'range': [0.8, 1.0], 'color': 'rgba(241, 196, 15, 0.3)'}, 
                         {'range': [1.0, 1.5], 'color': 'rgba(231, 76, 60, 0.3)'}   
                     ],
-                    'threshold': {
-                        'line': {'color': "red", 'width': 4},
-                        'thickness': 0.75,
-                        'value': 1.0
-                    }
+                    'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 1.0}
                 }
             ))
             fig_gauge.update_layout(height=180, margin=dict(l=20, r=20, t=30, b=10))
             st.plotly_chart(fig_gauge, use_container_width=True)
 
+        # --- ส่วนที่ 3: SMART FAILURE DIAGNOSIS & RECOMMENDATIONS ---
+        if not is_safe:
+            st.markdown("---")
+            st.error("### ❌ Design Failed: Section Capacity Exceeded")
+            
+            recommendations = []
+            max_Pn = df_x['phiPn'].max() # หาค่ากำลังรับแรงอัดสูงสุดของหน้าตัด
+
+            # วิเคราะห์สาเหตุและให้คำแนะนำ
+            if Pu > max_Pn:
+                st.warning(f"**Diagnosis:** Pure Axial Failure. The applied axial load ($P_u = {Pu:.2f}$ ton) exceeds the maximum pure compressive strength of the column ($\phi P_{{n,max}} = {max_Pn:.2f}$ ton).")
+                recommendations.append(f"**Increase Section Size:** Enlarge the column dimensions (current: {b}x{h} cm) to provide more concrete area ($A_g$).")
+                recommendations.append(f"**Increase Concrete Strength:** Upgrade $f'_c$ (current: {fc} ksc) to higher strength concrete (e.g., 350 or 400 ksc).")
+            else:
+                st.warning(f"**Diagnosis:** Biaxial Bending Failure. The interaction of magnified moments and axial load results in a Demand Ratio of {demand_ratio:.3f} (> 1.0).")
+                
+                # ตรวจสอบว่า ρ ยังเพิ่มได้อีกไหม
+                if engine.rho < 0.04:
+                    recommendations.append(f"**Increase Reinforcement:** The current reinforcement ratio is relatively low (ρ = {engine.rho*100:.2f}%). Try increasing the number of bars or using larger bar sizes (e.g., DB25, DB28).")
+                
+                # ตรวจสอบ Slenderness Effect (Magnified Moment มากเกินไปไหม)
+                if Mcx > Mux * 1.5 or Mcy > Muy * 1.5:
+                    recommendations.append("**Check Slenderness Effects:** The moments are heavily magnified due to the column's slenderness ($\delta > 1.5$). Consider increasing the column dimensions to increase stiffness ($EI$), or providing intermediate bracing to reduce unbraced length ($L_u$).")
+                
+                recommendations.append(f"**Increase Section Dimensions:** Slightly increasing the depth or width will significantly boost the bending capacity ($I_g$).")
+
+            # แสดงผลคำแนะนำเป็น Bullet
+            st.markdown("#### 💡 Engineering Recommendations:")
+            for rec in recommendations:
+                st.markdown(f"- {rec}")
+            st.markdown("---")
+
+        # --- วาดกราฟ PCA Contour ---
         if phi_Mnox > 0 and phi_Mnoy > 0:
             mx_vals = np.linspace(0, phi_Mnox, 100)
             my_vals = []
@@ -464,63 +528,19 @@ with col2:
             fig_contour = go.Figure()
 
             # Capacity Boundary
-            fig_contour.add_trace(go.Scatter(
-                x=mx_vals, y=my_vals,
-                mode='lines',
-                name=f"Capacity Boundary (α={alpha:.2f})",
-                line=dict(color='#8e44ad', width=3),
-                fill='tozeroy',
-                fillcolor='rgba(142, 68, 173, 0.1)',
-                hovertemplate="<b>Boundary</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"
-            ))
+            fig_contour.add_trace(go.Scatter(x=mx_vals, y=my_vals, mode='lines', name=f"Capacity Boundary (α={alpha:.2f})", line=dict(color='#8e44ad', width=3), fill='tozeroy', fillcolor='rgba(142, 68, 173, 0.1)', hovertemplate="<b>Boundary</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"))
 
             # Uniaxial Capacities
-            fig_contour.add_trace(go.Scatter(
-                x=[phi_Mnox, 0], y=[0, phi_Mnoy],
-                mode='markers+text',
-                name="Uniaxial Capacities",
-                marker=dict(color='#2c3e50', size=8, symbol='square'),
-                text=[f"φMnox = {phi_Mnox:.2f}", f"φMnoy = {phi_Mnoy:.2f}"],
-                textposition=["top right", "top right"]
-            ))
+            fig_contour.add_trace(go.Scatter(x=[phi_Mnox, 0], y=[0, phi_Mnoy], mode='markers+text', name="Uniaxial Capacities", marker=dict(color='#2c3e50', size=8, symbol='square'), text=[f"φMnox = {phi_Mnox:.2f}", f"φMnoy = {phi_Mnoy:.2f}"], textposition=["top right", "top right"]))
 
             # Design Demand
             marker_color = '#2ecc71' if is_safe else '#e74c3c'
-            fig_contour.add_trace(go.Scatter(
-                x=[Mcx], y=[Mcy],
-                mode='markers+text',
-                name="Factored Demand",
-                marker=dict(color=marker_color, size=14, symbol='cross', line=dict(width=2, color='white')),
-                text=["Design Point"],
-                textposition="top right",
-                hovertemplate="<b>Demand</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"
-            ))
+            fig_contour.add_trace(go.Scatter(x=[Mcx], y=[Mcy], mode='markers+text', name="Factored Demand", marker=dict(color=marker_color, size=14, symbol='cross', line=dict(width=2, color='white')), text=["Design Point"], textposition="top right", hovertemplate="<b>Demand</b><br>Mcx: %{x:.2f} t-m<br>Mcy: %{y:.2f} t-m<extra></extra>"))
 
             # Vector Line
-            fig_contour.add_shape(
-                type="line", x0=0, y0=0, x1=Mcx, y1=Mcy,
-                line=dict(color=marker_color, width=2, dash="dashdot")
-            )
+            fig_contour.add_shape(type="line", x0=0, y0=0, x1=Mcx, y1=Mcy, line=dict(color=marker_color, width=2, dash="dashdot"))
 
-            fig_contour.update_layout(
-                xaxis=dict(
-                    title="<b>Magnified Moment X-Axis, Mcx (ton-m)</b>",
-                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-                    range=[0, max(phi_Mnox, Mcx) * 1.2]
-                ),
-                yaxis=dict(
-                    title="<b>Magnified Moment Y-Axis, Mcy (ton-m)</b>",
-                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-                    range=[0, max(phi_Mnoy, Mcy) * 1.2]
-                ),
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                height=500,
-                legend=dict(x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.8)', bordercolor='gray', borderwidth=1),
-                margin=dict(l=40, r=40, t=20, b=40)
-            )
+            fig_contour.update_layout(xaxis=dict(title="<b>Magnified Moment X-Axis, Mcx (ton-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)', range=[0, max(phi_Mnox, Mcx) * 1.2]), yaxis=dict(title="<b>Magnified Moment Y-Axis, Mcy (ton-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)', range=[0, max(phi_Mnoy, Mcy) * 1.2]), plot_bgcolor='white', paper_bgcolor='white', height=500, legend=dict(x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.8)', bordercolor='gray', borderwidth=1), margin=dict(l=40, r=40, t=20, b=40))
             st.plotly_chart(fig_contour, use_container_width=True)
 
     with tab2:
