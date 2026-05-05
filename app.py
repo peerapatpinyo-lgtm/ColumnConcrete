@@ -751,8 +751,8 @@ with col2:
         
     with tab3:
         st.markdown("### 🏗️ Advanced Section Drafting & CAD Details")
-        st.markdown("Precision view of the reinforced concrete section. Use the controls to toggle visual layers. Hover over rebars for index and coordinates.")
-
+        st.markdown("Precision drafting view of the reinforced concrete section. Point-and-click layers, explicit rebar annotations, and a comprehensive rebar coordinate schedule are provided.")
+        
         # --- คำนวณพื้นที่เหล็กเสริมรวม (Ast) เพื่อป้องกัน Error ---
         total_ast = engine.Ag * engine.rho
 
@@ -781,74 +781,80 @@ with col2:
         )
 
         # --- LAYER CONTROLS EXPANDER (Premium Feature) ---
-        with st.expander("🛠️ Drawing Layer Controls", expanded=False):
+        with st.expander("🛠️ Drafting Layer Controls", expanded=True):
             col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
             show_dims = col_ctrl1.toggle("Dimensions (CAD Style)", value=True)
             show_ties = col_ctrl2.toggle("Stirrup/Tie Outline", value=True)
-            show_grid = col_ctrl3.toggle("Drafting Grid", value=False) # Turned off by default for clean look
+            show_labels = col_ctrl3.toggle("Rebar ID Labels", value=True)
+            
+            show_grid = col_ctrl1.toggle("Drafting Grid", value=False) # Turned off by default for clean look
 
-        # --- The CAD Drawing (Conditional Rendering) ---
+        # --- The CAD Drawing with Explicit Labels ---
         fig_sec = go.Figure()
 
         # Calculation (Existing context code)
         max_dim = max(b, h) if shape == "Rectangular" else b
-        axis_limit = (max_dim / 2) * 1.5
-        cv = 4.0 # Standard covering
+        axis_limit = (max_dim / 2) * 1.6 # เผื่อพื้นที่กว้างขึ้นรอบๆ
+        cv = 4.0 # สมมติระยะหุ้มคอนกรีตจริง (Covering) สำหรับวาดแนวเหล็กปลอก
 
         # Rebar Data
         bar_x = [bar['x'] for bar in engine.bars]
         bar_y = [bar['y'] for bar in engine.bars]
 
-        # 1. Concrete (Background/Fill)
+        # concrete Shading Layer (Toggled by code structure)
         if shape == "Rectangular":
+            # Concrete Body
             x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
             y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
-            sec_label = f"Concrete ({b}x{h} cm)"
+            # Stirrup Line (Confined core)
             x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
             y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
         else:
             theta = np.linspace(0, 2*np.pi, 100)
             x_conc = (b/2)*np.cos(theta)
             y_conc = (b/2)*np.sin(theta)
-            sec_label = f"Concrete (Ø{b} cm)"
+            # Stirrup Line
             x_st = ((b/2)-cv)*np.cos(theta)
             y_st = ((b/2)-cv)*np.sin(theta)
 
-        # Concrete Section Fill
+        # Draw Concrete and Stirrup Layer
         fig_sec.add_trace(go.Scatter(
             x=x_conc, y=y_conc, mode='lines', 
             line=dict(color='#34495e', width=3), fill='toself', fillcolor='rgba(223, 230, 233, 0.4)', 
             name='Concrete Section', hoverinfo='skip'
         ))
 
-        # 2. Stirrup/Tie Outline (Conditional)
+        # 1. วาดเส้นเหล็กปลอก (Conditional Layer)
         if show_ties:
             fig_sec.add_trace(go.Scatter(
                 x=x_st, y=y_st, mode='lines', 
                 line=dict(color='#95a5a6', width=1.5, dash='dot'), 
-                name=f'Stirrup/Tie (Cover ~{cv}cm)', hoverinfo='skip'
+                name=f'Stirrup/Tie Boundary (Cover={cv}cm)', hoverinfo='skip'
             ))
 
-        # 3. Principal Centerlines
+        # 2. วาดแกนหลัก Centerlines
         fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='X-Axis Centroid', hoverinfo='skip'))
         fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='Y-Axis Centroid', hoverinfo='skip'))
 
-        # 4. Dimensions (Conditional)
+        # 3. วาดเส้นบอกระยะ CAD-Style (Conditional Layer)
         if show_dims:
             dim_offset = 15
             if shape == "Rectangular":
+                # Dimension b (X-Axis) - ด้านล่าง
                 y_dim_b = -h/2 - dim_offset
                 fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
                 fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>{b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+                # Dimension h (Y-Axis) - ด้านซ้าย
                 x_dim_h = -b/2 - dim_offset
                 fig_sec.add_trace(go.Scatter(x=[x_dim_h, x_dim_h], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
                 fig_sec.add_annotation(x=x_dim_h, y=0, text=f"<b>{h} cm</b>", showarrow=False, textangle=-90, xshift=-15, font=dict(color="#2c3e50"))
             else:
+                # Dimension กลม Ø b (Y-Axis) - ด้านล่าง
                 y_dim_b = -b/2 - dim_offset
                 fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
                 fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>Ø {b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
 
-        # 5. Longitudinal Bars
+        # 4. วาดเหล็กเสริมหลัก Longitudinal Bars
         hover_texts = [f"<b>Bar No. {i+1}</b><br>X: {x:.2f} cm<br>Y: {y:.2f} cm" for i, (x, y) in enumerate(zip(bar_x, bar_y))]
         
         fig_sec.add_trace(go.Scatter(
@@ -859,35 +865,92 @@ with col2:
             hoverinfo="text"
         ))
 
-        # --- Aesthetic Drafting Layout ---
+        # 5. [NEW] วาดเส้นชี้บอกเหล็กหลักอัตโนมัติ (Explicit Annotations - Conditional)
+        if show_labels:
+            # ชี้เหล็กปลอก (Stirrup/Tie) - ชี้จากล่างขวาขึ้นไปหาแนว dot
+            fig_sec.add_annotation(
+                x=bar_x[-1] if shape == 'Circular' else b/2-cv, 
+                y=bar_y[-1] if shape == 'Circular' else -(h/2-cv),
+                ax=axis_limit-10, ay=-(axis_limit-10), # ตำแหน่ง text ออฟเซ็ต
+                xref="x", yref="y", axref="x", ayref="y",
+                text="<b>TIE/STIRRUP</b> (Confinement core)",
+                showarrow=True, arrowhead=2, arrowwidth=2, arrowcolor="#7f8c8d",
+                font=dict(color="#2c3e50"), bgcolor='rgba(255,255,255,0.7)', bordercolor="#7f8c8d"
+            )
+
+            # ชี้เหล็กเสริมแกน CB1-CB4 (Corner Bars) ทั้ง 4 มุม
+            corners = [
+                {'idx': 0, 'pos_txt': 'TOP RIGHT'},
+                {'idx': len(engine.bars)//4, 'pos_txt': 'TOP LEFT'}, # สมมติการเรียงเหล็กแบบ 2-Face/Uniform เพื่อหาขอบ
+                {'idx': len(engine.bars)//2, 'pos_txt': 'BOTTOM LEFT'},
+                {'idx': 3*len(engine.bars)//4, 'pos_txt': 'BOTTOM RIGHT'}
+            ]
+            
+            # ดึงเฉพาะ 4 มุมจริงๆ (Corner bars) จากลิสต์ Coordinates
+            try:
+                unique_bars = pd.DataFrame(engine.bars).drop_duplicates().to_dict('records') # ป้องกันเหล็กซ้อน
+                corners_df = pd.DataFrame(unique_bars)
+                max_x = corners_df['x'].max()
+                min_x = corners_df['x'].min()
+                max_y = corners_df['y'].max()
+                min_y = corners_df['y'].min()
+                
+                corner_annotations = []
+                # TOP-RIGHT (TR)
+                cb_tr_data = corners_df[(corners_df['x'] == max_x) & (corners_df['y'] == max_y)].iloc[0]
+                corner_annotations.append({'x':cb_tr_data['x'], 'y':cb_tr_data['y'], 'txt':"CORNER BAR (TR)"})
+                # BOTTOM-RIGHT (BR)
+                cb_br_data = corners_df[(corners_df['x'] == max_x) & (corners_df['y'] == min_y)].iloc[0]
+                corner_annotations.append({'x':cb_br_data['x'], 'y':cb_br_data['y'], 'txt':"CORNER BAR (BR)"})
+                # TOP-LEFT (TL)
+                cb_tl_data = corners_df[(corners_df['x'] == min_x) & (corners_df['y'] == max_y)].iloc[0]
+                corner_annotations.append({'x':cb_tl_data['x'], 'y':cb_tl_data['y'], 'txt':"CORNER BAR (TL)"})
+                # BOTTOM-LEFT (BL)
+                cb_bl_data = corners_df[(corners_df['x'] == min_x) & (corners_df['y'] == min_y)].iloc[0]
+                corner_annotations.append({'x':cb_bl_data['x'], 'y':cb_bl_data['y'], 'txt':"CORNER BAR (BL)"})
+
+                for cb_label in corner_annotations:
+                    fig_sec.add_annotation(
+                        x=cb_label['x'], y=cb_label['y'], xref="x", yref="y",
+                        ax=10 if cb_label['x']>0 else -10, ay=10 if cb_label['y']>0 else -10,
+                        text=f"<b>{cb_label['txt']}</b>",
+                        showarrow=True, arrowhead=2, arrowwidth=1.5, arrowcolor="#c0392b",
+                        font=dict(color="#c0392b", size=10), bgcolor='rgba(255,255,255,0.7)'
+                    )
+            except Exception as label_err:
+                # กรณี Layout ซับซ้อนจนหา 4 มุมไม่ได้อัตโนมัติ ให้ข้ามไป
+                pass
+
+        # --- Premium Blueprint Style Layout ---
         fig_sec.update_layout(
             xaxis=dict(
                 title="<b>Width / X-Axis Centroid (cm)</b>", 
                 showgrid=show_grid, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', 
-                zeroline=False, range=[-axis_limit, axis_limit]
+                zeroline=False, range=[-axis_limit, axis_limit], rangemode='tozero'
             ),
             yaxis=dict(
                 title="<b>Depth / Y-Axis Centroid (cm)</b>", 
                 showgrid=show_grid, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', 
-                zeroline=False, range=[-axis_limit, axis_limit],
+                zeroline=False, range=[-axis_limit, axis_limit], rangemode='tozero',
                 scaleanchor="x", scaleratio=1
             ),
             plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', height=650, hovermode='closest',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor='rgba(255,255,255,0.9)', font=dict(size=12)),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1, font=dict(size=12)),
             margin=dict(l=40, r=40, t=60, b=40)
         )
 
         st.plotly_chart(fig_sec, use_container_width=True)
-
-        # --- Rebar Schedule Expander (Premium Feature) ---
+        
+        # --- [NEW] รายการพิกัดเหล็กเสริม (Rebar Schedule) ---
         with st.expander("📋 Detailed Rebar Coordinate Schedule (List)", expanded=False):
-            # Create a clean searchable table
-            rebar_data = []
-            for i, (x, y) in enumerate(zip(bar_x, bar_y)):
-                rebar_data.append({"Bar No.": i+1, "X Position (cm)": f"{x:.2f}", "Y Position (cm)": f"{y:.2f}"})
+            # สร้างดาต้าเฟรมสรุปพิกัดของเหล็กเสริมทั้งหมด
+            rebar_coords = pd.DataFrame(engine.bars)
+            rebar_coords.index = [f"Bar No. {i+1}" for i in range(len(rebar_coords))]
+            rebar_coords.columns = ['Centroid X Pos (cm)', 'Centroid Y Pos (cm)']
             
-            # Display using modern dataframe
-            st.dataframe(rebar_data, use_container_width=True, hide_index=True)
+            # แสดงดาต้าเฟรมสไตล์ Premium
+            st.dataframe(rebar_coords, use_container_width=True, height=250)
+            st.caption(f"💡 Total Longitudinal Rebars detected and drafted: {len(engine.bars)} bars. Each rebar marker in the drawing corresponds to a coordinate in this list.")
 
     with tab4:
         st.markdown("### 📖 Parameter Guide")
