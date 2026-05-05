@@ -750,13 +750,13 @@ with col2:
         )
         
     with tab3:
-        st.markdown("### 📐 Advanced Section Detailing")
-        st.markdown("Interactive CAD-style representation of the section geometry, confinement boundary, and precise rebar positioning.")
-        
+        st.markdown("### 🏗️ Advanced Section Drafting & CAD Details")
+        st.markdown("Precision view of the reinforced concrete section. Use the controls to toggle visual layers. Hover over rebars for index and coordinates.")
+
         # --- คำนวณพื้นที่เหล็กเสริมรวม (Ast) เพื่อป้องกัน Error ---
         total_ast = engine.Ag * engine.rho
 
-        # --- แถบสรุปข้อมูลหน้าตัด (Modern Dashboard) ---
+        # --- Premium Modern Dashboard (Refined Design) ---
         st.markdown(
             f"""
             <div style="display: flex; justify-content: space-between; padding: 20px; background: linear-gradient(to right, #ffffff, #f8f9fa); border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 25px;">
@@ -780,68 +780,75 @@ with col2:
             """, unsafe_allow_html=True
         )
 
+        # --- LAYER CONTROLS EXPANDER (Premium Feature) ---
+        with st.expander("🛠️ Drawing Layer Controls", expanded=False):
+            col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+            show_dims = col_ctrl1.toggle("Dimensions (CAD Style)", value=True)
+            show_ties = col_ctrl2.toggle("Stirrup/Tie Outline", value=True)
+            show_grid = col_ctrl3.toggle("Drafting Grid", value=False) # Turned off by default for clean look
+
+        # --- The CAD Drawing (Conditional Rendering) ---
         fig_sec = go.Figure()
 
-        # คำนวณระยะขอบเขตและออฟเซ็ตสำหรับวาดเส้นบอกระยะ (Dimensions)
+        # Calculation (Existing context code)
         max_dim = max(b, h) if shape == "Rectangular" else b
-        axis_limit = (max_dim / 2) * 1.5  # ขยายขอบเขตกราฟออก 50% ให้มีที่ว่างวาด Dimension
-        cv = 4.0 # สมมติระยะหุ้มคอนกรีต (Covering) มาตรฐานที่ 4 ซม. สำหรับวาดภาพ
+        axis_limit = (max_dim / 2) * 1.5
+        cv = 4.0 # Standard covering
 
-        # 1. วาดเส้นแกนหลัก (Centerlines)
-        fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='X-Axis', hoverinfo='skip'))
-        fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='Y-Axis', hoverinfo='skip'))
+        # Rebar Data
+        bar_x = [bar['x'] for bar in engine.bars]
+        bar_y = [bar['y'] for bar in engine.bars]
 
-        # 2. วาดคอนกรีตและเส้นเหล็กปลอก (Concrete & Stirrup)
+        # 1. Concrete (Background/Fill)
         if shape == "Rectangular":
-            # Concrete
             x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
             y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
-            # Stirrup (Confined Core)
+            sec_label = f"Concrete ({b}x{h} cm)"
             x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
             y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
         else:
             theta = np.linspace(0, 2*np.pi, 100)
             x_conc = (b/2)*np.cos(theta)
             y_conc = (b/2)*np.sin(theta)
+            sec_label = f"Concrete (Ø{b} cm)"
             x_st = ((b/2)-cv)*np.cos(theta)
             y_st = ((b/2)-cv)*np.sin(theta)
 
-        # ลงสีคอนกรีต
+        # Concrete Section Fill
         fig_sec.add_trace(go.Scatter(
             x=x_conc, y=y_conc, mode='lines', 
-            line=dict(color='#34495e', width=2.5), fill='toself', fillcolor='rgba(223, 230, 233, 0.4)', 
+            line=dict(color='#34495e', width=3), fill='toself', fillcolor='rgba(223, 230, 233, 0.4)', 
             name='Concrete Section', hoverinfo='skip'
         ))
-        
-        # ลงเส้นเหล็กปลอก (ประ)
-        fig_sec.add_trace(go.Scatter(
-            x=x_st, y=y_st, mode='lines', 
-            line=dict(color='#7f8c8d', width=1.5, dash='dot'), 
-            name=f'Stirrup/Tie (Cover ~{cv}cm)', hoverinfo='skip'
-        ))
 
-        # 3. วาดเส้นบอกระยะ (Auto-Dimensions) สไตล์ CAD
-        dim_offset = 15 # ระยะห่างของเส้นบอกระยะจากขอบคอนกรีต
-        
-        if shape == "Rectangular":
-            # Dimension ความกว้าง (b) - ด้านล่าง
-            y_dim_b = -h/2 - dim_offset
-            fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), name='Dim: Width', showlegend=False, hoverinfo='skip'))
-            fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>{b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
-            
-            # Dimension ความลึก (h) - ด้านซ้าย
-            x_dim_h = -b/2 - dim_offset
-            fig_sec.add_trace(go.Scatter(x=[x_dim_h, x_dim_h], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), name='Dim: Depth', showlegend=False, hoverinfo='skip'))
-            fig_sec.add_annotation(x=x_dim_h, y=0, text=f"<b>{h} cm</b>", showarrow=False, textangle=-90, xshift=-15, font=dict(color="#2c3e50"))
-        else:
-            # Dimension เส้นผ่านศูนย์กลางกลม (Diameter) - ด้านล่าง
-            y_dim_b = -b/2 - dim_offset
-            fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
-            fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>Ø {b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+        # 2. Stirrup/Tie Outline (Conditional)
+        if show_ties:
+            fig_sec.add_trace(go.Scatter(
+                x=x_st, y=y_st, mode='lines', 
+                line=dict(color='#95a5a6', width=1.5, dash='dot'), 
+                name=f'Stirrup/Tie (Cover ~{cv}cm)', hoverinfo='skip'
+            ))
 
-        # 4. วาดเหล็กเสริม (Rebars) พร้อม Indexing
-        bar_x = [bar['x'] for bar in engine.bars]
-        bar_y = [bar['y'] for bar in engine.bars]
+        # 3. Principal Centerlines
+        fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='X-Axis Centroid', hoverinfo='skip'))
+        fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(0,0,0,0.2)', width=1.5, dash='dashdot'), name='Y-Axis Centroid', hoverinfo='skip'))
+
+        # 4. Dimensions (Conditional)
+        if show_dims:
+            dim_offset = 15
+            if shape == "Rectangular":
+                y_dim_b = -h/2 - dim_offset
+                fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
+                fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>{b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+                x_dim_h = -b/2 - dim_offset
+                fig_sec.add_trace(go.Scatter(x=[x_dim_h, x_dim_h], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
+                fig_sec.add_annotation(x=x_dim_h, y=0, text=f"<b>{h} cm</b>", showarrow=False, textangle=-90, xshift=-15, font=dict(color="#2c3e50"))
+            else:
+                y_dim_b = -b/2 - dim_offset
+                fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim_b, y_dim_b], mode='lines+markers', marker=dict(symbol='line-ew', size=10, line=dict(width=1.5)), line=dict(color='#95a5a6', width=1.5), showlegend=False, hoverinfo='skip'))
+                fig_sec.add_annotation(x=0, y=y_dim_b, text=f"<b>Ø {b} cm</b>", showarrow=False, yshift=-15, font=dict(color="#2c3e50"))
+
+        # 5. Longitudinal Bars
         hover_texts = [f"<b>Bar No. {i+1}</b><br>X: {x:.2f} cm<br>Y: {y:.2f} cm" for i, (x, y) in enumerate(zip(bar_x, bar_y))]
         
         fig_sec.add_trace(go.Scatter(
@@ -852,16 +859,35 @@ with col2:
             hoverinfo="text"
         ))
 
-        # 5. ตกแต่ง Layout ขั้นสุด (Minimalist CAD Style)
+        # --- Aesthetic Drafting Layout ---
         fig_sec.update_layout(
-            xaxis=dict(title="<b>Width / X-Axis (cm)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', zeroline=False, range=[-axis_limit, axis_limit]),
-            yaxis=dict(title="<b>Depth / Y-Axis (cm)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', zeroline=False, range=[-axis_limit, axis_limit], scaleanchor="x", scaleratio=1),
+            xaxis=dict(
+                title="<b>Width / X-Axis Centroid (cm)</b>", 
+                showgrid=show_grid, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', 
+                zeroline=False, range=[-axis_limit, axis_limit]
+            ),
+            yaxis=dict(
+                title="<b>Depth / Y-Axis Centroid (cm)</b>", 
+                showgrid=show_grid, gridwidth=1, gridcolor='rgba(0,0,0,0.03)', 
+                zeroline=False, range=[-axis_limit, axis_limit],
+                scaleanchor="x", scaleratio=1
+            ),
             plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', height=650, hovermode='closest',
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor='rgba(255,255,255,0.9)', font=dict(size=12)),
             margin=dict(l=40, r=40, t=60, b=40)
         )
 
         st.plotly_chart(fig_sec, use_container_width=True)
+
+        # --- Rebar Schedule Expander (Premium Feature) ---
+        with st.expander("📋 Detailed Rebar Coordinate Schedule (List)", expanded=False):
+            # Create a clean searchable table
+            rebar_data = []
+            for i, (x, y) in enumerate(zip(bar_x, bar_y)):
+                rebar_data.append({"Bar No.": i+1, "X Position (cm)": f"{x:.2f}", "Y Position (cm)": f"{y:.2f}"})
+            
+            # Display using modern dataframe
+            st.dataframe(rebar_data, use_container_width=True, hide_index=True)
 
     with tab4:
         st.markdown("### 📖 Parameter Guide")
