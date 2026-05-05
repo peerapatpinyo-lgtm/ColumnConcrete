@@ -406,12 +406,67 @@ with col2:
             st.info("⚠️ ไม่สามารถจำลอง 3D Surface ได้ เนื่องจากแรงแนวแกน (Pu) เกินขีดจำกัดหน้าตัด")
 
     with tab2:
+        # --- คำนวณเส้นอ้างอิง 1% และ 8% เพื่อใช้เป็นขอบเขต (Optimal Range) ---
+        # สร้าง Engine ชั่วคราวเพื่อหา P-M Curve ที่ 1% และ 8%
+        # โดยใช้เหล็กเสริมแบบกระจายรอบด้าน (4-Faces) เป็นมาตรฐานในการเปรียบเทียบ
+        def get_ref_curve(target_rho):
+            target_as = target_rho * engine.Ag
+            # ประมาณการจำนวนเหล็กเพื่อให้ได้ Rho ที่ต้องการ (ใช้เหล็ก DB20 เป็นตัวอ้างอิง)
+            ref_n_bars = max(4, int(target_as / 3.14)) 
+            if shape == "Rectangular":
+                # กระจายเหล็กแบบ Uniform ง่ายๆ เพื่อทำเส้น Guide
+                ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
+                ref_ny = max(2, int(ref_n_bars / 2) - ref_nx + 2)
+                ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
+            else:
+                ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
+            
+            # คำนวณ P-M เฉพาะแกน X เพื่อใช้เป็นตัวแทนขอบเขต
+            ref_df, _ = ref_engine.solve_pm(axis='X')
+            return ref_df
+
+        with st.spinner("Calculating optimal range boundaries..."):
+            df_1pct = get_ref_curve(0.01)
+            df_8pct = get_ref_curve(0.08)
+
+        # --- สร้างกราฟ Plotly ---
         fig_pm = go.Figure()
-        fig_pm.add_trace(go.Scatter(x=df_x['phiMn'], y=df_x['phiPn'], name="X-axis Capacity", line=dict(color='navy', width=2)))
-        fig_pm.add_trace(go.Scatter(x=df_y['phiMn'], y=df_y['phiPn'], name="Y-axis Capacity", line=dict(color='forestgreen', width=2, dash='dash')))
-        fig_pm.add_trace(go.Scatter(x=[Mcx, Mcy], y=[Pu, Pu], mode='markers', name="Demands", marker=dict(color=['blue', 'green'], size=10)))
-        fig_pm.update_layout(xaxis_title="Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)", plot_bgcolor='white', height=450)
+        
+        # 1. เส้นขอบเขต 1% (Lower Bound - Economy)
+        fig_pm.add_trace(go.Scatter(
+            x=df_1pct['phiMn'], y=df_1pct['phiPn'],
+            name="Minimum Limit (ρ=1%)",
+            line=dict(color='rgba(0,0,0,0.3)', width=2, dash='dash'),
+            fill=None
+        ))
+        
+        # 2. เส้นขอบเขต 8% (Upper Bound - Practical Limit)
+        fig_pm.add_trace(go.Scatter(
+            x=df_8pct['phiMn'], y=df_8pct['phiPn'],
+            name="Maximum Limit (ρ=8%)",
+            line=dict(color='rgba(255,0,0,0.2)', width=2, dash='dash'),
+            fill='tonexty', # ระบายสีพื้นที่ระหว่าง 1% และ 8%
+            fillcolor='rgba(0, 255, 0, 0.05)' # สีเขียวจางๆ แสดงโซนที่เหมาะสม
+        ))
+
+        # 3. เส้น Capacity จริงของหน้าตัดที่ออกแบบ
+        fig_pm.add_trace(go.Scatter(x=df_x['phiMn'], y=df_x['phiPn'], name="X-axis Capacity (Actual)", line=dict(color='navy', width=3)))
+        fig_pm.add_trace(go.Scatter(x=df_y['phiMn'], y=df_y['phiPn'], name="Y-axis Capacity (Actual)", line=dict(color='forestgreen', width=3, dash='dot')))
+        
+        # 4. จุดสถานะ Load ปัจจุบัน
+        fig_pm.add_trace(go.Scatter(x=[Mcx, Mcy], y=[Pu, Pu], mode='markers', name="Design Demands", 
+                                   marker=dict(color=['blue', 'green'], size=12, symbol='x')))
+
+        fig_pm.update_layout(
+            title="P-M Interaction Diagram with ρ Boundaries",
+            xaxis_title="Design Moment, φMn (ton-m)",
+            yaxis_title="Design Axial Strength, φPn (ton)",
+            plot_bgcolor='white',
+            height=600,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
         st.plotly_chart(fig_pm, use_container_width=True)
+        st.caption("💡 พื้นที่สีเขียวจางๆ แสดงช่วงการออกแบบที่เหมาะสม (Optimal Range: ρ = 1% - 8%)")
 
     with tab3:
         fig_sec = go.Figure()
