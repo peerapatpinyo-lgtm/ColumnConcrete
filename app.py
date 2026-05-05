@@ -462,60 +462,92 @@ with col2:
                 st.latex(f"M_{{u,min,y}} = {Pu} \\times (0.015 + 0.03 \\times \\frac{{{b}}}{{100}}) = {e_min_y:,.3f} \\text{{ t-m}}")
                 st.latex(f"M_{{uy,dsgn}} = \\max({Muy:,.2f}, {e_min_y:,.3f}) = {Mu_y_dsgn:,.2f} \\text{{ t-m}}")
 
+        # --- Part 3: Moment Magnification (X-Axis) ---
         with st.expander(f"3. Moment Magnification (X-Axis) - {frame_type}", expanded=False):
             if frame_type == "Non-Sway (Braced)":
-                st.markdown("**Effective Stiffness ($EI_x$) & Critical Load:**")
-                st.latex(f"I_{{se,x}} = {engine.Ise_x:,.2f} \\text{{ cm}}^4")
-                st.latex(f"EI_x = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}) + ({engine.Es:,.0f} \\times {engine.Ise_x:,.2f})}}{{1 + {beta_d}}} = {EIx:,.0f} \\text{{ kg-cm}}^2")
-                st.latex(f"P_{{cx}} = \\frac{{\\pi^2 \\times {EIx:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times 10^{{-3}} = {Pcx:,.2f} \\text{{ ton}}")
+                st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4)*")
+                st.latex(r"EI_x = \frac{0.2 E_c I_{gx} + E_s I_{se,x}}{1 + \beta_d}")
+                
+                # 🎯 REFACTOR: Retrieve Ise_x directly from the engine attribute
+                Ise_x = engine.Ise_x
+                EIx_val = (0.2 * engine.Ec * engine.Igx + engine.Es * Ise_x) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,x}} = {Ise_x:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_x = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}) + ({engine.Es:,.0f} \\times {Ise_x:,.2f})}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
+                
+                st.markdown("**3.2 Euler Critical Load ($P_{cx}$):**")
+                st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
+                st.latex(f"P_{{cx}} = \\frac{{\\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times 10^{{-3}} = {Pcx:,.2f} \\text{{ ton}}")
+                
+                st.markdown("**3.3 Magnification Factor ($\delta_x$):**")
                 if kl_rx > 22:
+                    st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
                     st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
                 else:
                     st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} $\\le$ 22)")
                     st.latex(r"\delta_x = 1.0")
+
+                st.markdown("**3.4 Final Magnified Moment ($M_{cx}$):**")
                 st.latex(f"M_{{cx}} = \\delta_x \\times M_{{ux,dsgn}} = {Mcx:,.2f} \\text{{ ton-m}}")
             else:
-                st.markdown("**Sway Frame Design (Global + Local):**")
-                st.latex(f"M_{{sway,x}} = {delta_sx:.2f} \\times {Mu_x_dsgn:,.2f} = {M_sway_x:,.2f} \\text{{ ton-m}}")
-                if kl_rx > 22:
-                    st.write(f"Column is slender locally (kl/r = {kl_rx:.2f} > 22), applying $\\delta_{{ns}}$")
-                    st.latex(f"M_{{cx}} = \\delta_{{ns,x}} \\times M_{{sway,x}} = {del_x_ns:.3f} \\times {M_sway_x:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
-                else:
-                    st.latex(f"M_{{cx}} = M_{{sway,x}} = {Mcx:,.2f} \\text{{ ton-m}}")
+                st.markdown("**Sway Frame Design:**")
+                st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
+                st.latex(f"M_{{cx}} = {delta_sx:.2f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+            st.caption("💻 *Code Vars: `Ise_x`, `Pcx`, `del_x`, `Mcx`*")
 
+        # --- Part 4: Moment Magnification (Y-Axis) ---
         with st.expander(f"4. Moment Magnification (Y-Axis) - {frame_type}", expanded=False):
             if frame_type == "Non-Sway (Braced)":
-                st.markdown("**Effective Stiffness ($EI_y$) & Critical Load:**")
-                st.latex(f"I_{{se,y}} = {engine.Ise_y:,.2f} \\text{{ cm}}^4")
-                st.latex(f"EI_y = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}) + ({engine.Es:,.0f} \\times {engine.Ise_y:,.2f})}}{{1 + {beta_d}}} = {EIy:,.0f} \\text{{ kg-cm}}^2")
-                st.latex(f"P_{{cy}} = \\frac{{\\pi^2 \\times {EIy:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
+                st.markdown("**4.1 Effective Stiffness ($EI_y$):**")
+                st.latex(r"EI_y = \frac{0.2 E_c I_{gy} + E_s I_{se,y}}{1 + \beta_d}")
+                
+                # 🎯 FIX: Retrieve Ise_y directly from the engine to optimize performance
+                Ise_y = engine.Ise_y 
+                EIy_val = (0.2 * engine.Ec * engine.Igy + engine.Es * Ise_y) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,y}} = {Ise_y:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_y = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}) + ({engine.Es:,.0f} \\times {Ise_y:,.2f})}}{{1 + {beta_d}}} = {EIy_val:,.0f} \\text{{ kg-cm}}^2")
+                
+                st.markdown("**4.2 Euler Critical Load ($P_{cy}$):**")
+                st.latex(f"P_{{cy}} = \\frac{{\\pi^2 \\times {EIy_val:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
+                
+                st.markdown("**4.3 Magnification Factor ($\delta_y$):**")
                 if kl_ry > 22:
+                    st.latex(r"\delta_y = \frac{C_{my}}{1 - \frac{P_u}{0.75 P_{cy}}} \ge 1.0")
                     st.latex(f"\\delta_y = \\frac{{{Cm_y}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcy:,.2f}}}}} = {del_y:,.3f}")
                 else:
                     st.write(f"Slenderness ignored (kl/r = {kl_ry:.2f} $\\le$ 22)")
                     st.latex(r"\delta_y = 1.0")
+
+                st.markdown("**4.4 Final Magnified Moment ($M_{cy}$):**")
                 st.latex(f"M_{{cy}} = \\delta_y \\times M_{{uy,dsgn}} = {Mcy:,.2f} \\text{{ ton-m}}")
             else:
-                st.markdown("**Sway Frame Design (Global + Local):**")
-                st.latex(f"M_{{sway,y}} = {delta_sy:.2f} \\times {Mu_y_dsgn:,.2f} = {M_sway_y:,.2f} \\text{{ ton-m}}")
-                if kl_ry > 22:
-                    st.write(f"Column is slender locally (kl/r = {kl_ry:.2f} > 22), applying $\\delta_{{ns}}$")
-                    st.latex(f"M_{{cy}} = \\delta_{{ns,y}} \\times M_{{sway,y}} = {del_y_ns:.3f} \\times {M_sway_y:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
-                else:
-                    st.latex(f"M_{{cy}} = M_{{sway,y}} = {Mcy:,.2f} \\text{{ ton-m}}")
+                st.markdown("**Sway Frame Design:**")
+                st.latex(r"M_{cy} = \delta_{sy} M_{uy,dsgn}")
+                st.latex(f"M_{{cy}} = {delta_sy:.2f} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
+            st.caption("💻 *Code Vars: `Ise_y`, `Pcy`, `del_y`, `Mcy`*")
 
+        # --- Part 5: Biaxial Bending Check ---
         with st.expander("5. Biaxial Bending Interaction (PCA Method)", expanded=True):
-            st.markdown(f"ที่แรงแนวแกน $P_u = {Pu:,.2f}$ ton โปรแกรมทำการหาจุดตัดบน P-M Curve เพื่อหาค่า Uniaxial Moment Cap:")
-            st.latex(f"\\phi M_{{nox}} = {phi_Mnox:,.2f} \\text{{ ton-m}}, \\quad \\phi M_{{noy}} = {phi_Mnoy:,.2f} \\text{{ ton-m}}")
+            st.markdown("**PCA Load Contour Method** *(Ref: PCA Notes on ACI 318)*")
+            st.markdown(f"At factored axial load $P_u = {Pu:,.2f}$ tons, the program evaluates the intersection on the P-M Curve to determine the Uniaxial Moment Capacities:")
+            st.latex(f"\\phi M_{{nox}} = {phi_Mnox:,.2f} \\text{{ ton-m}}")
+            st.latex(f"\\phi M_{{noy}} = {phi_Mnoy:,.2f} \\text{{ ton-m}}")
+            
+            st.markdown("**Interaction Equation:**")
+            st.latex(r"\left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
             
             if phi_Mnox > 0 and phi_Mnoy > 0:
-                st.markdown("**สมการตรวจสอบ (Interaction Equation):**")
+                st.markdown("**Substituting the values:**")
+                # 🎯 FIX: Alpha value is already retrieved dynamically using engine.get_dynamic_alpha(Pu)
                 st.latex(f"\\text{{Ratio}} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha:.3f}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha:.3f}}} = {demand_ratio:,.3f}")
+                st.caption(f"💻 *Code Vars: `alpha` (={alpha:.3f}), `demand_ratio`, `phi_Mnox`, `phi_Mnoy`*")
             else:
-                st.error("⚠️ ไม่สามารถคำนวณได้เนื่องจากแรง Pu เกินกำลังรับแรงอัดสูงสุดของหน้าตัด")
+                st.error("⚠️ Unable to calculate because the applied axial load ($P_u$) exceeds the maximum compressive strength of the section.")
 
+        # --- Final Part: Conclusion ---
         st.markdown("---")
         if is_safe:
-            st.success(f"✅ **สรุปผลการตรวจสอบ:** อัตราส่วนการใช้กำลัง (Demand Ratio) = **{demand_ratio:,.3f}** ซึ่งน้อยกว่าหรือเท่ากับ 1.0 $\\rightarrow$ **หน้าตัดปลอดภัย (SAFE)**")
+            st.success(f"✅ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is $\\le$ 1.0 $\\rightarrow$ **SECTION IS SAFE**")
         else:
-            st.error(f"❌ **สรุปผลการตรวจสอบ:** อัตราส่วนการใช้กำลัง (Demand Ratio) = **{demand_ratio:,.3f}** ซึ่งมากกว่า 1.0 $\\rightarrow$ **หน้าตัดไม่ปลอดภัย (UNSAFE)**")
+            st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
