@@ -542,6 +542,83 @@ with col2:
 
             fig_contour.update_layout(xaxis=dict(title="<b>Magnified Moment X-Axis, Mcx (ton-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)', range=[0, max(phi_Mnox, Mcx) * 1.2]), yaxis=dict(title="<b>Magnified Moment Y-Axis, Mcy (ton-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)', range=[0, max(phi_Mnoy, Mcy) * 1.2]), plot_bgcolor='white', paper_bgcolor='white', height=500, legend=dict(x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.8)', bordercolor='gray', borderwidth=1), margin=dict(l=40, r=40, t=20, b=40))
             st.plotly_chart(fig_contour, use_container_width=True)
+            st.markdown("---")
+        st.markdown("#### 📈 Uniaxial P-M Projections (Side Views)")
+        st.markdown("Examine the column's behavior along the principal axes. The shaded region represents the safe design envelope. The red cross indicates your factored demand.")
+        
+        # สร้าง 2 คอลัมน์สำหรับกราฟ P-Mx และ P-My
+        col_pmx, col_pmy = st.columns(2)
+        
+        # --- กราฟซ้าย: P-Mx (Major Axis) ---
+        with col_pmx:
+            fig_pmx = go.Figure()
+            
+            # เส้น Capacity และพื้นที่ปลอดภัย (แกน X)
+            fig_pmx.add_trace(go.Scatter(
+                x=df_x['phiMn'], y=df_x['phiPn'], 
+                mode='lines', line=dict(color='#2980b9', width=2.5), 
+                fill='tozeroy', fillcolor='rgba(41, 128, 185, 0.08)', 
+                name="X-Axis Capacity",
+                hovertemplate="<b>Capacity</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
+            ))
+            
+            # จุด Demand (Mcx, Pu)
+            fig_pmx.add_trace(go.Scatter(
+                x=[Mcx], y=[Pu], 
+                mode='markers+text', 
+                marker=dict(color='#e74c3c', size=12, symbol='cross', line=dict(width=2, color='white')), 
+                name="Demand Point", text=["Demand (Mcx, Pu)"], textposition="top right",
+                hovertemplate="<b>Demand</b><br>Mcx: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
+            ))
+            
+            # เส้นนำสายตา
+            fig_pmx.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+            fig_pmx.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+
+            fig_pmx.update_layout(
+                title=dict(text="<b>P-Mx Interaction (Major Axis)</b>", font=dict(size=14, color="#2c3e50")),
+                xaxis=dict(title="<b>Magnified Moment X, Mcx (t-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.1)', rangemode='tozero'),
+                yaxis=dict(title="<b>Axial Load, Pu (ton)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.1)', range=[0, df_x['phiPn'].max() * 1.1]),
+                plot_bgcolor='white', paper_bgcolor='white', height=400, showlegend=False, margin=dict(l=20, r=20, t=50, b=20)
+            )
+            st.plotly_chart(fig_pmx, use_container_width=True)
+            
+        # --- กราฟขวา: P-My (Minor Axis) ---
+        with col_pmy:
+            fig_pmy = go.Figure()
+            
+            # เส้น Capacity และพื้นที่ปลอดภัย (แกน Y)
+            fig_pmy.add_trace(go.Scatter(
+                x=df_y['phiMn'], y=df_y['phiPn'], 
+                mode='lines', line=dict(color='#27ae60', width=2.5), 
+                fill='tozeroy', fillcolor='rgba(39, 174, 96, 0.08)', 
+                name="Y-Axis Capacity",
+                hovertemplate="<b>Capacity</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
+            ))
+            
+            # จุด Demand (Mcy, Pu)
+            fig_pmy.add_trace(go.Scatter(
+                x=[Mcy], y=[Pu], 
+                mode='markers+text', 
+                marker=dict(color='#e74c3c', size=12, symbol='cross', line=dict(width=2, color='white')), 
+                name="Demand Point", text=["Demand (Mcy, Pu)"], textposition="top right",
+                hovertemplate="<b>Demand</b><br>Mcy: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
+            ))
+            
+            # เส้นนำสายตา
+            fig_pmy.add_shape(type="line", x0=0, y0=Pu, x1=Mcy, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+            fig_pmy.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+
+            fig_pmy.update_layout(
+                title=dict(text="<b>P-My Interaction (Minor Axis)</b>", font=dict(size=14, color="#2c3e50")),
+                xaxis=dict(title="<b>Magnified Moment Y, Mcy (t-m)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.1)', rangemode='tozero'),
+                # บังคับ Y-axis ให้เท่ากับกราฟซ้าย เพื่อให้เปรียบเทียบสัดส่วนด้วยตาเปล่าได้ง่าย
+                yaxis=dict(title="<b>Axial Load, Pu (ton)</b>", showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.1)', range=[0, df_x['phiPn'].max() * 1.1]),
+                plot_bgcolor='white', paper_bgcolor='white', height=400, showlegend=False, margin=dict(l=20, r=20, t=50, b=20)
+            )
+            st.plotly_chart(fig_pmy, use_container_width=True)
+
+    
 
     with tab2:
         st.markdown("### 📊 Advanced P-M Interaction Diagram")
