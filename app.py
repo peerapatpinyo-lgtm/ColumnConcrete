@@ -457,12 +457,12 @@ with col2:
         st.error(f"### ❌ **STATUS: UNSAFE**\nBiaxial Demand Ratio = **{demand_ratio:.3f}** > 1.0")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📥 Input & Overview", 
-    "📊 P-M Interaction", 
-    "🧊 BIM & CAD Detail", 
-    "🌪️ Shear & Seismic",  
-    "📖 Parameter Guide", 
-    "📝 Calc Report"
+        "📥 Input & Overview", 
+        "📊 P-M Interaction", 
+        "🧊 BIM & CAD Detail", 
+        "🌪️ Shear & Seismic",  
+        "📖 Parameter Guide", 
+        "📝 Calc Report"
     ])
 
     with tab1:
