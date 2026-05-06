@@ -1114,11 +1114,26 @@ with col2:
               * $T_{{th}} = 0.26 \\times \\sqrt{{{fc}}} \\times \\frac{{{Acp:.2f}^2}}{{{pcp:.2f}}} / 100000$ = **{Tth_tonm:.2f} ton-m**
             * **Torsion Verification:** $T_u$ ({Tu:.2f}) {'**>' if is_torsion_significant else '**<'} $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"Exceeds limit; specific torsional reinforcement required." if is_torsion_significant else "Below threshold; torsion can be safely neglected."}**
 
-            #### 4. Development & Splice Length
+            #### 4. Development & Splice Length (Base Formulas)
             Ref. ACI 318-19 Chapter 25
-            * **Compression Splice Length:** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
-            * **Tension Splice Length (Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
-            * *Note: The controlling splice length is selected as **{splice_len:.0f} cm** governed by **{seismic_frame_label}** requirements.*
+            * **Compression Splice Length ($l_{{sc}}$):** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
+            * **Tension Splice Length ($l_{{st}}$, Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
+
+            #### 5. Total Shear Capacity ($\\phi V_n$)
+            Ref. ACI 318-19 Sec. 22.5.1.1 & 22.5.8.5.3: $\\phi V_n = \\phi (V_c + V_s)$
+            * **Provided Stirrups:** `{tie_str}` with `{tie_legs}` legs $\\rightarrow A_v = {Av_x:.2f} \\text{{ cm}}^2$
+            * **Steel Contribution X-Axis ($V_{{sx}}$):** $V_{{sx}} = \\frac{{A_v f_{{yt}} d_x}}{{s}} = \\frac{{{Av_x:.2f} \\times {fy} \\times {dx:.2f}}}{{{S0_design:.1f} \\times 10}}$ = **{Vs_prov_x:.2f} ton**
+              * **Total Capacity X:** $\\phi V_{{nx}} = {phi_V} \\times ({Vcx_ton:.2f} + {Vs_prov_x:.2f})$ = **{phi_Vnx:.2f} ton**
+            * **Steel Contribution Y-Axis ($V_{{sy}}$):** $V_{{sy}} = \\frac{{A_v f_{{yt}} d_y}}{{s}} = \\frac{{{Av_y:.2f} \\times {fy} \\times {dy:.2f}}}{{{Smid_design:.1f} \\times 10}}$ = **{Vs_prov_y:.2f} ton**
+              * **Total Capacity Y:** $\\phi V_{{ny}} = {phi_V} \\times ({Vcy_ton:.2f} + {Vs_prov_y:.2f})$ = **{phi_Vny:.2f} ton**
+
+            #### 6. Splice Rule & Detailing Selection
+            Ref. ACI 318-19 Chapter 18 (Seismic) vs Chapter 25 (Gravity)
+            * **Design Framework:** `{seismic_frame_label}`
+            * **Applied Rule:** `{splice_type}`
+            * **Selection Logic:** * For **Ordinary Frames** (Gravity/Wind), columns are primarily in compression; hence, the Compression Splice length ($l_{{sc}}$) is adequate.
+              * For **Special Moment Frames** (Seismic), cyclic lateral loads can induce flexural tension; therefore, ACI strictly requires **Class B Tension Splices** ($l_{{st}}$) located within the center half of the column height.
+            * **Final Design Splice Length:** **{splice_len:.0f} cm**
             """)
         
         st.markdown("---")
