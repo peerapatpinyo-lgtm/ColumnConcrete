@@ -1102,9 +1102,9 @@ with col2:
             #### 2. กำลังรับแรงเฉือนของคอนกรีต (Concrete Shear Capacity)
             อ้างอิงสมการ ACI: $\\phi V_c = \\phi (0.17 \\sqrt{{f'_c}} b_w d)$ โดย $\\phi = {phi_V}$
             * **กำลังรับแรงแกน X ($V_{{cx}}$):**
-              * $V_{{cx}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({h \\times 10}) \\times ({dx \\times 10}) / 10000$ = **{Vcx_ton:.2f} ton**
+              * $V_{{cx}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({h} \\times 10) \\times ({dx:.2f} \\times 10) / 10000$ = **{Vcx_ton:.2f} ton**
             * **กำลังรับแรงแกน Y ($V_{{cy}}$):**
-              * $V_{{cy}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({b \\times 10}) \\times ({dy \\times 10}) / 10000$ = **{Vcy_ton:.2f} ton**
+              * $V_{{cy}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({b} \\times 10) \\times ({dy:.2f} \\times 10) / 10000$ = **{Vcy_ton:.2f} ton**
 
             #### 3. การตรวจสอบแรงบิด (Torsion Threshold)
             * **พื้นที่ปิดล้อม ($A_{{cp}}$):** $b \\times h$ = **{Acp:.2f} cm²**
