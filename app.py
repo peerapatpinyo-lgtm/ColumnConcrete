@@ -994,43 +994,40 @@ with col2:
                 cad_script += "ZOOM E"
                 st.code(cad_script, language="bash")
 
-
     with tab4:
         st.markdown("### 🌪️ Shear Design & Seismic Detailing (ACI 318)")
         
-        # --- UI Controls สำหรับ Shear & Seismic ---
+        # --- UI Controls เฉพาะส่วนของ Detailing (ไม่ถาม Load/Height ซ้ำ) ---
         st.markdown("""<div style="padding: 10px; background-color: #f1f5f9; border-radius: 8px; margin-bottom: 15px;">
-                    <strong>⚙️ Design Parameters</strong></div>""", unsafe_allow_html=True)
+                    <strong>⚙️ Seismic Detailing Parameters</strong></div>""", unsafe_allow_html=True)
         
-        c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+        c_s1, c_s2 = st.columns(2)
         with c_s1:
-            Vu = st.number_input("Factored Shear, Vu (ton)", value=15.0, step=1.0)
+            seismic_frame = st.selectbox("Seismic Frame Type", ["SMF (Special)", "IMF (Intermediate)", "OMF (Ordinary)"], key="seismic_frame")
         with c_s2:
-            Hc = st.number_input("Clear Height, Hc (m)", value=3.0, step=0.1)
-        with c_s3:
-            seismic_frame = st.selectbox("Seismic Frame Type", ["SMF (Special)", "IMF (Intermediate)", "OMF (Ordinary)"])
-        with c_s4:
-            tie_db = st.selectbox("Tie Bar Size", ["RB6", "RB9", "DB10", "DB12"], index=2)
+            tie_db = st.selectbox("Tie Bar Size", ["RB6", "RB9", "DB10", "DB12"], index=2, key="tie_size")
             
         d_tie = 1.0 if "10" in tie_db else (1.2 if "12" in tie_db else 0.9)
-        d_long = 2.0 # สมมติเหล็กแกน DB20
+        d_long = 2.0 # สมมติขนาดเหล็กแกนเฉลี่ย DB20 (หรือดึงจากข้อมูลจริงของคุณ)
         
         st.markdown("---")
         
         # --- 1. คำนวณ Shear Capacity พื้นฐาน ---
+        # หมายเหตุ: ใช้ตัวแปร Vu (แรงเฉือน) และ Lu_x (ความสูงเสา) จาก Global Input ที่มีอยู่แล้ว
         d = h - cv - d_tie - (d_long / 2) if shape == "Rectangular" else b - cv - d_tie - (d_long / 2)
         bw = b
         
-        # Vc คำนวณแบบคร่าวๆ (Simplified ACI: Vc = 0.17 * sqrt(fc) * bw * d) -> แปลงเป็น ton
-        Vc_ton = 0.17 * np.sqrt(fc) * (bw * 10) * (d * 10) / 10000 
+        # Vc คำนวณแบบ Simplified ACI แปลงเป็นหน่วย ton
+        Vc_ton = 0.17 * math.sqrt(fc) * (bw * 10) * (d * 10) / 10000 
         phi_V = 0.75
         phi_Vc = phi_V * Vc_ton
         
-        # ต้องการเหล็กปลอกรับแรงเฉือนหรือไม่
+        # ต้องการเหล็กปลอกรับแรงเฉือนเพิ่มเติมหรือไม่
         Vs_req = max(0, (Vu / phi_V) - Vc_ton)
         
         # --- 2. คำนวณ Seismic Detailing ---
-        H_cm = Hc * 100
+        # สมมติว่าดึงความสูงเสามาจาก Lu_x หรือ Lu_y ที่ผู้ใช้กรอกไว้แล้วในหน่วยเมตร
+        H_cm = Lu_x * 100  
         max_dim = max(b, h) if shape == "Rectangular" else b
         min_dim = min(b, h) if shape == "Rectangular" else b
         
@@ -1050,7 +1047,7 @@ with col2:
         S0_design = math.floor(S0_max / 2.5) * 2.5
         Smid_design = math.floor(S_mid / 5.0) * 5.0
         
-        Av = 2 * (math.pi * (d_tie**2) / 4) # 2 ขา
+        Av = 2 * (math.pi * (d_tie**2) / 4) # เหล็กปลอก 2 ขา
         Vs_prov = (Av * fy * d) / S0_design / 10 
         phi_Vn = phi_V * (Vc_ton + Vs_prov)
         is_shear_safe = phi_Vn >= Vu
