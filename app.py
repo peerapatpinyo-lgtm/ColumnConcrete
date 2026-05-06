@@ -749,185 +749,187 @@ with col2:
             """, unsafe_allow_html=True
         )
         
+
     with tab3:
-        st.markdown("### 🖥️ Ultimate CAD Blueprint View")
-        st.markdown("Professional drafting interface with interactive layers, full architectural dimensioning, and complete rebar identification.")
+        st.markdown("### 🏢 Ultimate Structural BIM Dashboard")
+        st.markdown("Comprehensive 2D/3D visualization, advanced section properties, and direct AutoCAD script generation.")
 
-        # --- คำนวณพื้นที่เหล็กเสริมรวม (Ast) เพื่อป้องกัน Error ---
+        # --- คำนวณค่าทางวิศวกรรมเพิ่มเติม ---
         total_ast = engine.Ag * engine.rho
-
-        # --- Dashboard ระดับ High-End (Dark/Modern Theme) ---
-        st.markdown(
-            f"""
-            <div style="display: flex; justify-content: space-between; padding: 20px; background-color: #0f172a; border-radius: 10px; border: 1px solid #334155; margin-bottom: 25px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);">
-                <div style="text-align: center; width: 25%;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; letter-spacing: 1px;">SECTION</p>
-                    <h3 style="margin: 5px 0 0 0; color: #f8fafc;">{shape} <span style="color: #38bdf8;">{b}x{h if shape == 'Rectangular' else b}</span></h3>
-                </div>
-                <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; letter-spacing: 1px;">GROSS AREA (Ag)</p>
-                    <h3 style="margin: 5px 0 0 0; color: #f8fafc;">{engine.Ag:,.1f} <span style="font-size: 14px; color: #64748b;">cm²</span></h3>
-                </div>
-                <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; letter-spacing: 1px;">STEEL AREA (Ast)</p>
-                    <h3 style="margin: 5px 0 0 0; color: #f87171;">{total_ast:,.2f} <span style="font-size: 14px; color: #64748b;">cm²</span></h3>
-                </div>
-                <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 13px; font-weight: 600; letter-spacing: 1px;">STEEL RATIO (ρ)</p>
-                    <h3 style="margin: 5px 0 0 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#ef4444'};">{engine.rho*100:.2f}%</h3>
-                </div>
-            </div>
-            """, unsafe_allow_html=True
-        )
-
-        # --- เลเยอร์คอนโทรลสไตล์ Software ---
-        col1, col2, col3, col4 = st.columns(4)
-        show_dims = col1.checkbox("📐 Dimensions", value=True)
-        show_ties = col2.checkbox("🔗 Stirrup Outline", value=True)
-        show_all_ids = col3.checkbox("🔢 Show All Rebar IDs", value=True) # ไฮไลต์ฟีเจอร์ใหม่!
-        show_grid = col4.checkbox("🔲 Drafting Grid", value=True)
-
-        fig_sec = go.Figure()
-
-        # ตั้งค่าตัวแปรภาพ
-        max_dim = max(b, h) if shape == "Rectangular" else b
-        axis_limit = (max_dim / 2) * 1.6 
-        cv = 4.0 
         
-        # สีธีม Blueprint
-        theme_bg = '#020617' # Slate 950 (เกือบดำ)
-        theme_conc_line = '#38bdf8' # Sky 400 (ฟ้าสว่าง)
-        theme_conc_fill = 'rgba(56, 189, 248, 0.1)'
-        theme_tie = '#facc15' # Yellow 400
-        theme_rebar = '#ef4444' # Red 500
-        theme_dim = '#94a3b8' # Slate 400
-        theme_grid = 'rgba(255, 255, 255, 0.05)'
-
-        # 1. วาดคอนกรีตและเหล็กปลอก
+        # คำนวณ Moment of Inertia (Ix, Iy) แบบพื้นฐาน (ไม่รวมเหล็ก)
         if shape == "Rectangular":
-            x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
-            y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
-            x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
-            y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
+            Ix = (b * h**3) / 12
+            Iy = (h * b**3) / 12
         else:
-            theta = np.linspace(0, 2*np.pi, 100)
-            x_conc = (b/2)*np.cos(theta)
-            y_conc = (b/2)*np.sin(theta)
-            x_st = ((b/2)-cv)*np.cos(theta)
-            y_st = ((b/2)-cv)*np.sin(theta)
+            Ix = Iy = (np.pi * b**4) / 64
 
-        # ลงสีคอนกรีต
-        fig_sec.add_trace(go.Scatter(
-            x=x_conc, y=y_conc, mode='lines', 
-            line=dict(color=theme_conc_line, width=2), fill='toself', fillcolor=theme_conc_fill, 
-            name='Concrete Edge', hoverinfo='skip'
-        ))
+        # สร้าง Sub-Tabs เพื่อความเป็นระเบียบระดับ Pro
+        view_2d, view_3d, view_props = st.tabs(["📐 2D Blueprint", "🧊 3D Rebar Cage", "⚙️ Properties & CAD Export"])
 
-        # เหล็กปลอก
-        if show_ties:
+        # ==========================================
+        # TAB 1: 2D BLUEPRINT (Dark Mode)
+        # ==========================================
+        with view_2d:
+            st.markdown(
+                f"""
+                <div style="display: flex; justify-content: space-between; padding: 15px; background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px;">
+                    <div style="text-align: center; width: 25%;">
+                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">SECTION</p>
+                        <h4 style="margin: 0; color: #f8fafc;">{shape} <span style="color: #38bdf8;">{b}x{h if shape == 'Rectangular' else b}</span></h4>
+                    </div>
+                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
+                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">GROSS AREA (Ag)</p>
+                        <h4 style="margin: 0; color: #f8fafc;">{engine.Ag:,.1f} cm²</h4>
+                    </div>
+                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
+                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">STEEL AREA (Ast)</p>
+                        <h4 style="margin: 0; color: #f87171;">{total_ast:,.2f} cm²</h4>
+                    </div>
+                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
+                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">STEEL RATIO (ρ)</p>
+                        <h4 style="margin: 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#ef4444'};">{engine.rho*100:.2f}%</h4>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True
+            )
+
+            # Controls
+            c1, c2, c3 = st.columns(3)
+            show_dims = c1.checkbox("📐 Show Dimensions", value=True)
+            show_ties = c2.checkbox("🔗 Show Ties", value=True)
+            show_ids = c3.checkbox("🔢 Rebar IDs", value=True)
+
+            fig_sec = go.Figure()
+            max_dim = max(b, h) if shape == "Rectangular" else b
+            axis_limit = (max_dim / 2) * 1.6 
+            cv = 4.0 
+
+            # Concrete Layer
+            if shape == "Rectangular":
+                x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
+                y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
+                x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
+                y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
+            else:
+                theta = np.linspace(0, 2*np.pi, 100)
+                x_conc = (b/2)*np.cos(theta)
+                y_conc = (b/2)*np.sin(theta)
+                x_st = ((b/2)-cv)*np.cos(theta)
+                y_st = ((b/2)-cv)*np.sin(theta)
+
+            fig_sec.add_trace(go.Scatter(x=x_conc, y=y_conc, mode='lines', line=dict(color='#38bdf8', width=2), fill='toself', fillcolor='rgba(56, 189, 248, 0.1)', hoverinfo='skip'))
+            if show_ties:
+                fig_sec.add_trace(go.Scatter(x=x_st, y=y_st, mode='lines', line=dict(color='#facc15', width=1.5, dash='dash'), hoverinfo='skip'))
+
+            # Rebar Layer
+            bar_x = [bar['x'] for bar in engine.bars]
+            bar_y = [bar['y'] for bar in engine.bars]
+            scatter_mode = 'markers+text' if show_ids else 'markers'
+            
             fig_sec.add_trace(go.Scatter(
-                x=x_st, y=y_st, mode='lines', 
-                line=dict(color=theme_tie, width=1.5, dash='dash'), 
-                name=f'Ties (Cover {cv}cm)', hoverinfo='skip'
+                x=bar_x, y=bar_y, mode=scatter_mode, 
+                marker=dict(color='#020617', size=12, line=dict(color='#ef4444', width=3)),
+                text=[str(i+1) for i in range(len(bar_x))], textposition="top right", textfont=dict(color="#f1f5f9", size=10),
+                hovertemplate="<b>ID: %{text}</b><br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>"
             ))
 
-        # 2. เส้นบอกระยะ (True Architectural Dimensions)
-        if show_dims:
-            dim_offset = 12
-            ext_offset = 2 # ระยะห่างเส้น extension จากขอบ
-            
+            fig_sec.update_layout(
+                xaxis=dict(title="X-AXIS", showgrid=True, gridcolor='rgba(255,255,255,0.05)', range=[-axis_limit, axis_limit]),
+                yaxis=dict(title="Y-AXIS", showgrid=True, gridcolor='rgba(255,255,255,0.05)', range=[-axis_limit, axis_limit], scaleanchor="x", scaleratio=1),
+                plot_bgcolor='#020617', paper_bgcolor='#020617', height=600, margin=dict(l=40, r=40, t=40, b=40),
+                showlegend=False
+            )
+            st.plotly_chart(fig_sec, use_container_width=True)
+
+        # ==========================================
+        # TAB 2: 3D REBAR CAGE
+        # ==========================================
+        with view_3d:
+            st.info("💡 Interactive 3D view of the column segment. Drag to rotate, scroll to zoom.")
+            L_col = max_dim * 3 # ความสูงเสาสมมติให้สมส่วน
+            fig_3d = go.Figure()
+
+            # 3D Rebars (Longitudinal)
+            for i, (x, y) in enumerate(zip(bar_x, bar_y)):
+                fig_3d.add_trace(go.Scatter3d(
+                    x=[x, x], y=[y, y], z=[0, L_col],
+                    mode='lines', line=dict(color='#ef4444', width=6),
+                    name=f"Bar {i+1}", hoverinfo='skip'
+                ))
+
+            # 3D Ties (Stirrups) - วาดทุกๆ ระยะห่าง 20 cm
+            spacing = 20
+            z_ties = np.arange(spacing, L_col, spacing)
+            for z in z_ties:
+                fig_3d.add_trace(go.Scatter3d(
+                    x=x_st, y=y_st, z=[z]*len(x_st),
+                    mode='lines', line=dict(color='#facc15', width=3),
+                    showlegend=False, hoverinfo='skip'
+                ))
+
+            # 3D Concrete Wireframe
+            fig_3d.add_trace(go.Scatter3d(
+                x=x_conc, y=y_conc, z=[0]*len(x_conc), mode='lines', line=dict(color='rgba(56, 189, 248, 0.3)', width=2), showlegend=False, hoverinfo='skip'
+            ))
+            fig_3d.add_trace(go.Scatter3d(
+                x=x_conc, y=y_conc, z=[L_col]*len(x_conc), mode='lines', line=dict(color='rgba(56, 189, 248, 0.3)', width=2), showlegend=False, hoverinfo='skip'
+            ))
+            # วาดเส้นขอบแนวตั้ง 4 มุม (สำหรับสี่เหลี่ยม)
             if shape == "Rectangular":
-                # Width (B) - ด้านล่าง
-                y_d = -h/2 - dim_offset
-                # Extension lines
-                fig_sec.add_trace(go.Scatter(x=[-b/2, -b/2], y=[-h/2-ext_offset, y_d-2], mode='lines', line=dict(color=theme_dim, width=1), showlegend=False, hoverinfo='skip'))
-                fig_sec.add_trace(go.Scatter(x=[b/2, b/2], y=[-h/2-ext_offset, y_d-2], mode='lines', line=dict(color=theme_dim, width=1), showlegend=False, hoverinfo='skip'))
-                # Dimension line
-                fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_d, y_d], mode='lines+markers', marker=dict(symbol='line-ew', size=8, line=dict(width=1.5)), line=dict(color=theme_dim, width=1.5), showlegend=False, hoverinfo='skip'))
-                fig_sec.add_annotation(x=0, y=y_d, text=f"<span style='background-color:{theme_bg}; padding: 0 5px;'><b>B = {b} cm</b></span>", showarrow=False, font=dict(color="#f8fafc", size=13))
+                corners_x = [-b/2, b/2, b/2, -b/2]
+                corners_y = [-h/2, -h/2, h/2, h/2]
+                for cx, cy in zip(corners_x, corners_y):
+                    fig_3d.add_trace(go.Scatter3d(x=[cx, cx], y=[cy, cy], z=[0, L_col], mode='lines', line=dict(color='rgba(56, 189, 248, 0.15)', width=2), showlegend=False, hoverinfo='skip'))
 
-                # Depth (H) - ด้านซ้าย
-                x_d = -b/2 - dim_offset
-                # Extension lines
-                fig_sec.add_trace(go.Scatter(x=[-b/2-ext_offset, x_d-2], y=[-h/2, -h/2], mode='lines', line=dict(color=theme_dim, width=1), showlegend=False, hoverinfo='skip'))
-                fig_sec.add_trace(go.Scatter(x=[-b/2-ext_offset, x_d-2], y=[h/2, h/2], mode='lines', line=dict(color=theme_dim, width=1), showlegend=False, hoverinfo='skip'))
-                # Dimension line
-                fig_sec.add_trace(go.Scatter(x=[x_d, x_d], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns', size=8, line=dict(width=1.5)), line=dict(color=theme_dim, width=1.5), showlegend=False, hoverinfo='skip'))
-                fig_sec.add_annotation(x=x_d, y=0, text=f"<span style='background-color:{theme_bg}; padding: 0 5px;'><b>H = {h} cm</b></span>", showarrow=False, textangle=-90, font=dict(color="#f8fafc", size=13))
-            else:
-                y_d = -b/2 - dim_offset
-                fig_sec.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_d, y_d], mode='lines+markers', marker=dict(symbol='line-ew', size=8, line=dict(width=1.5)), line=dict(color=theme_dim, width=1.5), showlegend=False, hoverinfo='skip'))
-                fig_sec.add_annotation(x=0, y=y_d, text=f"<span style='background-color:{theme_bg}; padding: 0 5px;'><b>Ø {b} cm</b></span>", showarrow=False, font=dict(color="#f8fafc", size=13))
+            fig_3d.update_layout(
+                scene=dict(
+                    xaxis=dict(title="X", showbackground=False),
+                    yaxis=dict(title="Y", showbackground=False),
+                    zaxis=dict(title="Z (Height)", showbackground=False),
+                    aspectmode='data'
+                ),
+                plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', height=600, margin=dict(l=0, r=0, t=0, b=0)
+            )
+            st.plotly_chart(fig_sec_3d := fig_3d, use_container_width=True) # Walrus operator for safety
 
-        # 3. จุดเหล็กเสริมแกน (Main Rebars)
-        bar_x = [bar['x'] for bar in engine.bars]
-        bar_y = [bar['y'] for bar in engine.bars]
-        bar_ids = [str(i+1) for i in range(len(engine.bars))]
-        
-        # Hover Tooltip แบบ HUD
-        hover_texts = [
-            f"<b style='color:#38bdf8;'>REBAR ID: {i+1}</b><br>" +
-            f"──────────────<br>" +
-            f"<b>X:</b> {x:+.2f} cm<br>" +
-            f"<b>Y:</b> {y:+.2f} cm<extra></extra>" 
-            for i, (x, y) in enumerate(zip(bar_x, bar_y))
-        ]
+        # ==========================================
+        # TAB 3: SECTION PROPERTIES & AUTOCAD EXPORT
+        # ==========================================
+        with view_props:
+            col_prop1, col_prop2 = st.columns([1, 1])
+            
+            with col_prop1:
+                st.markdown("#### 📊 Geometric Properties")
+                st.dataframe(pd.DataFrame({
+                    "Property": ["Gross Area (Ag)", "Total Steel Area (Ast)", "Steel Ratio (ρ)", "Moment of Inertia (Ix)", "Moment of Inertia (Iy)"],
+                    "Value": [f"{engine.Ag:,.2f}", f"{total_ast:,.2f}", f"{engine.rho*100:.2f}%", f"{Ix:,.0f}", f"{Iy:,.0f}"],
+                    "Unit": ["cm²", "cm²", "-", "cm⁴", "cm⁴"]
+                }), hide_index=True, use_container_width=True)
 
-        # โหมดการแสดงผล (โชว์จุดอย่างเดียว หรือ โชว์จุดพร้อมตัวเลข)
-        scatter_mode = 'markers+text' if show_all_ids else 'markers'
-
-        fig_sec.add_trace(go.Scatter(
-            x=bar_x, y=bar_y, 
-            mode=scatter_mode, 
-            marker=dict(
-                color=theme_bg, # เจาะรูกลาง
-                size=12, 
-                line=dict(color=theme_rebar, width=3), # ขอบสีแดง
-                symbol='circle'
-            ),
-            text=bar_ids,
-            textposition="top right",
-            textfont=dict(color="#f1f5f9", size=10),
-            name=f'Rebars ({len(engine.bars)} total)',
-            hovertemplate=hover_texts
-        ))
-
-        # 4. Centerlines แกนกลาง
-        fig_sec.add_trace(go.Scatter(x=[-axis_limit, axis_limit], y=[0, 0], mode='lines', line=dict(color='rgba(255,255,255,0.2)', width=1, dash='dashdot'), hoverinfo='skip', showlegend=False))
-        fig_sec.add_trace(go.Scatter(x=[0, 0], y=[-axis_limit, axis_limit], mode='lines', line=dict(color='rgba(255,255,255,0.2)', width=1, dash='dashdot'), hoverinfo='skip', showlegend=False))
-
-        # 5. อัปเดต Layout ธีม Blueprint
-        fig_sec.update_layout(
-            xaxis=dict(
-                title="<b style='color:#94a3b8;'>X - AXIS (cm)</b>", 
-                showgrid=show_grid, gridwidth=1, gridcolor=theme_grid, 
-                zeroline=True, zerolinecolor='rgba(255,255,255,0.1)', zerolinewidth=1,
-                range=[-axis_limit, axis_limit]
-            ),
-            yaxis=dict(
-                title="<b style='color:#94a3b8;'>Y - AXIS (cm)</b>", 
-                showgrid=show_grid, gridwidth=1, gridcolor=theme_grid, 
-                zeroline=True, zerolinecolor='rgba(255,255,255,0.1)', zerolinewidth=1,
-                range=[-axis_limit, axis_limit],
-                scaleanchor="x", scaleratio=1
-            ),
-            plot_bgcolor=theme_bg, paper_bgcolor=theme_bg, height=700, hovermode='closest',
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, 
-                bgcolor='rgba(0,0,0,0)', font=dict(color='#f8fafc', size=12)
-            ),
-            margin=dict(l=50, r=50, t=60, b=50),
-            hoverlabel=dict(bgcolor="#0f172a", font_size=13, font_family="Courier New")
-        )
-
-        # --- Render กราฟพร้อมปุ่ม Export ---
-        st.plotly_chart(fig_sec, use_container_width=True, config={
-            'displayModeBar': True,
-            'toImageButtonOptions': {'format': 'png', 'filename': 'RC_Section_Detail', 'height': 1080, 'width': 1080, 'scale': 2}
-        })
-        
-        # --- ตารางข้อมูลแบบย่อส่วน (Mini Schedule) ---
-        st.markdown("<p style='text-align: right; font-size: 12px; color: gray;'>* Hover over any rebar marker to view precise X, Y coordinates.</p>", unsafe_allow_html=True)
+            with col_prop2:
+                st.markdown("#### 💻 AutoCAD Script Generator")
+                st.caption("Copy this text and paste it into the AutoCAD command line to auto-draw this section.")
+                
+                # สร้าง AutoCAD Command Script อัตโนมัติ
+                script = ""
+                script += "COLOR 4\n" # สีฟ้าสำหรับคอนกรีต
+                if shape == "Rectangular":
+                    script += f"RECTANG {-b/2},{-h/2} {b/2},{h/2}\n"
+                    script += "COLOR 2\n" # สีเหลืองสำหรับเหล็กปลอก
+                    script += f"RECTANG {-(b/2-cv)},{-(h/2-cv)} {(b/2-cv)},{(h/2-cv)}\n"
+                else:
+                    script += f"CIRCLE 0,0 {b/2}\n"
+                    script += "COLOR 2\n"
+                    script += f"CIRCLE 0,0 {b/2-cv}\n"
+                
+                script += "COLOR 1\n" # สีแดงสำหรับเหล็กยืน
+                for rx, ry in zip(bar_x, bar_y):
+                    # สมมติขนาดเหล็กเส้นให้วาดเป็นวงกลม (ใช้ r สมมติ 1.25 cm)
+                    script += f"CIRCLE {rx},{ry} 1.25\n"
+                script += "ZOOM E\nCOLOR BYLAYER\n"
+                
+                st.code(script, language="autohotkey")
 
     with tab4:
         st.markdown("### 📖 Parameter Guide")
