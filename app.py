@@ -1092,44 +1092,49 @@ with col2:
         col_m7.metric("Lap Splice Length", f"{splice_len:.0f} cm")
         col_m8.metric("Splice Rule", f"{splice_type}")
 
-        # --- 6. Detailed Calculation Report (ACI 318-19 Professional Edition) ---
+        # --- 6. Detailed Calculation Report (Strict ACI 318-19 Professional Edition) ---
         with st.expander("📝 Comprehensive Calculation Report (Strict ACI 318-19)", expanded=False):
-            # Section 1 & 2 remain similar but with clearer formatting
             st.markdown(f"""
-            #### 1. Effective Depth Calculation
-            * **X-Axis ($d_x$):** $b - cover - d_{{tie}} - (d_b/2) = {b} - {cv} - {d_tie:.2f} - {db_cm/2:.2f} = $ **{dx:.2f} cm**
-            * **Y-Axis ($d_y$):** $h - cover - d_{{tie}} - (d_b/2) = {h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f} = $ **{dy:.2f} cm**
+            #### 1. Geometric Properties & Effective Depths
+            Ref. ACI 318-19 Sec. 20.5.1
+            * **X-Axis ($d_x$):** $b - \\text{{cover}} - d_{{tie}} - (d_b/2) = {b} - {cv} - {d_tie:.2f} - {db_cm/2:.2f} =$ **{dx:.2f} cm**
+            * **Y-Axis ($d_y$):** $h - \\text{{cover}} - d_{{tie}} - (d_b/2) = {h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f} =$ **{dy:.2f} cm**
 
-            #### 2. Concrete Shear Capacity ($V_c$)
-            Ref. ACI 318-19 Table 22.5.5.1: $\phi V_c = \phi (0.17 \lambda \sqrt{{f'_c}} b_w d)$
-            * **$\phi V_{{cx}}$:** $0.75 \times 0.17 \times \sqrt{{{fc}}} \times {h*10} \times {dx*10} / 10000 = $ **{phi_V * Vcx_ton:.2f} ton**
-            * **$\phi V_{{cy}}$:** $0.75 \times 0.17 \times \sqrt{{{fc}}} \times {b*10} \times {dy*10} / 10000 = $ **{phi_V * Vcy_ton:.2f} ton**
+            #### 2. Concrete Shear Capacity ($\\phi V_c$)
+            Ref. ACI 318-19 Table 22.5.5.1 (Assuming Normal Weight Concrete, $\\lambda = 1.0$)
+            * **Equation:** $\\phi V_c = \\phi (0.17 \\lambda \\sqrt{{f'_c}} b_w d)$ | Strength Reduction Factor $\\phi = {phi_V}$
+            * **X-Direction ($\\phi V_{{cx}}$):** $0.75 \\times (0.17 \\times 1.0 \\times \\sqrt{{{fc}}} \\times {h*10} \\times {dx*10}) / 10000 =$ **{phi_V * Vcx_ton:.2f} ton**
+            * **Y-Direction ($\\phi V_{{cy}}$):** $0.75 \\times (0.17 \\times 1.0 \\times \\sqrt{{{fc}}} \\times {b*10} \\times {dy*10}) / 10000 =$ **{phi_V * Vcy_ton:.2f} ton**
 
-            #### 3. Steel Shear Contribution ($V_s$)
-            Ref. ACI 318-19 Sec. 22.5.8.5.3: $V_s = (A_v f_{{yt}} d) / s$
-            * **Provided:** `{tie_str}` @ `{S0_design:.1f}` cm ( {tie_legs} legs ) $\rightarrow A_v = {Av_x:.2f} \text{{ cm}}^2$
-            * **$\phi V_{{sx}}$:** $0.75 \times ({Av_x:.2f} \times {fy} \times {dx:.2f}) / ({S0_design:.1f} \times 10) = $ **{phi_V * Vs_prov_x:.2f} ton**
-            * **$\phi V_{{sy}}$:** $0.75 \times ({Av_y:.2f} \times {fy} \times {dy:.2f}) / ({Smid_design:.1f} \times 10) = $ **{phi_V * Vs_prov_y:.2f} ton**
+            #### 3. Steel Shear Contribution ($\\phi V_s$)
+            Ref. ACI 318-19 Sec. 22.5.8.5.3
+            * **Transverse Reinforcement Provided:** `{tie_str}` @ `{S0_design:.1f}` cm ({tie_legs} legs) $\\rightarrow A_v = {Av_x:.2f} \\text{{ cm}}^2$
+            * **Equation:** $\\phi V_s = \\phi \\left( \\frac{{A_v f_{{yt}} d}}{{s}} \\right)$
+            * **X-Direction ($\\phi V_{{sx}}$):** $0.75 \\times \\left( \\frac{{{Av_x:.2f} \\times {fy} \\times {dx:.2f}}}{{{S0_design:.1f} \\times 10}} \\right) =$ **{phi_V * Vs_prov_x:.2f} ton**
+            * **Y-Direction ($\\phi V_{{sy}}$):** $0.75 \\times \\left( \\frac{{{Av_y:.2f} \\times {fy} \\times {dy:.2f}}}{{{Smid_design:.1f} \\times 10}} \\right) =$ **{phi_V * Vs_prov_y:.2f} ton**
 
-            #### 4. Total Shear Design & Verification (Demand vs. Capacity)
-            Ref. ACI 318-19 Sec. 22.5.1.1: $\phi V_n \geq V_u$
-            * **X-Direction:** $\phi V_{{nx}} = {phi_V * Vcx_ton:.2f} + {phi_V * Vs_prov_x:.2f} = $ **{phi_Vnx:.2f} ton**
-                * Demand $V_{{ux}} = {Vux:.2f}$ ton | **D/C Ratio:** `{Vux/phi_Vnx:.2f}` $\rightarrow$ **{"✅ PASS" if is_x_safe else "❌ FAIL"}**
-            * **Y-Direction:** $\phi V_{{ny}} = {phi_V * Vcy_ton:.2f} + {phi_V * Vs_prov_y:.2f} = $ **{phi_Vny:.2f} ton**
-                * Demand $V_{{uy}} = {Vuy:.2f}$ ton | **D/C Ratio:** `{Vuy/phi_Vny:.2f}` $\rightarrow$ $\rightarrow$ **{"✅ PASS" if is_y_safe else "❌ FAIL"}**
+            #### 4. Total Design Shear Strength & D/C Verification
+            Ref. ACI 318-19 Sec. 22.5.1.1: $\\phi V_n = \\phi V_c + \\phi V_s \\geq V_u$
+            * **X-Direction:** $\\phi V_{{nx}} = {phi_V * Vcx_ton:.2f} + {phi_V * Vs_prov_x:.2f} =$ **{phi_Vnx:.2f} ton**
+              * Demand ($V_{{ux}}$) = {Vux:.2f} ton | **D/C Ratio = `{Vux/phi_Vnx:.2f}`** $\\rightarrow$ **{"✅ PASS" if is_x_safe else "❌ FAIL"}**
+            * **Y-Direction:** $\\phi V_{{ny}} = {phi_V * Vcy_ton:.2f} + {phi_V * Vs_prov_y:.2f} =$ **{phi_Vny:.2f} ton**
+              * Demand ($V_{{uy}}$) = {Vuy:.2f} ton | **D/C Ratio = `{Vuy/phi_Vny:.2f}`** $\\rightarrow$ **{"✅ PASS" if is_y_safe else "❌ FAIL"}**
 
-            #### 5. Torsional Threshold & Interaction
+            #### 5. Torsional Moment Verification
             Ref. ACI 318-19 Sec. 22.7.4.1
-            * **Threshold $T_{{th}}$:** $0.26 \sqrt{{f'_c}} (A_{{cp}}^2 / p_{{cp}}) = $ **{Tth_tonm:.2f} ton-m**
-            * **Check:** $T_u ({Tu:.2f})$ vs $T_{{th}} ({Tth_tonm:.2f})$ $\rightarrow$ **{"Action Required" if is_torsion_significant else "Negligible"}**
+            * **Enclosed Area ($A_{{cp}}$):** $b \\times h =$ **{Acp:.2f} cm²**
+            * **Perimeter ($p_{{cp}}$):** $2(b + h) =$ **{pcp:.2f} cm**
+            * **Threshold Limit ($T_{{th}}$):** $0.26 \\sqrt{{f'_c}} \\left( \\frac{{A_{{cp}}^2}}{{p_{{cp}}}} \\right) =$ **{Tth_tonm:.2f} ton-m**
+            * **Assessment:** $T_u$ ({Tu:.2f}) vs $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"Action Required (Torsional Reinforcement Needed)" if is_torsion_significant else "Negligible (Torsion can be ignored)"}**
 
-            #### 6. Development & Splice Length (Detailed Selection)
-            Ref. ACI 318-19 Chapter 25 & 18
-            * **Design Criteria:** `{seismic_frame_label}`
-            * **Compression Splice ($l_{{sc}}$):** $0.071 f_y d_b \geq 30cm = $ **{lap_compression:.2f} cm**
-            * **Tension Splice ($l_{{st}}$ - Class B):** $1.3 \times l_d = $ **{lap_tension:.2f} cm**
-            * **Final Decision:** Used **{splice_len:.0f} cm** ({splice_type}).
-            * *Note: For Special Moment Frames, ACI 18.7.5.3 mandates Class B tension splices located in the center half of the column.*
+            #### 6. Development & Lap Splice Detailing
+            Ref. ACI 318-19 Chapters 18 (Seismic) & 25 (Reinforcement Details)
+            * **Design Framework:** `{seismic_frame_label}`
+            * **Compression Splice ($l_{{sc}}$):** $0.071 f_y d_b \\geq 30 \\text{{ cm}} =$ **{lap_compression:.2f} cm**
+            * **Tension Splice ($l_{{st}}$, Class B):** $1.3 \\times l_d =$ **{lap_tension:.2f} cm**
+            * **Selected Length & Engineering Rationale:**
+              * **Provided Splice Length:** **{splice_len:.0f} cm** ({splice_type})
+              * **Logic:** For Special Moment Frames (SMF), lateral cyclic loading (e.g., seismic forces) induces flexural tension. ACI 18.7.5.3 explicitly mandates that lap splices be treated as tension splices (Class B) and confined within the center half of the column clear height. For Ordinary Frames under strict axial compression, a standard compression lap splice is structurally permissible.
             """)
         
         st.markdown("---")
