@@ -349,11 +349,14 @@ else:
     Mcx = del_x_ns * M_sway_x if kl_rx > 22 else M_sway_x
     Mcy = del_y_ns * M_sway_y if kl_ry > 22 else M_sway_y
 
-
 # --- 🛡️ NEW: Shear, Torsion & Seismic Calculation ---
 phi_v = 0.75
 Pu_kg = Pu * 1000
-Vu_kg = vu_ton * 1000
+
+# 🔴 อัปเดต: ดึงค่าจากตัวแปร vux_ton และ vuy_ton ที่เราสร้างใหม่
+Vux_kg = vux_ton * 1000
+Vuy_kg = vuy_ton * 1000
+Vu_kg = max(Vux_kg, Vuy_kg)  # ใช้ค่าแรงเฉือนที่มากที่สุดเพื่อการคำนวณเช็คค่าเบื้องต้น
 
 # Effective depth (d) & Web width (bw)
 if shape == "Rectangular":
