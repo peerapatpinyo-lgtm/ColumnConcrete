@@ -751,185 +751,172 @@ with col2:
         
 
     with tab3:
-        st.markdown("### 🏢 Ultimate Structural BIM Dashboard")
-        st.markdown("Comprehensive 2D/3D visualization, advanced section properties, and direct AutoCAD script generation.")
-
-        # --- คำนวณค่าทางวิศวกรรมเพิ่มเติม ---
-        total_ast = engine.Ag * engine.rho
+        st.markdown("### 🏛️ God-Tier Structural Blueprint & BIM Dashboard")
         
-        # คำนวณ Moment of Inertia (Ix, Iy) แบบพื้นฐาน (ไม่รวมเหล็ก)
+        # --- เตรียมข้อมูลทางวิศวกรรม (Engineering Context) ---
+        total_ast = engine.Ag * engine.rho
+        # คำนวณ Inertia (พื้นฐานคอนกรีต)
         if shape == "Rectangular":
             Ix = (b * h**3) / 12
             Iy = (h * b**3) / 12
         else:
             Ix = Iy = (np.pi * b**4) / 64
 
-        # สร้าง Sub-Tabs เพื่อความเป็นระเบียบระดับ Pro
-        view_2d, view_3d, view_props = st.tabs(["📐 2D Blueprint", "🧊 3D Rebar Cage", "⚙️ Properties & CAD Export"])
-
-        # ==========================================
-        # TAB 1: 2D BLUEPRINT (Dark Mode)
-        # ==========================================
-        with view_2d:
-            st.markdown(
-                f"""
-                <div style="display: flex; justify-content: space-between; padding: 15px; background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px;">
-                    <div style="text-align: center; width: 25%;">
-                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">SECTION</p>
-                        <h4 style="margin: 0; color: #f8fafc;">{shape} <span style="color: #38bdf8;">{b}x{h if shape == 'Rectangular' else b}</span></h4>
-                    </div>
-                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">GROSS AREA (Ag)</p>
-                        <h4 style="margin: 0; color: #f8fafc;">{engine.Ag:,.1f} cm²</h4>
-                    </div>
-                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">STEEL AREA (Ast)</p>
-                        <h4 style="margin: 0; color: #f87171;">{total_ast:,.2f} cm²</h4>
-                    </div>
-                    <div style="text-align: center; border-left: 1px solid #334155; width: 25%;">
-                        <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 600;">STEEL RATIO (ρ)</p>
-                        <h4 style="margin: 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#ef4444'};">{engine.rho*100:.2f}%</h4>
-                    </div>
+        # ส่วนหัว Dashboard สไตล์ Enterprise
+        st.markdown(
+            f"""
+            <div style="display: flex; justify-content: space-between; padding: 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);">
+                <div style="text-align: left;">
+                    <p style="margin: 0; color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 1.5px;">PROJECT SECTION</p>
+                    <h2 style="margin: 0; color: #ffffff;">{shape.upper()} {b}x{h if shape == 'Rectangular' else b}</h2>
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px;">Design Code: ACI-318 / SDM</p>
                 </div>
-                """, unsafe_allow_html=True
-            )
+                <div style="text-align: right; border-left: 1px solid #334155; padding-left: 20px;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 11px; font-weight: 700;">REBAR RATIO (ρ)</p>
+                    <h2 style="margin: 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#fb7185'};">{engine.rho*100:.2f}%</h2>
+                    <p style="margin: 0; color: #64748b; font-size: 12px;">{'PASS' if 0.01 <= engine.rho <= 0.08 else 'CHECK LIMIT'}</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True
+        )
 
-            # Controls
-            c1, c2, c3 = st.columns(3)
-            show_dims = c1.checkbox("📐 Show Dimensions", value=True)
-            show_ties = c2.checkbox("🔗 Show Ties", value=True)
-            show_ids = c3.checkbox("🔢 Rebar IDs", value=True)
+        view_2d, view_3d, view_export = st.tabs(["📊 2D Engineering Detail", "🧊 3D BIM Model", "💾 CAD Data & Export"])
 
-            fig_sec = go.Figure()
-            max_dim = max(b, h) if shape == "Rectangular" else b
-            axis_limit = (max_dim / 2) * 1.6 
-            cv = 4.0 
+        with view_2d:
+            # --- Drawing Controls ---
+            c1, c2, c3, c4 = st.columns(4)
+            draw_dim = c1.toggle("Dimensions", value=True)
+            draw_id = c2.toggle("Rebar Labels", value=True)
+            draw_grid = c3.toggle("Grid Lines", value=False)
+            draw_spec = c4.toggle("Material Specs", value=True)
 
-            # Concrete Layer
+            fig = go.Figure()
+            
+            # --- 1. SETUP PARAMETERS ---
+            cv = 4.0 # Covering
+            max_d = max(b, h) if shape == "Rectangular" else b
+            offset = max_d * 0.25 # ระยะ Offset สำหรับเส้น Dimension
+            limit = max_d * 0.8
+            
+            t_blue = '#38bdf8'
+            t_red = '#ef4444'
+            t_gold = '#fbbf24'
+            t_dark = '#020617'
+            t_dim = '#64748b'
+
+            # --- 2. CONCRETE & TIES ---
             if shape == "Rectangular":
-                x_conc = [-b/2, b/2, b/2, -b/2, -b/2]
-                y_conc = [-h/2, -h/2, h/2, h/2, -h/2]
-                x_st = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
-                y_st = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
+                x_c = [-b/2, b/2, b/2, -b/2, -b/2]
+                y_c = [-h/2, -h/2, h/2, h/2, -h/2]
+                x_t = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
+                y_t = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
             else:
                 theta = np.linspace(0, 2*np.pi, 100)
-                x_conc = (b/2)*np.cos(theta)
-                y_conc = (b/2)*np.sin(theta)
-                x_st = ((b/2)-cv)*np.cos(theta)
-                y_st = ((b/2)-cv)*np.sin(theta)
+                x_c, y_c = (b/2)*np.cos(theta), (b/2)*np.sin(theta)
+                x_t, y_t = (b/2-cv)*np.cos(theta), (b/2-cv)*np.sin(theta)
 
-            fig_sec.add_trace(go.Scatter(x=x_conc, y=y_conc, mode='lines', line=dict(color='#38bdf8', width=2), fill='toself', fillcolor='rgba(56, 189, 248, 0.1)', hoverinfo='skip'))
-            if show_ties:
-                fig_sec.add_trace(go.Scatter(x=x_st, y=y_st, mode='lines', line=dict(color='#facc15', width=1.5, dash='dash'), hoverinfo='skip'))
+            # Draw Concrete
+            fig.add_trace(go.Scatter(x=x_c, y=y_c, mode='lines', line=dict(color=t_blue, width=3), fill='toself', fillcolor='rgba(56, 189, 248, 0.1)', name='Concrete'))
+            # Draw Ties
+            fig.add_trace(go.Scatter(x=x_t, y=y_t, mode='lines', line=dict(color=t_gold, width=1.5, dash='dash'), name='Stirrups'))
 
-            # Rebar Layer
-            bar_x = [bar['x'] for bar in engine.bars]
-            bar_y = [bar['y'] for bar in engine.bars]
-            scatter_mode = 'markers+text' if show_ids else 'markers'
-            
-            fig_sec.add_trace(go.Scatter(
-                x=bar_x, y=bar_y, mode=scatter_mode, 
-                marker=dict(color='#020617', size=12, line=dict(color='#ef4444', width=3)),
-                text=[str(i+1) for i in range(len(bar_x))], textposition="top right", textfont=dict(color="#f1f5f9", size=10),
-                hovertemplate="<b>ID: %{text}</b><br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>"
-            ))
-
-            fig_sec.update_layout(
-                xaxis=dict(title="X-AXIS", showgrid=True, gridcolor='rgba(255,255,255,0.05)', range=[-axis_limit, axis_limit]),
-                yaxis=dict(title="Y-AXIS", showgrid=True, gridcolor='rgba(255,255,255,0.05)', range=[-axis_limit, axis_limit], scaleanchor="x", scaleratio=1),
-                plot_bgcolor='#020617', paper_bgcolor='#020617', height=600, margin=dict(l=40, r=40, t=40, b=40),
-                showlegend=False
-            )
-            st.plotly_chart(fig_sec, use_container_width=True)
-
-        # ==========================================
-        # TAB 2: 3D REBAR CAGE
-        # ==========================================
-        with view_3d:
-            st.info("💡 Interactive 3D view of the column segment. Drag to rotate, scroll to zoom.")
-            L_col = max_dim * 3 # ความสูงเสาสมมติให้สมส่วน
-            fig_3d = go.Figure()
-
-            # 3D Rebars (Longitudinal)
-            for i, (x, y) in enumerate(zip(bar_x, bar_y)):
-                fig_3d.add_trace(go.Scatter3d(
-                    x=[x, x], y=[y, y], z=[0, L_col],
-                    mode='lines', line=dict(color='#ef4444', width=6),
-                    name=f"Bar {i+1}", hoverinfo='skip'
-                ))
-
-            # 3D Ties (Stirrups) - วาดทุกๆ ระยะห่าง 20 cm
-            spacing = 20
-            z_ties = np.arange(spacing, L_col, spacing)
-            for z in z_ties:
-                fig_3d.add_trace(go.Scatter3d(
-                    x=x_st, y=y_st, z=[z]*len(x_st),
-                    mode='lines', line=dict(color='#facc15', width=3),
-                    showlegend=False, hoverinfo='skip'
-                ))
-
-            # 3D Concrete Wireframe
-            fig_3d.add_trace(go.Scatter3d(
-                x=x_conc, y=y_conc, z=[0]*len(x_conc), mode='lines', line=dict(color='rgba(56, 189, 248, 0.3)', width=2), showlegend=False, hoverinfo='skip'
-            ))
-            fig_3d.add_trace(go.Scatter3d(
-                x=x_conc, y=y_conc, z=[L_col]*len(x_conc), mode='lines', line=dict(color='rgba(56, 189, 248, 0.3)', width=2), showlegend=False, hoverinfo='skip'
-            ))
-            # วาดเส้นขอบแนวตั้ง 4 มุม (สำหรับสี่เหลี่ยม)
-            if shape == "Rectangular":
-                corners_x = [-b/2, b/2, b/2, -b/2]
-                corners_y = [-h/2, -h/2, h/2, h/2]
-                for cx, cy in zip(corners_x, corners_y):
-                    fig_3d.add_trace(go.Scatter3d(x=[cx, cx], y=[cy, cy], z=[0, L_col], mode='lines', line=dict(color='rgba(56, 189, 248, 0.15)', width=2), showlegend=False, hoverinfo='skip'))
-
-            fig_3d.update_layout(
-                scene=dict(
-                    xaxis=dict(title="X", showbackground=False),
-                    yaxis=dict(title="Y", showbackground=False),
-                    zaxis=dict(title="Z (Height)", showbackground=False),
-                    aspectmode='data'
-                ),
-                plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', height=600, margin=dict(l=0, r=0, t=0, b=0)
-            )
-            st.plotly_chart(fig_sec_3d := fig_3d, use_container_width=True) # Walrus operator for safety
-
-        # ==========================================
-        # TAB 3: SECTION PROPERTIES & AUTOCAD EXPORT
-        # ==========================================
-        with view_props:
-            col_prop1, col_prop2 = st.columns([1, 1])
-            
-            with col_prop1:
-                st.markdown("#### 📊 Geometric Properties")
-                st.dataframe(pd.DataFrame({
-                    "Property": ["Gross Area (Ag)", "Total Steel Area (Ast)", "Steel Ratio (ρ)", "Moment of Inertia (Ix)", "Moment of Inertia (Iy)"],
-                    "Value": [f"{engine.Ag:,.2f}", f"{total_ast:,.2f}", f"{engine.rho*100:.2f}%", f"{Ix:,.0f}", f"{Iy:,.0f}"],
-                    "Unit": ["cm²", "cm²", "-", "cm⁴", "cm⁴"]
-                }), hide_index=True, use_container_width=True)
-
-            with col_prop2:
-                st.markdown("#### 💻 AutoCAD Script Generator")
-                st.caption("Copy this text and paste it into the AutoCAD command line to auto-draw this section.")
-                
-                # สร้าง AutoCAD Command Script อัตโนมัติ
-                script = ""
-                script += "COLOR 4\n" # สีฟ้าสำหรับคอนกรีต
+            # --- 3. DIMENSIONS (FIXED & IMPROVED) ---
+            if draw_dim:
                 if shape == "Rectangular":
-                    script += f"RECTANG {-b/2},{-h/2} {b/2},{h/2}\n"
-                    script += "COLOR 2\n" # สีเหลืองสำหรับเหล็กปลอก
-                    script += f"RECTANG {-(b/2-cv)},{-(h/2-cv)} {(b/2-cv)},{(h/2-cv)}\n"
+                    # --- Width (B) Dimension ---
+                    y_dim = -h/2 - offset
+                    # Extension Lines
+                    fig.add_trace(go.Scatter(x=[-b/2, -b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[b/2, b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    # Main Dim Line
+                    fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=0, y=y_dim, text=f"B = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
+
+                    # --- Depth (H) Dimension ---
+                    x_dim = -b/2 - offset
+                    fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[-h/2, -h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[h/2, h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[x_dim, x_dim], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=x_dim, y=0, text=f"H = {h} cm", showarrow=False, xshift=-15, textangle=-90, font=dict(color="white", size=12))
                 else:
-                    script += f"CIRCLE 0,0 {b/2}\n"
-                    script += "COLOR 2\n"
-                    script += f"CIRCLE 0,0 {b/2-cv}\n"
-                
-                script += "COLOR 1\n" # สีแดงสำหรับเหล็กยืน
-                for rx, ry in zip(bar_x, bar_y):
-                    # สมมติขนาดเหล็กเส้นให้วาดเป็นวงกลม (ใช้ r สมมติ 1.25 cm)
-                    script += f"CIRCLE {rx},{ry} 1.25\n"
-                script += "ZOOM E\nCOLOR BYLAYER\n"
-                
-                st.code(script, language="autohotkey")
+                    # Circular Diameter
+                    y_dim = -b/2 - offset
+                    fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=0, y=y_dim, text=f"Ø = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
+
+            # --- 4. REBARS & LABELS ---
+            bx = [bar['x'] for bar in engine.bars]
+            by = [bar['y'] for bar in engine.bars]
+            
+            fig.add_trace(go.Scatter(
+                x=bx, y=by, mode='markers+text' if draw_id else 'markers',
+                marker=dict(color=t_dark, size=12, line=dict(color=t_red, width=2.5)),
+                text=[str(i+1) for i in range(len(bx))], textposition="top center",
+                textfont=dict(color="white", size=9),
+                name='Main Rebars'
+            ))
+
+            # --- 5. MATERIAL SPEC TAGS ---
+            if draw_spec:
+                spec_text = f"<b>SPECIFICATIONS</b><br>fc' = {fc} MPa<br>fy = {fy} MPa<br>Ast = {total_ast:.2f} cm²"
+                fig.add_annotation(
+                    xref="paper", yref="paper", x=0.98, y=0.02,
+                    text=spec_text, showarrow=False, align="right",
+                    bgcolor="rgba(15, 23, 42, 0.8)", bordercolor=t_dim, borderpad=10,
+                    font=dict(color=t_blue, size=11)
+                )
+
+            # --- Layout Optimization ---
+            fig.update_layout(
+                plot_bgcolor=t_dark, paper_bgcolor=t_dark,
+                xaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], zeroline=False),
+                yaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], scaleanchor="x", scaleratio=1, zeroline=False),
+                height=700, margin=dict(l=20, r=20, t=20, b=20),
+                legend=dict(font=dict(color="white"), orientation="h", y=1.05, x=0.5, xanchor="center")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with view_3d:
+            st.markdown("#### 🧊 Interactive 3D BIM Cage")
+            l_col = max_d * 4
+            fig3d = go.Figure()
+            
+            # Rebars 3D
+            for i, (x, y) in enumerate(zip(bx, by)):
+                fig3d.add_trace(go.Scatter3d(x=[x, x], y=[y, y], z=[0, l_col], mode='lines', line=dict(color=t_red, width=5), name=f"Bar {i+1}"))
+            
+            # Ties 3D
+            for z_pos in np.linspace(10, l_col-10, 8):
+                fig3d.add_trace(go.Scatter3d(x=x_t, y=y_t, z=[z_pos]*len(x_t), mode='lines', line=dict(color=t_gold, width=3), showlegend=False))
+
+            fig3d.update_layout(
+                scene=dict(aspectmode='data', xaxis_title="X (cm)", yaxis_title="Y (cm)", zaxis_title="Height (cm)",
+                           xaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
+                           yaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
+                           zaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b")),
+                margin=dict(l=0, r=0, t=0, b=0), height=600, paper_bgcolor=t_dark
+            )
+            st.plotly_chart(fig3d, use_container_width=True)
+
+        with view_export:
+            c_e1, c_e2 = st.columns(2)
+            with c_e1:
+                st.markdown("#### 📋 Section Properties")
+                prop_df = pd.DataFrame({
+                    "Parameter": ["Width (B)", "Depth (H)", "Gross Area (Ag)", "Steel Area (Ast)", "Inertia Ix", "Inertia Iy"],
+                    "Value": [b, h if shape == "Rectangular" else b, f"{engine.Ag:.2f}", f"{total_ast:.2f}", f"{Ix:,.0f}", f"{Iy:,.0f}"],
+                    "Unit": ["cm", "cm", "cm²", "cm²", "cm⁴", "cm⁴"]
+                })
+                st.table(prop_df)
+            
+            with c_e2:
+                st.markdown("#### ⌨️ AutoCAD CLI Script")
+                st.caption("Paste into AutoCAD Command Line")
+                cad_script = f"COLOR 4\nRECTANG {-b/2},{-h/2} {b/2},{h/2}\nCOLOR 2\nRECTANG {-(b/2-cv)},{-(h/2-cv)} {(b/2-cv)},{(h/2-cv)}\nCOLOR 1\n"
+                for rx, ry in zip(bx, by):
+                    cad_script += f"CIRCLE {rx},{ry} 1.0\n"
+                cad_script += "ZOOM E"
+                st.code(cad_script, language="bash")
 
     with tab4:
         st.markdown("### 📖 Parameter Guide")
