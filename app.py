@@ -997,23 +997,15 @@ with col2:
     with tab4:
         st.markdown("### 🌪️ Shear Design & Seismic Detailing (ACI 318)")
         
-        # --- UI Controls เฉพาะส่วนของ Detailing (ไม่ถาม Load/Height ซ้ำ) ---
-        st.markdown("""<div style="padding: 10px; background-color: #f1f5f9; border-radius: 8px; margin-bottom: 15px;">
-                    <strong>⚙️ Seismic Detailing Parameters</strong></div>""", unsafe_allow_html=True)
-        
-        c_s1, c_s2 = st.columns(2)
-        with c_s1:
-            seismic_frame = st.selectbox("Seismic Frame Type", ["SMF (Special)", "IMF (Intermediate)", "OMF (Ordinary)"], key="seismic_frame")
-        with c_s2:
-            tie_db = st.selectbox("Tie Bar Size", ["RB6", "RB9", "DB10", "DB12"], index=2, key="tie_size")
-            
-        d_tie = 1.0 if "10" in tie_db else (1.2 if "12" in tie_db else 0.9)
-        d_long = 2.0 # สมมติขนาดเหล็กแกนเฉลี่ย DB20 (หรือดึงจากข้อมูลจริงของคุณ)
+        # --- จัดเตรียมตัวแปรที่รับมาจาก Expander "3. Shear, Torsion & Seismic" ---
+        Vu = vu_ton
+        d_tie = tie_dia / 10.0  # แปลงมิลลิเมตร (mm) เป็นเซนติเมตร (cm)
+        tie_str = f"RB{tie_dia}" if tie_dia < 10 else f"DB{tie_dia}" # สำหรับใช้แสดงผลเป็นข้อความ
+        d_long = 2.0  # สมมติเหล็กแกน DB20 (หรือเปลี่ยนไปดึงจากตัวแปรเหล็กแกนจริงของคุณ)
         
         st.markdown("---")
         
         # --- 1. คำนวณ Shear Capacity พื้นฐาน ---
-        # หมายเหตุ: ใช้ตัวแปร Vu (แรงเฉือน) และ Lu_x (ความสูงเสา) จาก Global Input ที่มีอยู่แล้ว
         d = h - cv - d_tie - (d_long / 2) if shape == "Rectangular" else b - cv - d_tie - (d_long / 2)
         bw = b
         
@@ -1026,20 +1018,18 @@ with col2:
         Vs_req = max(0, (Vu / phi_V) - Vc_ton)
         
         # --- 2. คำนวณ Seismic Detailing ---
-        # สมมติว่าดึงความสูงเสามาจาก Lu_x หรือ Lu_y ที่ผู้ใช้กรอกไว้แล้วในหน่วยเมตร
-        H_cm = Lu_x * 100  
+        H_cm = Lu_x * 100  # สมมติว่าดึงความสูงเสามาจาก Lu_x ที่กรอกไว้แล้ว
         max_dim = max(b, h) if shape == "Rectangular" else b
         min_dim = min(b, h) if shape == "Rectangular" else b
         
-        if seismic_frame == "SMF (Special)":
+        # เช็คจาก Toggle is_seismic ที่ผู้ใช้เลือก
+        if is_seismic: 
+            seismic_frame_label = "SMF (Special Moment Frame)"
             L0 = max(max_dim, H_cm / 6, 45.0) 
             S0_max = min(min_dim / 4, 6 * d_long, 15.0)
             S_mid = min(6 * d_long, 15.0) * 2 
-        elif seismic_frame == "IMF (Intermediate)":
-            L0 = max(max_dim, H_cm / 6, 45.0)
-            S0_max = min(8 * d_long, 24 * d_tie, 0.5 * min_dim, 30.0)
-            S_mid = min(min_dim, 30.0)
         else: 
+            seismic_frame_label = "Ordinary / Non-Seismic"
             L0 = 0 
             S0_max = min(16 * d_long, 48 * d_tie, min_dim)
             S_mid = S0_max
@@ -1047,7 +1037,8 @@ with col2:
         S0_design = math.floor(S0_max / 2.5) * 2.5
         Smid_design = math.floor(S_mid / 5.0) * 5.0
         
-        Av = 2 * (math.pi * (d_tie**2) / 4) # เหล็กปลอก 2 ขา
+        # คำนวณปริมาณเหล็กปลอก (Av) โดยดึงจำนวนขา (tie_legs) มาใช้
+        Av = tie_legs * (math.pi * (d_tie**2) / 4) 
         Vs_prov = (Av * fy * d) / S0_design / 10 
         phi_Vn = phi_V * (Vc_ton + Vs_prov)
         is_shear_safe = phi_Vn >= Vu
@@ -1060,7 +1051,7 @@ with col2:
                 f"""
                 <div style="padding: 20px; border-radius: 10px; background-color: #1e293b; color: white; height: 100%;">
                     <h4 style="margin-top: 0; color: #38bdf8;">📊 Shear & Confinement Summary</h4>
-                    <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">{seismic_frame} Provisions Applied</p>
+                    <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">{seismic_frame_label} Provisions Applied</p>
                     
                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
                         <span>Factored Shear (Vu)</span>
@@ -1081,9 +1072,10 @@ with col2:
                     
                     <h5 style="color: #cbd5e1;">🛠️ Detailing Prescription</h5>
                     <ul style="color: #aebbc9; line-height: 1.8;">
+                        <li><strong>Stirrup Legs:</strong> {tie_legs} legs</li>
                         <li><strong>Critical Zone (L0):</strong> {L0:.0f} cm from joint</li>
-                        <li><strong>Tie Spacing in L0:</strong> {tie_db} @ {S0_design:.1f} cm</li>
-                        <li><strong>Tie Spacing Mid-span:</strong> {tie_db} @ {Smid_design:.1f} cm</li>
+                        <li><strong>Tie Spacing in L0:</strong> {tie_str} @ {S0_design:.1f} cm</li>
+                        <li><strong>Tie Spacing Mid-span:</strong> {tie_str} @ {Smid_design:.1f} cm</li>
                     </ul>
                 </div>
                 """, unsafe_allow_html=True
@@ -1117,7 +1109,7 @@ with col2:
                 fig_elev.add_shape(type="line", x0=cv, y0=ty, x1=max_dim-cv, y1=ty, line=dict(color="#fbbf24", width=2))
             
             # วาด Annotation
-            if seismic_frame != "OMF (Ordinary)":
+            if is_seismic:
                 fig_elev.add_shape(type="rect", x0=-10, y0=0, x1=0, y1=L0, line=dict(color="#10b981", width=2), fillcolor="rgba(16, 185, 129, 0.2)")
                 fig_elev.add_annotation(x=-15, y=L0/2, text=f"L0 = {L0:.0f} cm<br>@{S0_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#10b981"))
                 
