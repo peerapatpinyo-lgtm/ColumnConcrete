@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import math
 from scipy.interpolate import interp1d
 
 class RCColumnProBiaxial:
