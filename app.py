@@ -376,7 +376,10 @@ phi_Vc_ton = (phi_v * Vc_kg) / 1000
 
 # 2. Required Stirrup Spacing (Shear)
 Av = tie_legs * (np.pi * (tie_dia / 10)**2 / 4)
-Vs_req_ton = max(0.0, (vu_ton - phi_Vc_ton) / phi_v)
+
+# 🔴 อัปเดต: ดึงค่าสูงสุดจาก vux_ton และ vuy_ton แทน vu_ton ตัวเก่า
+Vu_ton_max = max(vux_ton, vuy_ton)
+Vs_req_ton = max(0.0, (Vu_ton_max - phi_Vc_ton) / phi_v)
 Vs_req_kg = Vs_req_ton * 1000
 
 s_req = (Av * fy * d_eff) / Vs_req_kg if Vs_req_kg > 0 else 999.0
