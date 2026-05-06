@@ -1100,24 +1100,25 @@ with col2:
             * **แกน Y ($d_y$):** $h - cover - d_{{tie}} - (d_b/2)$ = `{h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dy:.2f} cm**
 
             #### 2. กำลังรับแรงเฉือนของคอนกรีต (Concrete Shear Capacity)
-            อ้างอิงสมการ ACI: $\phi V_c = \phi (0.17 \sqrt{{f'_c}} b_w d)$ โดย $\phi = {phi_V}$
+            อ้างอิงสมการ ACI: $\\phi V_c = \\phi (0.17 \\sqrt{{f'_c}} b_w d)$ โดย $\\phi = {phi_V}$
             * **กำลังรับแรงแกน X ($V_{{cx}}$):**
-              * $V_{{cx}} = 0.17 \\times \sqrt{{{fc}}} \\times ({h \\times 10}) \\times ({dx \\times 10}) / 10000$ = **{Vcx_ton:.2f} ton**
+              * $V_{{cx}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({h \\times 10}) \\times ({dx \\times 10}) / 10000$ = **{Vcx_ton:.2f} ton**
             * **กำลังรับแรงแกน Y ($V_{{cy}}$):**
-              * $V_{{cy}} = 0.17 \\times \sqrt{{{fc}}} \\times ({b \\times 10}) \\times ({dy \\times 10}) / 10000$ = **{Vcy_ton:.2f} ton**
+              * $V_{{cy}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({b \\times 10}) \\times ({dy \\times 10}) / 10000$ = **{Vcy_ton:.2f} ton**
 
             #### 3. การตรวจสอบแรงบิด (Torsion Threshold)
             * **พื้นที่ปิดล้อม ($A_{{cp}}$):** $b \\times h$ = **{Acp:.2f} cm²**
             * **เส้นรอบรูปปิดล้อม ($p_{{cp}}$):** $2(b + h)$ = **{pcp:.2f} cm**
-            * **สมการ Threshold ($T_{{th}}$):** $0.26 \sqrt{{f'_c}} \\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$
-              * $T_{{th}} = 0.26 \\times \sqrt{{{fc}}} \\times \\frac{{{Acp:.2f}^2}}{{{pcp:.2f}}} / 100000$ = **{Tth_tonm:.2f} ton-m**
+            * **สมการ Threshold ($T_{{th}}$):** $0.26 \\sqrt{{f'_c}} \\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$
+              * $T_{{th}} = 0.26 \\times \\sqrt{{{fc}}} \\times \\frac{{{Acp:.2f}^2}}{{{pcp:.2f}}} / 100000$ = **{Tth_tonm:.2f} ton-m**
             * **สรุปแรงบิด:** $T_u$ ({Tu:.2f}) {'**>' if is_torsion_significant else '**<'} $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"เกินพิกัด ต้องออกแบบเสริม" if is_torsion_significant else "น้อยกว่าพิกัด ไม่ต้องเสริมพิเศษ"}**
 
             #### 4. ระยะทาบเหล็กแกน (Lap Splice Length)
             * **กรณีรับแรงอัด (Compression):** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
-            * **กรณีรับแรงดึง (Tension Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
+            * **กรณีรับแรงดึง (Tension Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
             * *หมายเหตุ: โปรแกรมเลือกระยะทาบที่ **{splice_len:.0f} cm** เนื่องจากโครงสร้างถูกตั้งค่าเป็น {seismic_frame_label}*
             """)
+            
         
         st.markdown("---")
 
