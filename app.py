@@ -690,19 +690,19 @@ with col2:
             st.plotly_chart(fig_pmy, use_container_width=True)
 
     with tab2:
-    st.markdown("### 📊 Advanced P-M Interaction Diagram")
+        st.markdown("### 📊 Advanced P-M Interaction Diagram")
     
     # --- UI Controls สำหรับกราฟ ---
-    col_ctrl1, col_ctrl2 = st.columns([1, 1])
-    with col_ctrl1:
-        show_boundaries = st.toggle("Show ACI Boundaries (ρ = 1% - 8%)", value=True)
-    with col_ctrl2:
-        show_keypoints = st.toggle("Highlight Key Points (Max, Balance, Min)", value=True)
+        col_ctrl1, col_ctrl2 = st.columns([1, 1])
+        with col_ctrl1:
+            show_boundaries = st.toggle("Show ACI Boundaries (ρ = 1% - 8%)", value=True)
+        with col_ctrl2:
+            show_keypoints = st.toggle("Highlight Key Points (Max, Balance, Min)", value=True)
         
-    st.markdown("---")
+        st.markdown("---")
 
     # --- สร้าง High-End Plotly Chart ---
-    fig_pm = go.Figure()
+        fig_pm = go.Figure()
 
     # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
     if show_boundaries:
