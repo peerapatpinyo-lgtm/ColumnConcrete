@@ -1012,8 +1012,8 @@ with col2:
         Vux = vux_ton       
         Vuy = vuy_ton       
         Tu = tu_tonm
-        cv = cover  # ดึงค่า Covering จาก Expander 1
-        db_cm = db / 10.0  # ดึงขนาดเหล็กแกนจาก Expander 1
+        cv = cover
+        db_cm = db / 10.0  
         d_tie = tie_dia / 10.0 
         tie_str = f"RB{tie_dia}" if tie_dia < 10 else f"DB{tie_dia}"
         
@@ -1027,20 +1027,20 @@ with col2:
 
         # --- 2. Shear & Torsion Calculations ---
         phi_V = 0.75
-        # กำลังรับแรงเฉือนคอนกรีต Vc (ใช้หน้าตัดตั้งฉากกับแรง)
+        
+        # กำลังรับแรงเฉือนคอนกรีต Vc 
         Vcx_ton = 0.17 * math.sqrt(fc) * (h * 10) * (dx * 10) / 10000 if shape == "Rectangular" else 0.17 * math.sqrt(fc) * (b * 10) * (dx * 10) / 10000
         Vcy_ton = 0.17 * math.sqrt(fc) * (b * 10) * (dy * 10) / 10000 if shape == "Rectangular" else Vcx_ton
         
-        # Torsion Threshold Check
+        # Torsion Threshold
         Acp = b * h if shape == "Rectangular" else math.pi * (b/2)**2
         pcp = 2 * (b + h) if shape == "Rectangular" else math.pi * b
         Tth_tonm = (0.26 * math.sqrt(fc) * (Acp**2) / pcp) / 100000 
         is_torsion_significant = Tu > Tth_tonm
 
-        # --- 3. Lap Splice Length (ระยะทาบเหล็กแกน) ---
-        # คำนวณระยะทาบมาตรฐานตาม ACI (อย่างง่าย)
-        lap_compression = max(0.071 * fy * db_cm, 30.0) # กรณีรับแรงอัด
-        lap_tension = max(1.3 * 0.12 * (fy / math.sqrt(fc)) * db_cm, 30.0) # กรณีรับแรงดึง (Class B)
+        # --- 3. Lap Splice Length ---
+        lap_compression = max(0.071 * fy * db_cm, 30.0) 
+        lap_tension = max(1.3 * 0.12 * (fy / math.sqrt(fc)) * db_cm, 30.0) 
 
         # --- 4. Seismic Detailing Rules ---
         if is_seismic: 
@@ -1051,7 +1051,7 @@ with col2:
             
             splice_len = lap_tension
             splice_type = "Tension Splice (Seismic Requirement)"
-            splice_loc_y0 = (H_cm / 2) - (splice_len / 2) # SMF บังคับทาบเหล็กกลางเสา
+            splice_loc_y0 = (H_cm / 2) - (splice_len / 2)
         else: 
             seismic_frame_label = "Ordinary Frame (Gravity/Wind)"
             L0 = 0 
@@ -1060,9 +1060,8 @@ with col2:
             
             splice_len = lap_compression
             splice_type = "Compression Splice"
-            splice_loc_y0 = 0 # ทั่วไปทาบที่โคนเสา (เหนือระดับพื้น)
+            splice_loc_y0 = 0 
 
-        # จัดระยะห่างเหล็กปลอกให้ลงตัว (หาร 2.5 หรือ 5.0 ซม. ลงตัว)
         S0_design = max(math.floor(S0_max / 2.5) * 2.5, 5.0)
         Smid_design = max(math.floor(S_mid / 5.0) * 5.0, 10.0)
         
@@ -1070,7 +1069,7 @@ with col2:
         Av_y = tie_legs * (math.pi * (d_tie**2) / 4) 
         
         Vs_prov_x = (Av_x * fy * dx) / S0_design / 10 
-        Vs_prov_y = (Av_y * fy * dy) / S0_design / 10 
+        Vs_prov_y = (Av_y * fy * dy) / Smid_design / 10 
         
         phi_Vnx = phi_V * (Vcx_ton + Vs_prov_x)
         phi_Vny = phi_V * (Vcy_ton + Vs_prov_y)
@@ -1081,23 +1080,48 @@ with col2:
         # --- 5. Dashboard Metrics ---
         st.markdown(f"**Applied Code Provisions:** `{seismic_frame_label}`")
         
-        # ส่วน Metrics แถวที่ 1: Shear
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         col_m1.metric("Max Shear X (Vux)", f"{Vux:.2f} ton", delta="SAFE" if is_x_safe else "UNSAFE", delta_color="normal" if is_x_safe else "inverse")
         col_m2.metric("Shear Cap X (φVnx)", f"{phi_Vnx:.2f} ton")
         col_m3.metric("Max Shear Y (Vuy)", f"{Vuy:.2f} ton", delta="SAFE" if is_y_safe else "UNSAFE", delta_color="normal" if is_y_safe else "inverse")
         col_m4.metric("Shear Cap Y (φVny)", f"{phi_Vny:.2f} ton")
         
-        # ส่วน Metrics แถวที่ 2: Torsion & Lap Splice
         col_m5, col_m6, col_m7, col_m8 = st.columns(4)
         col_m5.metric("Factored Torsion (Tu)", f"{Tu:.2f} ton-m")
         col_m6.metric("Torsion Action", "Critical" if is_torsion_significant else "Ignorable", delta=f"Threshold: {Tth_tonm:.2f}", delta_color="off" if not is_torsion_significant else "inverse")
         col_m7.metric("Lap Splice Length", f"{splice_len:.0f} cm")
         col_m8.metric("Splice Rule", f"{splice_type}")
+
+        # --- NEW: 6. Calculation Report (Dynamic LaTeX inside Streamlit) ---
+        with st.expander("📝 แสดงรายการคำนวณโดยละเอียด (Calculation Report)", expanded=False):
+            st.markdown(f"""
+            #### 1. ระยะประสิทธิผล (Effective Depth)
+            * **แกน X ($d_x$):** $b - cover - d_{{tie}} - (d_b/2)$ = `{b} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dx:.2f} cm**
+            * **แกน Y ($d_y$):** $h - cover - d_{{tie}} - (d_b/2)$ = `{h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dy:.2f} cm**
+
+            #### 2. กำลังรับแรงเฉือนของคอนกรีต (Concrete Shear Capacity)
+            อ้างอิงสมการ ACI: $\phi V_c = \phi (0.17 \sqrt{{f'_c}} b_w d)$ โดย $\phi = {phi_V}$
+            * **กำลังรับแรงแกน X ($V_{{cx}}$):**
+              * $V_{{cx}} = 0.17 \\times \sqrt{{{fc}}} \\times ({h \\times 10}) \\times ({dx \\times 10}) / 10000$ = **{Vcx_ton:.2f} ton**
+            * **กำลังรับแรงแกน Y ($V_{{cy}}$):**
+              * $V_{{cy}} = 0.17 \\times \sqrt{{{fc}}} \\times ({b \\times 10}) \\times ({dy \\times 10}) / 10000$ = **{Vcy_ton:.2f} ton**
+
+            #### 3. การตรวจสอบแรงบิด (Torsion Threshold)
+            * **พื้นที่ปิดล้อม ($A_{{cp}}$):** $b \\times h$ = **{Acp:.2f} cm²**
+            * **เส้นรอบรูปปิดล้อม ($p_{{cp}}$):** $2(b + h)$ = **{pcp:.2f} cm**
+            * **สมการ Threshold ($T_{{th}}$):** $0.26 \sqrt{{f'_c}} \\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$
+              * $T_{{th}} = 0.26 \\times \sqrt{{{fc}}} \\times \\frac{{{Acp:.2f}^2}}{{{pcp:.2f}}} / 100000$ = **{Tth_tonm:.2f} ton-m**
+            * **สรุปแรงบิด:** $T_u$ ({Tu:.2f}) {'**>' if is_torsion_significant else '**<'} $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"เกินพิกัด ต้องออกแบบเสริม" if is_torsion_significant else "น้อยกว่าพิกัด ไม่ต้องเสริมพิเศษ"}**
+
+            #### 4. ระยะทาบเหล็กแกน (Lap Splice Length)
+            * **กรณีรับแรงอัด (Compression):** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
+            * **กรณีรับแรงดึง (Tension Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
+            * *หมายเหตุ: โปรแกรมเลือกระยะทาบที่ **{splice_len:.0f} cm** เนื่องจากโครงสร้างถูกตั้งค่าเป็น {seismic_frame_label}*
+            """)
         
         st.markdown("---")
 
-        # --- 6. Visualizations ---
+        # --- 7. Visualizations ---
         st.markdown("#### 📐 Engineering Detailing Views")
         col_plot1, col_plot2 = st.columns([1.2, 1])
         
@@ -1105,18 +1129,15 @@ with col2:
             st.caption(f"📍 Elevation View (Side Profile)")
             fig_elev = go.Figure()
             
-            # กรอบเสาและเหล็กแกน
             fig_elev.add_shape(type="rect", x0=0, y0=0, x1=max_dim, y1=H_cm, line=dict(color="#e2e8f0"), fillcolor="#f8fafc")
             fig_elev.add_shape(type="line", x0=cv, y0=0, x1=cv, y1=H_cm, line=dict(color="#ef4444", width=4))
             fig_elev.add_shape(type="line", x0=max_dim-cv, y0=0, x1=max_dim-cv, y1=H_cm, line=dict(color="#ef4444", width=4))
             
-            # โซนระยะทาบเหล็ก (Lap Splice Zone)
             fig_elev.add_shape(type="rect", x0=cv-5, y0=splice_loc_y0, x1=max_dim-cv+5, y1=splice_loc_y0+splice_len, 
                                line=dict(color="#f97316", width=2, dash="dash"), fillcolor="rgba(249, 115, 22, 0.1)")
             fig_elev.add_annotation(x=max_dim/2, y=splice_loc_y0+(splice_len/2), text=f"Lap Splice<br>{splice_len:.0f} cm", 
                                     showarrow=False, font=dict(color="#c2410c", size=12, weight="bold"))
 
-            # วาดเหล็กปลอก
             y_ties = []
             current_y = S0_design / 2
             while current_y <= H_cm:
@@ -1125,7 +1146,6 @@ with col2:
             for ty in y_ties:
                 fig_elev.add_shape(type="line", x0=cv, y0=ty, x1=max_dim-cv, y1=ty, line=dict(color="#3b82f6", width=2))
             
-            # Annotations สำหรับระยะ L0
             if is_seismic:
                 fig_elev.add_shape(type="rect", x0=-20, y0=0, x1=0, y1=L0, fillcolor="rgba(16, 185, 129, 0.15)", line_width=0)
                 fig_elev.add_annotation(x=-25, y=L0/2, text=f"L0: {tie_str}@{S0_design:.1f}cm", showarrow=False, textangle=-90, font=dict(color="#059669", size=11))
@@ -1145,7 +1165,6 @@ with col2:
             h_plot = h if shape == "Rectangular" else b
             cx, cy = b / 2, h_plot / 2
             
-            # 1. วาดหน้าตัดเสา
             if shape == "Rectangular":
                 fig_plan.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h_plot, line=dict(color="#94a3b8", width=2), fillcolor="#f1f5f9")
                 tie_x0, tie_y0 = cv, cv
@@ -1157,25 +1176,22 @@ with col2:
                 tie_x1, tie_y1 = b - cv, h_plot - cv
                 fig_plan.add_shape(type="circle", x0=tie_x0, y0=tie_y0, x1=tie_x1, y1=tie_y1, line=dict(color="#3b82f6", width=3))
             
-            # วาดเหล็กแกนจำลอง
             dot_r = max(1.5, db_cm/2)
             if shape == "Rectangular":
                 corners = [(tie_x0, tie_y0), (tie_x1, tie_y0), (tie_x0, tie_y1), (tie_x1, tie_y1)]
                 for p_x, p_y in corners:
                     fig_plan.add_shape(type="circle", x0=p_x-dot_r, y0=p_y-dot_r, x1=p_x+dot_r, y1=p_y+dot_r, fillcolor="#ef4444", line_color="#b91c1c")
             else:
-                for i in range(8): # สมมติ 8 เส้นสำหรับวงกลม
+                for i in range(8): 
                     angle = i * (2 * math.pi / 8)
                     p_x = cx + ((b/2 - cv) * math.cos(angle))
                     p_y = cy + ((b/2 - cv) * math.sin(angle))
                     fig_plan.add_shape(type="circle", x0=p_x-dot_r, y0=p_y-dot_r, x1=p_x+dot_r, y1=p_y+dot_r, fillcolor="#ef4444", line_color="#b91c1c")
 
-            # วาดแรง Vux, Vuy, Tu
             fig_plan.add_annotation(x=b*1.1, y=cy, ax=b*0.6, ay=cy, xref="x", yref="y", axref="x", ayref="y", text="Vux", showarrow=True, arrowhead=3, arrowsize=1.5, arrowcolor="#f59e0b", font=dict(color="#d97706", size=14, weight="bold"))
             fig_plan.add_annotation(x=cx, y=h_plot*1.1, ax=cx, ay=h_plot*0.6, xref="x", yref="y", axref="x", ayref="y", text="Vuy", showarrow=True, arrowhead=3, arrowsize=1.5, arrowcolor="#059669", font=dict(color="#047857", size=14, weight="bold"))
             fig_plan.add_annotation(x=cx, y=cy, text="↺ Tu", showarrow=False, font=dict(color="#8b5cf6", size=20, weight="bold"))
 
-            # แสดงระยะ Cover
             fig_plan.add_annotation(x=b*0.1, y=h_plot*0.9, text=f"Cover: {cv} cm", showarrow=False, font=dict(color="#64748b", size=11))
 
             fig_plan.update_layout(
