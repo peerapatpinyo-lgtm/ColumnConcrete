@@ -1008,7 +1008,7 @@ with col2:
     with tab4:
         st.markdown("### 🏆 Ultimate Shear, Torsion & Detailing Report")
         
-        # --- 1. จัดเตรียมและเชื่อมโยงตัวแปรทั้งหมด ---
+        # --- 1. Parameter Initialization ---
         Vux = vux_ton       
         Vuy = vuy_ton       
         Tu = tu_tonm
@@ -1021,24 +1021,24 @@ with col2:
         max_dim = max(b, h) if shape == "Rectangular" else b
         min_dim = min(b, h) if shape == "Rectangular" else b
         
-        # Effective depth ขนานแกน X และ Y
+        # Effective Depth (d) parallel to X and Y axes
         dx = b - cv - d_tie - (db_cm / 2) if shape == "Rectangular" else b - cv - d_tie - (db_cm / 2)
         dy = h - cv - d_tie - (db_cm / 2) if shape == "Rectangular" else b - cv - d_tie - (db_cm / 2)
 
-        # --- 2. Shear & Torsion Calculations ---
+        # --- 2. Shear & Torsion Calculations (ACI 318) ---
         phi_V = 0.75
         
-        # กำลังรับแรงเฉือนคอนกรีต Vc 
+        # Concrete Shear Capacity (Vc)
         Vcx_ton = 0.17 * math.sqrt(fc) * (h * 10) * (dx * 10) / 10000 if shape == "Rectangular" else 0.17 * math.sqrt(fc) * (b * 10) * (dx * 10) / 10000
         Vcy_ton = 0.17 * math.sqrt(fc) * (b * 10) * (dy * 10) / 10000 if shape == "Rectangular" else Vcx_ton
         
-        # Torsion Threshold
+        # Torsion Threshold (Tth)
         Acp = b * h if shape == "Rectangular" else math.pi * (b/2)**2
         pcp = 2 * (b + h) if shape == "Rectangular" else math.pi * b
         Tth_tonm = (0.26 * math.sqrt(fc) * (Acp**2) / pcp) / 100000 
         is_torsion_significant = Tu > Tth_tonm
 
-        # --- 3. Lap Splice Length ---
+        # --- 3. Lap Splice Length Requirements ---
         lap_compression = max(0.071 * fy * db_cm, 30.0) 
         lap_tension = max(1.3 * 0.12 * (fy / math.sqrt(fc)) * db_cm, 30.0) 
 
@@ -1050,10 +1050,10 @@ with col2:
             S_mid = min(6 * db_cm, 15.0) * 2 
             
             splice_len = lap_tension
-            splice_type = "Tension Splice (Seismic Requirement)"
+            splice_type = "Class B Tension Splice (Seismic Requirement)"
             splice_loc_y0 = (H_cm / 2) - (splice_len / 2)
         else: 
-            seismic_frame_label = "Ordinary Frame (Gravity/Wind)"
+            seismic_frame_label = "Ordinary Frame (Gravity / Wind)"
             L0 = 0 
             S0_max = min(16 * db_cm, 48 * d_tie, min_dim)
             S_mid = S0_max
@@ -1078,7 +1078,7 @@ with col2:
         is_y_safe = phi_Vny >= Vuy
 
         # --- 5. Dashboard Metrics ---
-        st.markdown(f"**Applied Code Provisions:** `{seismic_frame_label}`")
+        st.markdown(f"**Applied Code Provisions:** `{seismic_frame_label}` (ACI 318-19)")
         
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         col_m1.metric("Max Shear X (Vux)", f"{Vux:.2f} ton", delta="SAFE" if is_x_safe else "UNSAFE", delta_color="normal" if is_x_safe else "inverse")
@@ -1092,53 +1092,57 @@ with col2:
         col_m7.metric("Lap Splice Length", f"{splice_len:.0f} cm")
         col_m8.metric("Splice Rule", f"{splice_type}")
 
-        # --- NEW: 6. Calculation Report (Dynamic LaTeX inside Streamlit) ---
-        with st.expander("📝 แสดงรายการคำนวณโดยละเอียด (Calculation Report)", expanded=False):
+        # --- 6. Detailed Calculation Report (Dynamic LaTeX) ---
+        with st.expander("📝 Detailed Calculation Report (ACI 318-19 Equations)", expanded=False):
             st.markdown(f"""
-            #### 1. ระยะประสิทธิผล (Effective Depth)
-            * **แกน X ($d_x$):** $b - cover - d_{{tie}} - (d_b/2)$ = `{b} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dx:.2f} cm**
-            * **แกน Y ($d_y$):** $h - cover - d_{{tie}} - (d_b/2)$ = `{h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dy:.2f} cm**
+            #### 1. Effective Depth
+            * **X-Axis ($d_x$):** $b - \\text{{cover}} - d_{{tie}} - (d_b/2)$ = `{b} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dx:.2f} cm**
+            * **Y-Axis ($d_y$):** $h - \\text{{cover}} - d_{{tie}} - (d_b/2)$ = `{h} - {cv} - {d_tie:.2f} - {db_cm/2:.2f}` = **{dy:.2f} cm**
 
-            #### 2. กำลังรับแรงเฉือนของคอนกรีต (Concrete Shear Capacity)
-            อ้างอิงสมการ ACI: $\\phi V_c = \\phi (0.17 \\sqrt{{f'_c}} b_w d)$ โดย $\\phi = {phi_V}$
-            * **กำลังรับแรงแกน X ($V_{{cx}}$):**
+            #### 2. Concrete Shear Capacity ($V_c$)
+            Ref. ACI 318-19 Table 22.5.5.1: $\\phi V_c = \\phi (0.17 \\lambda \\sqrt{{f'_c}} b_w d)$ (assuming $\\phi = {phi_V}$)
+            * **Capacity in X-Direction ($V_{{cx}}$):**
               * $V_{{cx}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({h} \\times 10) \\times ({dx:.2f} \\times 10) / 10000$ = **{Vcx_ton:.2f} ton**
-            * **กำลังรับแรงแกน Y ($V_{{cy}}$):**
+            * **Capacity in Y-Direction ($V_{{cy}}$):**
               * $V_{{cy}} = 0.17 \\times \\sqrt{{{fc}}} \\times ({b} \\times 10) \\times ({dy:.2f} \\times 10) / 10000$ = **{Vcy_ton:.2f} ton**
 
-            #### 3. การตรวจสอบแรงบิด (Torsion Threshold)
-            * **พื้นที่ปิดล้อม ($A_{{cp}}$):** $b \\times h$ = **{Acp:.2f} cm²**
-            * **เส้นรอบรูปปิดล้อม ($p_{{cp}}$):** $2(b + h)$ = **{pcp:.2f} cm**
-            * **สมการ Threshold ($T_{{th}}$):** $0.26 \\sqrt{{f'_c}} \\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$
+            #### 3. Torsional Threshold Limit ($T_{{th}}$)
+            Ref. ACI 318-19 Sec. 22.7.4.1
+            * **Enclosed Area ($A_{{cp}}$):** $b \\times h$ = **{Acp:.2f} cm²**
+            * **Perimeter ($p_{{cp}}$):** $2(b + h)$ = **{pcp:.2f} cm**
+            * **Threshold Equation ($T_{{th}}$):** $0.26 \\sqrt{{f'_c}} \\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$
               * $T_{{th}} = 0.26 \\times \\sqrt{{{fc}}} \\times \\frac{{{Acp:.2f}^2}}{{{pcp:.2f}}} / 100000$ = **{Tth_tonm:.2f} ton-m**
-            * **สรุปแรงบิด:** $T_u$ ({Tu:.2f}) {'**>' if is_torsion_significant else '**<'} $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"เกินพิกัด ต้องออกแบบเสริม" if is_torsion_significant else "น้อยกว่าพิกัด ไม่ต้องเสริมพิเศษ"}**
+            * **Torsion Verification:** $T_u$ ({Tu:.2f}) {'**>' if is_torsion_significant else '**<'} $T_{{th}}$ ({Tth_tonm:.2f}) $\\rightarrow$ **{"Exceeds limit; specific torsional reinforcement required." if is_torsion_significant else "Below threshold; torsion can be safely neglected."}**
 
-            #### 4. ระยะทาบเหล็กแกน (Lap Splice Length)
-            * **กรณีรับแรงอัด (Compression):** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
-            * **กรณีรับแรงดึง (Tension Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
-            * *หมายเหตุ: โปรแกรมเลือกระยะทาบที่ **{splice_len:.0f} cm** เนื่องจากโครงสร้างถูกตั้งค่าเป็น {seismic_frame_label}*
+            #### 4. Development & Splice Length
+            Ref. ACI 318-19 Chapter 25
+            * **Compression Splice Length:** $0.071 f_y d_b$ = $0.071 \\times {fy} \\times {db_cm:.2f}$ = **{lap_compression:.2f} cm**
+            * **Tension Splice Length (Class B):** $1.3 \\times 0.12 \\frac{{f_y}}{{\\sqrt{{f'_c}}}} d_b$ = $1.56 \\times \\frac{{{fy}}}{{\\sqrt{{{fc}}}}} \\times {db_cm:.2f}$ = **{lap_tension:.2f} cm**
+            * *Note: The controlling splice length is selected as **{splice_len:.0f} cm** governed by **{seismic_frame_label}** requirements.*
             """)
-            
         
         st.markdown("---")
 
-        # --- 7. Visualizations ---
+        # --- 7. Detailing Visualizations ---
         st.markdown("#### 📐 Engineering Detailing Views")
         col_plot1, col_plot2 = st.columns([1.2, 1])
         
         with col_plot1:
-            st.caption(f"📍 Elevation View (Side Profile)")
+            st.caption(f"📍 Elevation View (Rebar Layout Profile)")
             fig_elev = go.Figure()
             
+            # Column Outline
             fig_elev.add_shape(type="rect", x0=0, y0=0, x1=max_dim, y1=H_cm, line=dict(color="#e2e8f0"), fillcolor="#f8fafc")
             fig_elev.add_shape(type="line", x0=cv, y0=0, x1=cv, y1=H_cm, line=dict(color="#ef4444", width=4))
             fig_elev.add_shape(type="line", x0=max_dim-cv, y0=0, x1=max_dim-cv, y1=H_cm, line=dict(color="#ef4444", width=4))
             
+            # Lap Splice Zone
             fig_elev.add_shape(type="rect", x0=cv-5, y0=splice_loc_y0, x1=max_dim-cv+5, y1=splice_loc_y0+splice_len, 
                                line=dict(color="#f97316", width=2, dash="dash"), fillcolor="rgba(249, 115, 22, 0.1)")
             fig_elev.add_annotation(x=max_dim/2, y=splice_loc_y0+(splice_len/2), text=f"Lap Splice<br>{splice_len:.0f} cm", 
                                     showarrow=False, font=dict(color="#c2410c", size=12, weight="bold"))
 
+            # Transverse Reinforcement (Ties)
             y_ties = []
             current_y = S0_design / 2
             while current_y <= H_cm:
@@ -1147,6 +1151,7 @@ with col2:
             for ty in y_ties:
                 fig_elev.add_shape(type="line", x0=cv, y0=ty, x1=max_dim-cv, y1=ty, line=dict(color="#3b82f6", width=2))
             
+            # Seismic Zones Annotations
             if is_seismic:
                 fig_elev.add_shape(type="rect", x0=-20, y0=0, x1=0, y1=L0, fillcolor="rgba(16, 185, 129, 0.15)", line_width=0)
                 fig_elev.add_annotation(x=-25, y=L0/2, text=f"L0: {tie_str}@{S0_design:.1f}cm", showarrow=False, textangle=-90, font=dict(color="#059669", size=11))
@@ -1160,12 +1165,13 @@ with col2:
             st.plotly_chart(fig_elev, use_container_width=True)
 
         with col_plot2:
-            st.caption("📍 Cross-Section & Force Application (Top View)")
+            st.caption("📍 Cross-Section & Load Application")
             fig_plan = go.Figure()
             
             h_plot = h if shape == "Rectangular" else b
             cx, cy = b / 2, h_plot / 2
             
+            # Cross Section Outline & Stirrups
             if shape == "Rectangular":
                 fig_plan.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h_plot, line=dict(color="#94a3b8", width=2), fillcolor="#f1f5f9")
                 tie_x0, tie_y0 = cv, cv
@@ -1177,6 +1183,7 @@ with col2:
                 tie_x1, tie_y1 = b - cv, h_plot - cv
                 fig_plan.add_shape(type="circle", x0=tie_x0, y0=tie_y0, x1=tie_x1, y1=tie_y1, line=dict(color="#3b82f6", width=3))
             
+            # Longitudinal Reinforcement
             dot_r = max(1.5, db_cm/2)
             if shape == "Rectangular":
                 corners = [(tie_x0, tie_y0), (tie_x1, tie_y0), (tie_x0, tie_y1), (tie_x1, tie_y1)]
@@ -1189,10 +1196,12 @@ with col2:
                     p_y = cy + ((b/2 - cv) * math.sin(angle))
                     fig_plan.add_shape(type="circle", x0=p_x-dot_r, y0=p_y-dot_r, x1=p_x+dot_r, y1=p_y+dot_r, fillcolor="#ef4444", line_color="#b91c1c")
 
+            # Force Annotations
             fig_plan.add_annotation(x=b*1.1, y=cy, ax=b*0.6, ay=cy, xref="x", yref="y", axref="x", ayref="y", text="Vux", showarrow=True, arrowhead=3, arrowsize=1.5, arrowcolor="#f59e0b", font=dict(color="#d97706", size=14, weight="bold"))
             fig_plan.add_annotation(x=cx, y=h_plot*1.1, ax=cx, ay=h_plot*0.6, xref="x", yref="y", axref="x", ayref="y", text="Vuy", showarrow=True, arrowhead=3, arrowsize=1.5, arrowcolor="#059669", font=dict(color="#047857", size=14, weight="bold"))
             fig_plan.add_annotation(x=cx, y=cy, text="↺ Tu", showarrow=False, font=dict(color="#8b5cf6", size=20, weight="bold"))
 
+            # Cover Label
             fig_plan.add_annotation(x=b*0.1, y=h_plot*0.9, text=f"Cover: {cv} cm", showarrow=False, font=dict(color="#64748b", size=11))
 
             fig_plan.update_layout(
@@ -1202,8 +1211,9 @@ with col2:
             )
             st.plotly_chart(fig_plan, use_container_width=True)
             
+            # Critical Warning
             if is_torsion_significant:
-                st.error("🚨 **TORSION ALERT:** แรงบิดมีนัยสำคัญต่อโครงสร้าง! ACI กำหนดให้ต้องใช้เหล็กปลอกปิด (Closed Stirrups) ที่มุม 135 องศา และอาจต้องเสริมเหล็กแกนแนวดิ่ง (Longitudinal Torsion Reinforcement) เพิ่มเติม")
+                st.error("🚨 **CRITICAL TORSION ALERT:** The factored torsional moment exceeds the allowable threshold. ACI 318 dictates the implementation of closed stirrups with 135-degree seismic hooks and supplemental longitudinal reinforcement.")
 
     with tab5:
         st.markdown("### 📖 Parameter Guide")
