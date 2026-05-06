@@ -305,13 +305,18 @@ with col1:
             
             Lu_x = K_x = Cm_x = Lu_y = K_y = Cm_y = beta_d = 0 
 
-    # --- ส่วนที่เพิ่มใหม่: Expander สำหรับ Shear, Torsion และ Seismic ---
+    # --- ส่วนที่แก้ไข: Expander สำหรับ Shear, Torsion และ Seismic ---
     with st.expander("3. Shear, Torsion & Seismic", expanded=True):
         st.subheader("🛡️ Shear Design (Stirrups)")
-        vu_ton = st.number_input("Factored Shear, Vu (ton)", value=5.0, step=1.0)
+        
+        # เพิ่มคอลัมน์รับค่าแรงเฉือนแยกแกน X และ Y
+        c_vux, c_vuy = st.columns(2)
+        vux_ton = c_vux.number_input("Factored Shear X, Vux (ton)", value=5.0, step=1.0)
+        vuy_ton = c_vuy.number_input("Factored Shear Y, Vuy (ton)", value=5.0, step=1.0)
+        
         c7, c8 = st.columns(2)
         tie_dia = c7.selectbox("Tie Diameter", [6, 9, 12, 16], index=1, format_func=lambda x: f"RB{x}" if x<10 else f"DB{x}")
-        tie_legs = c8.number_input("Stirrup Legs", value=2, min_value=2, step=1)
+        tie_legs = c8.number_input("Stirrup Legs (Max)", value=2, min_value=2, step=1)
         
         st.markdown("---")
         st.subheader("🌪️ Torsion & Seismic")
@@ -998,10 +1003,10 @@ with col2:
         st.markdown("### 🌪️ Advanced Shear, Torsion & Seismic Detailing")
         
         # --- 1. จัดเตรียมตัวแปร (แยกแกน X, Y) ---
-        # สมมติว่าคุณรับค่า Vux และ Vuy มาจากผู้ใช้แล้ว (ปรับชื่อตัวแปรให้ตรงกับระบบของคุณ)
-        Vux = vu_ton       # แรงเฉือนแนวแกน X
-        Vuy = vu_ton * 0.8 # แรงเฉือนแนวแกน Y (สมมติชั่วคราวให้ต่างกัน)
+        Vux = vux_ton       # <--- เปลี่ยนจาก vu_ton เป็น vux_ton
+        Vuy = vuy_ton       # <--- เปลี่ยนจาก vu_ton * 0.8 เป็น vuy_ton
         Tu = tu_tonm
+
         
         d_tie = tie_dia / 10.0  # cm
         tie_str = f"RB{tie_dia}" if tie_dia < 10 else f"DB{tie_dia}"
