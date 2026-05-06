@@ -690,7 +690,6 @@ with col2:
             st.plotly_chart(fig_pmy, use_container_width=True)
 
     with tab2:
-    with tab2:
         st.markdown("### 📊 Advanced P-M Interaction Diagram")
         
         # --- UI Controls สำหรับกราฟ ---
