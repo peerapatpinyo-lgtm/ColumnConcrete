@@ -690,575 +690,576 @@ with col2:
             st.plotly_chart(fig_pmy, use_container_width=True)
 
     with tab2:
+    with tab2:
         st.markdown("### 📊 Advanced P-M Interaction Diagram")
-    
-    # --- UI Controls สำหรับกราฟ ---
+        
+        # --- UI Controls สำหรับกราฟ ---
         col_ctrl1, col_ctrl2 = st.columns([1, 1])
         with col_ctrl1:
             show_boundaries = st.toggle("Show ACI Boundaries (ρ = 1% - 8%)", value=True)
         with col_ctrl2:
             show_keypoints = st.toggle("Highlight Key Points (Max, Balance, Min)", value=True)
-        
+            
         st.markdown("---")
 
-    # --- สร้าง High-End Plotly Chart ---
+        # --- สร้าง High-End Plotly Chart ---
         fig_pm = go.Figure()
 
-    # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
-    if show_boundaries:
-        def get_ref_curve(target_rho):
-            target_as = target_rho * engine.Ag
-            ref_n_bars = max(4, int(target_as / 3.14)) 
-            if shape == "Rectangular":
-                ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
-                ref_ny = max(2, int(ref_n_bars / 2) - ref_nx + 2)
-                ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
-            else:
-                ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
-            ref_df, _ = ref_engine.solve_pm(axis='X')
-            return ref_df
+        # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
+        if show_boundaries:
+            def get_ref_curve(target_rho):
+                target_as = target_rho * engine.Ag
+                ref_n_bars = max(4, int(target_as / 3.14)) 
+                if shape == "Rectangular":
+                    ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
+                    ref_ny = max(2, int(ref_n_bars / 2) - ref_nx + 2)
+                    ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
+                else:
+                    ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
+                ref_df, _ = ref_engine.solve_pm(axis='X')
+                return ref_df
 
-        with st.spinner("Rendering ACI boundary limits..."):
-            df_1pct = get_ref_curve(0.01)
-            df_8pct = get_ref_curve(0.08)
+            with st.spinner("Rendering ACI boundary limits..."):
+                df_1pct = get_ref_curve(0.01)
+                df_8pct = get_ref_curve(0.08)
 
+            fig_pm.add_trace(go.Scatter(
+                x=df_1pct['phiMn'], y=df_1pct['phiPn'],
+                name="Min Limit (1%)", mode='lines',
+                line=dict(color='rgba(100, 100, 100, 0.4)', width=1.5, dash='dot'),
+                hoverinfo='skip'
+            ))
+            fig_pm.add_trace(go.Scatter(
+                x=df_8pct['phiMn'], y=df_8pct['phiPn'],
+                name="Max Limit (8%)", mode='lines',
+                line=dict(color='rgba(231, 76, 60, 0.3)', width=1.5, dash='dot'),
+                fill='tonexty', fillcolor='rgba(46, 204, 113, 0.08)',
+                hoverinfo='skip'
+            ))
+
+        # 2. เส้น Capacity จริงของหน้าตัด
         fig_pm.add_trace(go.Scatter(
-            x=df_1pct['phiMn'], y=df_1pct['phiPn'],
-            name="Min Limit (1%)", mode='lines',
-            line=dict(color='rgba(100, 100, 100, 0.4)', width=1.5, dash='dot'),
-            hoverinfo='skip'
+            x=df_x['phiMn'], y=df_x['phiPn'], 
+            name=f"X-Axis Capacity", mode='lines',
+            line=dict(color='#1f77b4', width=3),
+            hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
         ))
         fig_pm.add_trace(go.Scatter(
-            x=df_8pct['phiMn'], y=df_8pct['phiPn'],
-            name="Max Limit (8%)", mode='lines',
-            line=dict(color='rgba(231, 76, 60, 0.3)', width=1.5, dash='dot'),
-            fill='tonexty', fillcolor='rgba(46, 204, 113, 0.08)',
-            hoverinfo='skip'
+            x=df_y['phiMn'], y=df_y['phiPn'], 
+            name=f"Y-Axis Capacity", mode='lines',
+            line=dict(color='#2ca02c', width=3, dash='dash'),
+            hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
         ))
 
-    # 2. เส้น Capacity จริงของหน้าตัด
-    fig_pm.add_trace(go.Scatter(
-        x=df_x['phiMn'], y=df_x['phiPn'], 
-        name=f"X-Axis Capacity", mode='lines',
-        line=dict(color='#1f77b4', width=3),
-        hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
-    ))
-    fig_pm.add_trace(go.Scatter(
-        x=df_y['phiMn'], y=df_y['phiPn'], 
-        name=f"Y-Axis Capacity", mode='lines',
-        line=dict(color='#2ca02c', width=3, dash='dash'),
-        hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
-    ))
+        # 3. จุด Key Points (จุดสูงสุด, จุด Balance, จุดดัดล้วน)
+        if show_keypoints:
+            # คำนวณหาจุด Balance Point โดยประมาณ (จุดที่ Moment สูงสุด) สำหรับแกน X
+            bal_idx = df_x['phiMn'].idxmax()
+            bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
+            max_P = df_x['phiPn'].max()
+            max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
 
-    # 3. จุด Key Points (จุดสูงสุด, จุด Balance, จุดดัดล้วน)
-    if show_keypoints:
-        # คำนวณหาจุด Balance Point โดยประมาณ (จุดที่ Moment สูงสุด) สำหรับแกน X
-        bal_idx = df_x['phiMn'].idxmax()
-        bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
-        max_P = df_x['phiPn'].max()
-        max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
+            # เพิ่มข้อความชี้จุด
+            annotations = [
+                dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
+                dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
+                dict(x=max_M, y=0, xref="x", yref="y", text="Pure Bending", showarrow=True, arrowhead=2, ax=0, ay=-40, font=dict(size=10, color="#7f8c8d"))
+            ]
+            fig_pm.update_layout(annotations=annotations)
 
-        # เพิ่มข้อความชี้จุด
-        annotations = [
-            dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
-            dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
-            dict(x=max_M, y=0, xref="x", yref="y", text="Pure Bending", showarrow=True, arrowhead=2, ax=0, ay=-40, font=dict(size=10, color="#7f8c8d"))
-        ]
-        fig_pm.update_layout(annotations=annotations)
-
-    # 4. จุด Demand Load พร้อมเส้นนำสายตา (Crosshairs)
-    fig_pm.add_trace(go.Scatter(
-        x=[Mcx, Mcy], y=[Pu, Pu], 
-        mode='markers', name="Factored Demands", 
-        marker=dict(color=['#e74c3c', '#e67e22'], size=14, symbol='cross', line=dict(width=2, color='white')),
-        hovertemplate="<b>Demand</b><br>Mc: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
-    ))
-
-    # ลากเส้นนำสายตาไปยังแกน X และ Y สำหรับ Mcx (สีแดง)
-    fig_pm.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
-    fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
-    # ลากเส้นนำสายตาสำหรับ Mcy (สีส้ม)
-    fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
-
-    # --- การตกแต่ง Layout ขั้นสุด ---
-    fig_pm.update_layout(
-        xaxis=dict(
-            title="<b>Design Moment, φMn (ton-m)</b>",
-            showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-            zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-            rangemode='tozero'
-        ),
-        yaxis=dict(
-            title="<b>Design Axial Strength, φPn (ton)</b>",
-            showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-            zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)'
-        ),
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        height=650,
-        hovermode="closest",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-            bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1
-        ),
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-
-    st.plotly_chart(fig_pm, use_container_width=True)
-    
-    # กล่องสรุปสถานะใต้กราฟ
-    st.markdown(
-        f"""
-        <div style="padding: 15px; border-radius: 5px; background-color: #f8f9fa; border-left: 5px solid {'#2ecc71' if is_safe else '#e74c3c'};">
-            <h4 style="margin-top: 0px; color: #2c3e50;">📊 P-M Analysis Result</h4>
-            <p style="margin-bottom: 0px;">The current reinforcement ratio is <strong>{engine.rho*100:.2f}%</strong>. 
-            Demand coordinates (M, P) must fall strictly <em>inside</em> the solid capacity curves to be considered structurally safe. 
-            Ensure your design also falls within the green optimal zone (1% - 8%) for constructability.</p>
-        </div>
-        """, unsafe_allow_html=True
-    )
-    
-
-with tab3:
-    st.markdown("### 🏛️ God-Tier Structural Blueprint & BIM Dashboard")
-    
-    # --- เตรียมข้อมูลทางวิศวกรรม (Engineering Context) ---
-    total_ast = engine.Ag * engine.rho
-    # คำนวณ Inertia (พื้นฐานคอนกรีต)
-    if shape == "Rectangular":
-        Ix = (b * h**3) / 12
-        Iy = (h * b**3) / 12
-    else:
-        Ix = Iy = (np.pi * b**4) / 64
-
-    # ส่วนหัว Dashboard สไตล์ Enterprise
-    st.markdown(
-        f"""
-        <div style="display: flex; justify-content: space-between; padding: 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);">
-            <div style="text-align: left;">
-                <p style="margin: 0; color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 1.5px;">PROJECT SECTION</p>
-                <h2 style="margin: 0; color: #ffffff;">{shape.upper()} {b}x{h if shape == 'Rectangular' else b}</h2>
-                <p style="margin: 0; color: #94a3b8; font-size: 13px;">Design Code: ACI-318 / SDM</p>
-            </div>
-            <div style="text-align: right; border-left: 1px solid #334155; padding-left: 20px;">
-                <p style="margin: 0; color: #94a3b8; font-size: 11px; font-weight: 700;">REBAR RATIO (ρ)</p>
-                <h2 style="margin: 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#fb7185'};">{engine.rho*100:.2f}%</h2>
-                <p style="margin: 0; color: #64748b; font-size: 12px;">{'PASS' if 0.01 <= engine.rho <= 0.08 else 'CHECK LIMIT'}</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True
-    )
-
-    view_2d, view_3d, view_export = st.tabs(["📊 2D Engineering Detail", "🧊 3D BIM Model", "💾 CAD Data & Export"])
-
-    # --- 1. SETUP PARAMETERS (ส่วนกลางที่ใช้ร่วมกันใน tab3) ---
-    cv = 4.0 # Covering
-    max_d = max(b, h) if shape == "Rectangular" else b
-    offset = max_d * 0.25 # ระยะ Offset สำหรับเส้น Dimension
-    limit = max_d * 0.8
-    
-    t_blue = '#38bdf8'
-    t_red = '#ef4444'
-    t_gold = '#fbbf24'
-    t_dark = '#020617'
-    t_dim = '#64748b'
-
-    # --- เตรียมพิกัด CONCRETE & TIES ---
-    if shape == "Rectangular":
-        x_c = [-b/2, b/2, b/2, -b/2, -b/2]
-        y_c = [-h/2, -h/2, h/2, h/2, -h/2]
-        x_t = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
-        y_t = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
-    else:
-        theta = np.linspace(0, 2*np.pi, 100)
-        x_c, y_c = (b/2)*np.cos(theta), (b/2)*np.sin(theta)
-        x_t, y_t = (b/2-cv)*np.cos(theta), (b/2-cv)*np.sin(theta)
-
-    # --- เตรียมพิกัด REBARS ---
-    bx = [bar['x'] for bar in engine.bars]
-    by = [bar['y'] for bar in engine.bars]
-
-    with view_2d:
-        # --- Drawing Controls ---
-        c1, c2, c3, c4 = st.columns(4)
-        draw_dim = c1.toggle("Dimensions", value=True)
-        draw_id = c2.toggle("Rebar Labels", value=True)
-        draw_grid = c3.toggle("Grid Lines", value=False)
-        draw_spec = c4.toggle("Material Specs", value=True)
-
-        fig = go.Figure()
-        
-        # Draw Concrete
-        fig.add_trace(go.Scatter(x=x_c, y=y_c, mode='lines', line=dict(color=t_blue, width=3), fill='toself', fillcolor='rgba(56, 189, 248, 0.1)', name='Concrete'))
-        # Draw Ties
-        fig.add_trace(go.Scatter(x=x_t, y=y_t, mode='lines', line=dict(color=t_gold, width=1.5, dash='dash'), name='Stirrups'))
-
-        # --- DIMENSIONS ---
-        if draw_dim:
-            if shape == "Rectangular":
-                # --- Width (B) Dimension ---
-                y_dim = -h/2 - offset
-                # Extension Lines
-                fig.add_trace(go.Scatter(x=[-b/2, -b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
-                fig.add_trace(go.Scatter(x=[b/2, b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
-                # Main Dim Line
-                fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
-                fig.add_annotation(x=0, y=y_dim, text=f"B = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
-
-                # --- Depth (H) Dimension ---
-                x_dim = -b/2 - offset
-                fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[-h/2, -h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
-                fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[h/2, h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
-                fig.add_trace(go.Scatter(x=[x_dim, x_dim], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
-                fig.add_annotation(x=x_dim, y=0, text=f"H = {h} cm", showarrow=False, xshift=-15, textangle=-90, font=dict(color="white", size=12))
-            else:
-                # Circular Diameter
-                y_dim = -b/2 - offset
-                fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
-                fig.add_annotation(x=0, y=y_dim, text=f"Ø = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
-
-        # --- REBARS & LABELS ---
-        fig.add_trace(go.Scatter(
-            x=bx, y=by, mode='markers+text' if draw_id else 'markers',
-            marker=dict(color=t_dark, size=12, line=dict(color=t_red, width=2.5)),
-            text=[str(i+1) for i in range(len(bx))], textposition="top center",
-            textfont=dict(color="white", size=9),
-            name='Main Rebars'
+        # 4. จุด Demand Load พร้อมเส้นนำสายตา (Crosshairs)
+        fig_pm.add_trace(go.Scatter(
+            x=[Mcx, Mcy], y=[Pu, Pu], 
+            mode='markers', name="Factored Demands", 
+            marker=dict(color=['#e74c3c', '#e67e22'], size=14, symbol='cross', line=dict(width=2, color='white')),
+            hovertemplate="<b>Demand</b><br>Mc: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
         ))
 
-        # --- MATERIAL SPEC TAGS ---
-        if draw_spec:
-            spec_text = f"<b>SPECIFICATIONS</b><br>fc' = {fc} MPa<br>fy = {fy} MPa<br>Ast = {total_ast:.2f} cm²"
-            fig.add_annotation(
-                xref="paper", yref="paper", x=0.98, y=0.02,
-                text=spec_text, showarrow=False, align="right",
-                bgcolor="rgba(15, 23, 42, 0.8)", bordercolor=t_dim, borderpad=10,
-                font=dict(color=t_blue, size=11)
-            )
+        # ลากเส้นนำสายตาไปยังแกน X และ Y สำหรับ Mcx (สีแดง)
+        fig_pm.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+        fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+        # ลากเส้นนำสายตาสำหรับ Mcy (สีส้ม)
+        fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
 
-        # --- Layout Optimization ---
-        fig.update_layout(
-            plot_bgcolor=t_dark, paper_bgcolor=t_dark,
-            xaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], zeroline=False),
-            yaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], scaleanchor="x", scaleratio=1, zeroline=False),
-            height=700, margin=dict(l=20, r=20, t=20, b=20),
-            legend=dict(font=dict(color="white"), orientation="h", y=1.05, x=0.5, xanchor="center")
+        # --- การตกแต่ง Layout ขั้นสุด ---
+        fig_pm.update_layout(
+            xaxis=dict(
+                title="<b>Design Moment, φMn (ton-m)</b>",
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
+                rangemode='tozero'
+            ),
+            yaxis=dict(
+                title="<b>Design Axial Strength, φPn (ton)</b>",
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)'
+            ),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            height=650,
+            hovermode="closest",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1
+            ),
+            margin=dict(l=40, r=40, t=60, b=40)
         )
-        st.plotly_chart(fig, use_container_width=True)
 
-    with view_3d:
-        st.markdown("#### 🧊 Interactive 3D BIM Cage")
-        l_col = max_d * 4
-        fig3d = go.Figure()
+        st.plotly_chart(fig_pm, use_container_width=True)
         
-        # Rebars 3D
-        for i, (x, y) in enumerate(zip(bx, by)):
-            fig3d.add_trace(go.Scatter3d(x=[x, x], y=[y, y], z=[0, l_col], mode='lines', line=dict(color=t_red, width=5), name=f"Bar {i+1}"))
-        
-        # Ties 3D
-        for z_pos in np.linspace(10, l_col-10, 8):
-            fig3d.add_trace(go.Scatter3d(x=x_t, y=y_t, z=[z_pos]*len(x_t), mode='lines', line=dict(color=t_gold, width=3), showlegend=False))
-
-        fig3d.update_layout(
-            scene=dict(aspectmode='data', xaxis_title="X (cm)", yaxis_title="Y (cm)", zaxis_title="Height (cm)",
-                       xaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
-                       yaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
-                       zaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b")),
-            margin=dict(l=0, r=0, t=0, b=0), height=600, paper_bgcolor=t_dark
-        )
-        st.plotly_chart(fig3d, use_container_width=True)
-
-    with view_export:
-        c_e1, c_e2 = st.columns(2)
-        with c_e1:
-            st.markdown("#### 📋 Section Properties")
-            prop_df = pd.DataFrame({
-                "Parameter": ["Width (B)", "Depth (H)", "Gross Area (Ag)", "Steel Area (Ast)", "Inertia Ix", "Inertia Iy"],
-                "Value": [b, h if shape == "Rectangular" else b, f"{engine.Ag:.2f}", f"{total_ast:.2f}", f"{Ix:,.0f}", f"{Iy:,.0f}"],
-                "Unit": ["cm", "cm", "cm²", "cm²", "cm⁴", "cm⁴"]
-            })
-            st.table(prop_df)
-        
-        with c_e2:
-            st.markdown("#### ⌨️ AutoCAD CLI Script")
-            st.caption("Paste into AutoCAD Command Line")
-            
-            # --- แก้ไขให้รองรับเสากลมและเสาเหลี่ยม ---
-            if shape == "Rectangular":
-                cad_script = f"COLOR 4\nRECTANG {-b/2},{-h/2} {b/2},{h/2}\nCOLOR 2\nRECTANG {-(b/2-cv)},{-(h/2-cv)} {(b/2-cv)},{(h/2-cv)}\nCOLOR 1\n"
-            else:
-                cad_script = f"COLOR 4\nCIRCLE 0,0 {b/2}\nCOLOR 2\nCIRCLE 0,0 {b/2-cv}\nCOLOR 1\n"
-                
-            for rx, ry in zip(bx, by):
-                cad_script += f"CIRCLE {rx},{ry} 1.0\n"
-            cad_script += "ZOOM E"
-            st.code(cad_script, language="bash")
-
-with tab4:
-    st.markdown("### 🌪️ Shear Design & Seismic Detailing (ACI 318)")
-    
-    # --- UI Controls สำหรับ Shear & Seismic ---
-    st.markdown("""<div style="padding: 10px; background-color: #f1f5f9; border-radius: 8px; margin-bottom: 15px;">
-                <strong>⚙️ Design Parameters</strong></div>""", unsafe_allow_html=True)
-    
-    c_s1, c_s2, c_s3, c_s4 = st.columns(4)
-    with c_s1:
-        Vu = st.number_input("Factored Shear, Vu (ton)", value=15.0, step=1.0)
-    with c_s2:
-        Hc = st.number_input("Clear Height, Hc (m)", value=3.0, step=0.1)
-    with c_s3:
-        seismic_frame = st.selectbox("Seismic Frame Type", ["SMF (Special)", "IMF (Intermediate)", "OMF (Ordinary)"])
-    with c_s4:
-        tie_db = st.selectbox("Tie Bar Size", ["RB6", "RB9", "DB10", "DB12"], index=2)
-        
-    d_tie = 1.0 if "10" in tie_db else (1.2 if "12" in tie_db else 0.9)
-    d_long = 2.0 # สมมติเหล็กแกน DB20
-    
-    st.markdown("---")
-    
-    # --- 1. คำนวณ Shear Capacity พื้นฐาน ---
-    d = h - cv - d_tie - (d_long / 2) if shape == "Rectangular" else b - cv - d_tie - (d_long / 2)
-    bw = b
-    
-    # Vc คำนวณแบบคร่าวๆ (Simplified ACI: Vc = 0.17 * sqrt(fc) * bw * d) -> แปลงเป็น ton
-    Vc_ton = 0.17 * np.sqrt(fc) * (bw * 10) * (d * 10) / 10000 
-    phi_V = 0.75
-    phi_Vc = phi_V * Vc_ton
-    
-    # ต้องการเหล็กปลอกรับแรงเฉือนหรือไม่
-    Vs_req = max(0, (Vu / phi_V) - Vc_ton)
-    
-    # --- 2. คำนวณ Seismic Detailing ---
-    H_cm = Hc * 100
-    max_dim = max(b, h) if shape == "Rectangular" else b
-    min_dim = min(b, h) if shape == "Rectangular" else b
-    
-    if seismic_frame == "SMF (Special)":
-        L0 = max(max_dim, H_cm / 6, 45.0) 
-        S0_max = min(min_dim / 4, 6 * d_long, 15.0)
-        S_mid = min(6 * d_long, 15.0) * 2 
-    elif seismic_frame == "IMF (Intermediate)":
-        L0 = max(max_dim, H_cm / 6, 45.0)
-        S0_max = min(8 * d_long, 24 * d_tie, 0.5 * min_dim, 30.0)
-        S_mid = min(min_dim, 30.0)
-    else: 
-        L0 = 0 
-        S0_max = min(16 * d_long, 48 * d_tie, min_dim)
-        S_mid = S0_max
-
-    S0_design = math.floor(S0_max / 2.5) * 2.5
-    Smid_design = math.floor(S_mid / 5.0) * 5.0
-    
-    Av = 2 * (math.pi * (d_tie**2) / 4) # 2 ขา
-    Vs_prov = (Av * fy * d) / S0_design / 10 
-    phi_Vn = phi_V * (Vc_ton + Vs_prov)
-    is_shear_safe = phi_Vn >= Vu
-    
-    # --- ส่วนแสดงผล Dashboard ---
-    col_res1, col_res2 = st.columns([1, 1])
-    
-    with col_res1:
+        # กล่องสรุปสถานะใต้กราฟ
         st.markdown(
             f"""
-            <div style="padding: 20px; border-radius: 10px; background-color: #1e293b; color: white; height: 100%;">
-                <h4 style="margin-top: 0; color: #38bdf8;">📊 Shear & Confinement Summary</h4>
-                <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">{seismic_frame} Provisions Applied</p>
-                
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
-                    <span>Factored Shear (Vu)</span>
-                    <span style="font-weight: bold; color: #fbbf24;">{Vu:.2f} ton</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
-                    <span>Concrete Capacity (φVc)</span>
-                    <span style="font-weight: bold;">{phi_Vc:.2f} ton</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
-                    <span>Steel Capacity Provided (φVs)</span>
-                    <span style="font-weight: bold;">{phi_V * Vs_prov:.2f} ton</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 18px;">
-                    <span>Total Capacity (φVn)</span>
-                    <span style="font-weight: bold; color: {'#4ade80' if is_shear_safe else '#f87171'};">{phi_Vn:.2f} ton</span>
-                </div>
-                
-                <h5 style="color: #cbd5e1;">🛠️ Detailing Prescription</h5>
-                <ul style="color: #aebbc9; line-height: 1.8;">
-                    <li><strong>Critical Zone (L0):</strong> {L0:.0f} cm from joint</li>
-                    <li><strong>Tie Spacing in L0:</strong> {tie_db} @ {S0_design:.1f} cm</li>
-                    <li><strong>Tie Spacing Mid-span:</strong> {tie_db} @ {Smid_design:.1f} cm</li>
-                </ul>
+            <div style="padding: 15px; border-radius: 5px; background-color: #f8f9fa; border-left: 5px solid {'#2ecc71' if is_safe else '#e74c3c'};">
+                <h4 style="margin-top: 0px; color: #2c3e50;">📊 P-M Analysis Result</h4>
+                <p style="margin-bottom: 0px;">The current reinforcement ratio is <strong>{engine.rho*100:.2f}%</strong>. 
+                Demand coordinates (M, P) must fall strictly <em>inside</em> the solid capacity curves to be considered structurally safe. 
+                Ensure your design also falls within the green optimal zone (1% - 8%) for constructability.</p>
             </div>
             """, unsafe_allow_html=True
         )
         
-    with col_res2:
-        st.markdown("#### 📏 Elevation Detailing View")
+    with tab3:
+        st.markdown("### 🏛️ God-Tier Structural Blueprint & BIM Dashboard")
         
-        fig_elev = go.Figure()
-        
-        # วาดกรอบเสา
-        fig_elev.add_shape(type="rect", x0=0, y0=0, x1=max_dim, y1=H_cm, 
-                           line=dict(color="#38bdf8", width=2), fillcolor="rgba(56, 189, 248, 0.05)")
-        
-        # วาดเหล็กแกน
-        fig_elev.add_shape(type="line", x0=cv, y0=0, x1=cv, y1=H_cm, line=dict(color="#ef4444", width=3))
-        fig_elev.add_shape(type="line", x0=max_dim-cv, y0=0, x1=max_dim-cv, y1=H_cm, line=dict(color="#ef4444", width=3))
-        
-        # วาดเหล็กปลอก
-        y_ties = []
-        current_y = S0_design / 2
-        
-        while current_y < H_cm:
-            y_ties.append(current_y)
-            if current_y <= L0 or current_y >= (H_cm - L0):
-                current_y += S0_design
-            else:
-                current_y += Smid_design
-        
-        for ty in y_ties:
-            fig_elev.add_shape(type="line", x0=cv, y0=ty, x1=max_dim-cv, y1=ty, line=dict(color="#fbbf24", width=2))
-        
-        # วาด Annotation
-        if seismic_frame != "OMF (Ordinary)":
-            fig_elev.add_shape(type="rect", x0=-10, y0=0, x1=0, y1=L0, line=dict(color="#10b981", width=2), fillcolor="rgba(16, 185, 129, 0.2)")
-            fig_elev.add_annotation(x=-15, y=L0/2, text=f"L0 = {L0:.0f} cm<br>@{S0_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#10b981"))
-            
-            fig_elev.add_shape(type="rect", x0=-10, y0=H_cm-L0, x1=0, y1=H_cm, line=dict(color="#10b981", width=2), fillcolor="rgba(16, 185, 129, 0.2)")
-            fig_elev.add_annotation(x=-15, y=H_cm-(L0/2), text=f"L0 = {L0:.0f} cm<br>@{S0_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#10b981"))
-            
-            fig_elev.add_annotation(x=-15, y=H_cm/2, text=f"Mid-span<br>@{Smid_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#94a3b8"))
-
-        fig_elev.update_layout(
-            xaxis=dict(visible=False, range=[-30, max_dim+10]),
-            yaxis=dict(title="Column Height (cm)", showgrid=False, zeroline=False, range=[0, H_cm]),
-            height=500,
-            margin=dict(l=0, r=0, t=30, b=0),
-            plot_bgcolor="white", paper_bgcolor="white"
-        )
-        
-        st.plotly_chart(fig_elev, use_container_width=True)
-
-with tab5:
-    st.markdown("### 📖 Parameter Guide")
-    st.markdown("---")
-    st.markdown("#### 1. Applied Loads")
-    st.markdown("* **Pu (Factored Axial Load):** The ultimate axial load acting on the column. *(Unit: tons)*")
-    st.markdown("* **Mux, Muy (Factored Moments):** The ultimate bending moments acting about the X and Y axes. *(Unit: ton-m)*")
-    st.markdown("#### 2. Frame Type")
-    st.markdown("* **Non-Sway Frame (Braced Frame):** A structure equipped with a stiff lateral force-resisting system. Joints experience practically no lateral translation.")
-    st.markdown("* **Sway Frame (Unbraced Frame):** Relies entirely on the stiffness of its beams and columns. Joints can translate laterally, generating P-Delta effect.")
-
-with tab6:
-    st.markdown("### 📝 Detailed Calculation Report")
-    st.info("💡 รายงานนี้แสดงการคำนวณแบบ Step-by-Step พร้อมระบุตัวแปรที่ใช้ใน Source Code")
-    st.markdown("---")
-
-    with st.expander("1. Section & Material Properties", expanded=False):
-        st.markdown("#### 1.1 Geometry & Section Properties")
+        # --- เตรียมข้อมูลทางวิศวกรรม (Engineering Context) ---
+        total_ast = engine.Ag * engine.rho
+        # คำนวณ Inertia (พื้นฐานคอนกรีต)
         if shape == "Rectangular":
-            st.latex(f"A_g = {b} \\times {h} = {engine.Ag:,.2f} \\text{{ cm}}^2")
-            st.latex(f"I_{{gx}} = \\frac{{{b} \\times {h}^3}}{{12}} = {engine.Igx:,.2f} \\text{{ cm}}^4")
-            st.latex(f"I_{{gy}} = \\frac{{{h} \\times {b}^3}}{{12}} = {engine.Igy:,.2f} \\text{{ cm}}^4")
+            Ix = (b * h**3) / 12
+            Iy = (h * b**3) / 12
         else:
-            st.latex(f"A_g = \\frac{{\\pi \\times {b}^2}}{{4}} = {engine.Ag:,.2f} \\text{{ cm}}^2")
-            st.latex(f"I_{{gx}} = I_{{gy}} = \\frac{{\\pi \\times {b}^4}}{{64}} = {engine.Igx:,.2f} \\text{{ cm}}^4")
-        st.markdown("#### 1.2 Material Properties")
-        st.latex(f"E_c = 15100 \\sqrt{{{fc}}} = {engine.Ec:,.0f} \\text{{ ksc}}")
+            Ix = Iy = (np.pi * b**4) / 64
 
-    with st.expander("2. Minimum Design Moments (ACI 318-19)", expanded=False):
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            st.markdown("**X-Axis (Major):**")
-            st.latex(f"M_{{u,min,x}} = {Pu} \\times (0.015 + 0.03 \\times \\frac{{{h}}}{{100}}) = {e_min_x:,.3f} \\text{{ t-m}}")
-            st.latex(f"M_{{ux,dsgn}} = \\max({Mux:,.2f}, {e_min_x:,.3f}) = {Mu_x_dsgn:,.2f} \\text{{ t-m}}")
-        with col_m2:
-            st.markdown("**Y-Axis (Minor):**")
-            st.latex(f"M_{{u,min,y}} = {Pu} \\times (0.015 + 0.03 \\times \\frac{{{b}}}{{100}}) = {e_min_y:,.3f} \\text{{ t-m}}")
-            st.latex(f"M_{{uy,dsgn}} = \\max({Muy:,.2f}, {e_min_y:,.3f}) = {Mu_y_dsgn:,.2f} \\text{{ t-m}}")
+        # ส่วนหัว Dashboard สไตล์ Enterprise
+        st.markdown(
+            f"""
+            <div style="display: flex; justify-content: space-between; padding: 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);">
+                <div style="text-align: left;">
+                    <p style="margin: 0; color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 1.5px;">PROJECT SECTION</p>
+                    <h2 style="margin: 0; color: #ffffff;">{shape.upper()} {b}x{h if shape == 'Rectangular' else b}</h2>
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px;">Design Code: ACI-318 / SDM</p>
+                </div>
+                <div style="text-align: right; border-left: 1px solid #334155; padding-left: 20px;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 11px; font-weight: 700;">REBAR RATIO (ρ)</p>
+                    <h2 style="margin: 0; color: {'#4ade80' if 0.01 <= engine.rho <= 0.08 else '#fb7185'};">{engine.rho*100:.2f}%</h2>
+                    <p style="margin: 0; color: #64748b; font-size: 12px;">{'PASS' if 0.01 <= engine.rho <= 0.08 else 'CHECK LIMIT'}</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True
+        )
 
-    # --- Part 3: Moment Magnification (X-Axis) ---
-    with st.expander(f"3. Moment Magnification (X-Axis) - {frame_type}", expanded=False):
-        if frame_type == "Non-Sway (Braced)":
-            st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4)*")
-            st.latex(r"EI_x = \frac{0.2 E_c I_{gx} + E_s I_{se,x}}{1 + \beta_d}")
-            
-            Ise_x = engine.Ise_x
-            EIx_val = (0.2 * engine.Ec * engine.Igx + engine.Es * Ise_x) / (1 + beta_d)
-            
-            st.latex(f"I_{{se,x}} = {Ise_x:,.2f} \\text{{ cm}}^4")
-            st.latex(f"EI_x = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}) + ({engine.Es:,.0f} \\times {Ise_x:,.2f})}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
-            
-            st.markdown("**3.2 Euler Critical Load ($P_{cx}$):**")
-            st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
-            st.latex(f"P_{{cx}} = \\frac{{\\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times 10^{{-3}} = {Pcx:,.2f} \\text{{ ton}}")
-            
-            st.markdown("**3.3 Magnification Factor ($\delta_x$):**")
-            if kl_rx > 22:
-                st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
-                st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
-            else:
-                st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} $\\le$ 22)")
-                st.latex(r"\delta_x = 1.0")
+        view_2d, view_3d, view_export = st.tabs(["📊 2D Engineering Detail", "🧊 3D BIM Model", "💾 CAD Data & Export"])
 
-            st.markdown("**3.4 Final Magnified Moment ($M_{cx}$):**")
-            st.latex(f"M_{{cx}} = \\delta_x \\times M_{{ux,dsgn}} = {Mcx:,.2f} \\text{{ ton-m}}")
-        else:
-            st.markdown("**Sway Frame Design:**")
-            st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
-            st.latex(f"M_{{cx}} = {delta_sx:.2f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
-        st.caption("💻 *Code Vars: `Ise_x`, `Pcx`, `del_x`, `Mcx`*")
-
-    # --- Part 4: Moment Magnification (Y-Axis) ---
-    with st.expander(f"4. Moment Magnification (Y-Axis) - {frame_type}", expanded=False):
-        if frame_type == "Non-Sway (Braced)":
-            st.markdown("**4.1 Effective Stiffness ($EI_y$):**")
-            st.latex(r"EI_y = \frac{0.2 E_c I_{gy} + E_s I_{se,y}}{1 + \beta_d}")
-            
-            Ise_y = engine.Ise_y 
-            EIy_val = (0.2 * engine.Ec * engine.Igy + engine.Es * Ise_y) / (1 + beta_d)
-            
-            st.latex(f"I_{{se,y}} = {Ise_y:,.2f} \\text{{ cm}}^4")
-            st.latex(f"EI_y = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}) + ({engine.Es:,.0f} \\times {Ise_y:,.2f})}}{{1 + {beta_d}}} = {EIy_val:,.0f} \\text{{ kg-cm}}^2")
-            
-            st.markdown("**4.2 Euler Critical Load ($P_{cy}$):**")
-            st.latex(f"P_{{cy}} = \\frac{{\\pi^2 \\times {EIy_val:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
-            
-            st.markdown("**4.3 Magnification Factor ($\delta_y$):**")
-            if kl_ry > 22:
-                st.latex(r"\delta_y = \frac{C_{my}}{1 - \frac{P_u}{0.75 P_{cy}}} \ge 1.0")
-                st.latex(f"\\delta_y = \\frac{{{Cm_y}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcy:,.2f}}}}} = {del_y:,.3f}")
-            else:
-                st.write(f"Slenderness ignored (kl/r = {kl_ry:.2f} $\\le$ 22)")
-                st.latex(r"\delta_y = 1.0")
-
-            st.markdown("**4.4 Final Magnified Moment ($M_{cy}$):**")
-            st.latex(f"M_{{cy}} = \\delta_y \\times M_{{uy,dsgn}} = {Mcy:,.2f} \\text{{ ton-m}}")
-        else:
-            st.markdown("**Sway Frame Design:**")
-            st.latex(r"M_{cy} = \delta_{sy} M_{uy,dsgn}")
-            st.latex(f"M_{{cy}} = {delta_sy:.2f} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
-        st.caption("💻 *Code Vars: `Ise_y`, `Pcy`, `del_y`, `Mcy`*")
-
-    # --- Part 5: Biaxial Bending Check ---
-    with st.expander("5. Biaxial Bending Interaction (PCA Method)", expanded=True):
-        st.markdown("**PCA Load Contour Method** *(Ref: PCA Notes on ACI 318)*")
-        st.markdown(f"At factored axial load $P_u = {Pu:,.2f}$ tons, the program evaluates the intersection on the P-M Curve to determine the Uniaxial Moment Capacities:")
-        st.latex(f"\\phi M_{{nox}} = {phi_Mnox:,.2f} \\text{{ ton-m}}")
-        st.latex(f"\\phi M_{{noy}} = {phi_Mnoy:,.2f} \\text{{ ton-m}}")
+        # --- 1. SETUP PARAMETERS (ส่วนกลางที่ใช้ร่วมกันใน tab3) ---
+        cv = 4.0 # Covering
+        max_d = max(b, h) if shape == "Rectangular" else b
+        offset = max_d * 0.25 # ระยะ Offset สำหรับเส้น Dimension
+        limit = max_d * 0.8
         
-        st.markdown("**Interaction Equation:**")
-        st.latex(r"\left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
-        
-        if phi_Mnox > 0 and phi_Mnoy > 0:
-            st.markdown("**Substituting the values:**")
-            st.latex(f"\\text{{Ratio}} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha:.3f}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha:.3f}}} = {demand_ratio:,.3f}")
-            st.caption(f"💻 *Code Vars: `alpha` (={alpha:.3f}), `demand_ratio`, `phi_Mnox`, `phi_Mnoy`*")
-        else:
-            st.error("⚠️ Unable to calculate because the applied axial load ($P_u$) exceeds the maximum compressive strength of the section.")
+        t_blue = '#38bdf8'
+        t_red = '#ef4444'
+        t_gold = '#fbbf24'
+        t_dark = '#020617'
+        t_dim = '#64748b'
 
-    # --- Final Part: Conclusion ---
-    st.markdown("---")
-    if is_safe:
-        st.success(f"✅ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is $\\le$ 1.0 $\\rightarrow$ **SECTION IS SAFE**")
-    else:
-        st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
+        # --- เตรียมพิกัด CONCRETE & TIES ---
+        if shape == "Rectangular":
+            x_c = [-b/2, b/2, b/2, -b/2, -b/2]
+            y_c = [-h/2, -h/2, h/2, h/2, -h/2]
+            x_t = [-(b/2-cv), (b/2-cv), (b/2-cv), -(b/2-cv), -(b/2-cv)]
+            y_t = [-(h/2-cv), -(h/2-cv), (h/2-cv), (h/2-cv), -(h/2-cv)]
+        else:
+            theta = np.linspace(0, 2*np.pi, 100)
+            x_c, y_c = (b/2)*np.cos(theta), (b/2)*np.sin(theta)
+            x_t, y_t = (b/2-cv)*np.cos(theta), (b/2-cv)*np.sin(theta)
+
+        # --- เตรียมพิกัด REBARS ---
+        bx = [bar['x'] for bar in engine.bars]
+        by = [bar['y'] for bar in engine.bars]
+
+        with view_2d:
+            # --- Drawing Controls ---
+            c1, c2, c3, c4 = st.columns(4)
+            draw_dim = c1.toggle("Dimensions", value=True)
+            draw_id = c2.toggle("Rebar Labels", value=True)
+            draw_grid = c3.toggle("Grid Lines", value=False)
+            draw_spec = c4.toggle("Material Specs", value=True)
+
+            fig = go.Figure()
+            
+            # Draw Concrete
+            fig.add_trace(go.Scatter(x=x_c, y=y_c, mode='lines', line=dict(color=t_blue, width=3), fill='toself', fillcolor='rgba(56, 189, 248, 0.1)', name='Concrete'))
+            # Draw Ties
+            fig.add_trace(go.Scatter(x=x_t, y=y_t, mode='lines', line=dict(color=t_gold, width=1.5, dash='dash'), name='Stirrups'))
+
+            # --- DIMENSIONS ---
+            if draw_dim:
+                if shape == "Rectangular":
+                    # --- Width (B) Dimension ---
+                    y_dim = -h/2 - offset
+                    # Extension Lines
+                    fig.add_trace(go.Scatter(x=[-b/2, -b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[b/2, b/2], y=[-h/2-2, y_dim-2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    # Main Dim Line
+                    fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=0, y=y_dim, text=f"B = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
+
+                    # --- Depth (H) Dimension ---
+                    x_dim = -b/2 - offset
+                    fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[-h/2, -h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[-b/2-2, x_dim-2], y=[h/2, h/2], mode='lines', line=dict(color=t_dim, width=1), showlegend=False))
+                    fig.add_trace(go.Scatter(x=[x_dim, x_dim], y=[-h/2, h/2], mode='lines+markers', marker=dict(symbol='line-ns-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=x_dim, y=0, text=f"H = {h} cm", showarrow=False, xshift=-15, textangle=-90, font=dict(color="white", size=12))
+                else:
+                    # Circular Diameter
+                    y_dim = -b/2 - offset
+                    fig.add_trace(go.Scatter(x=[-b/2, b/2], y=[y_dim, y_dim], mode='lines+markers', marker=dict(symbol='line-ew-open', size=12, color=t_dim), line=dict(width=1.5), showlegend=False))
+                    fig.add_annotation(x=0, y=y_dim, text=f"Ø = {b} cm", showarrow=False, yshift=12, font=dict(color="white", size=12))
+
+            # --- REBARS & LABELS ---
+            fig.add_trace(go.Scatter(
+                x=bx, y=by, mode='markers+text' if draw_id else 'markers',
+                marker=dict(color=t_dark, size=12, line=dict(color=t_red, width=2.5)),
+                text=[str(i+1) for i in range(len(bx))], textposition="top center",
+                textfont=dict(color="white", size=9),
+                name='Main Rebars'
+            ))
+
+            # --- MATERIAL SPEC TAGS ---
+            if draw_spec:
+                spec_text = f"<b>SPECIFICATIONS</b><br>fc' = {fc} MPa<br>fy = {fy} MPa<br>Ast = {total_ast:.2f} cm²"
+                fig.add_annotation(
+                    xref="paper", yref="paper", x=0.98, y=0.02,
+                    text=spec_text, showarrow=False, align="right",
+                    bgcolor="rgba(15, 23, 42, 0.8)", bordercolor=t_dim, borderpad=10,
+                    font=dict(color=t_blue, size=11)
+                )
+
+            # --- Layout Optimization ---
+            fig.update_layout(
+                plot_bgcolor=t_dark, paper_bgcolor=t_dark,
+                xaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], zeroline=False),
+                yaxis=dict(showgrid=draw_grid, gridcolor='#1e293b', range=[-limit-offset, limit+offset], scaleanchor="x", scaleratio=1, zeroline=False),
+                height=700, margin=dict(l=20, r=20, t=20, b=20),
+                legend=dict(font=dict(color="white"), orientation="h", y=1.05, x=0.5, xanchor="center")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with view_3d:
+            st.markdown("#### 🧊 Interactive 3D BIM Cage")
+            l_col = max_d * 4
+            fig3d = go.Figure()
+            
+            # Rebars 3D
+            for i, (x, y) in enumerate(zip(bx, by)):
+                fig3d.add_trace(go.Scatter3d(x=[x, x], y=[y, y], z=[0, l_col], mode='lines', line=dict(color=t_red, width=5), name=f"Bar {i+1}"))
+            
+            # Ties 3D
+            for z_pos in np.linspace(10, l_col-10, 8):
+                fig3d.add_trace(go.Scatter3d(x=x_t, y=y_t, z=[z_pos]*len(x_t), mode='lines', line=dict(color=t_gold, width=3), showlegend=False))
+
+            fig3d.update_layout(
+                scene=dict(aspectmode='data', xaxis_title="X (cm)", yaxis_title="Y (cm)", zaxis_title="Height (cm)",
+                            xaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
+                            yaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b"),
+                            zaxis=dict(backgroundcolor=t_dark, gridcolor="#1e293b")),
+                margin=dict(l=0, r=0, t=0, b=0), height=600, paper_bgcolor=t_dark
+            )
+            st.plotly_chart(fig3d, use_container_width=True)
+
+        with view_export:
+            c_e1, c_e2 = st.columns(2)
+            with c_e1:
+                st.markdown("#### 📋 Section Properties")
+                prop_df = pd.DataFrame({
+                    "Parameter": ["Width (B)", "Depth (H)", "Gross Area (Ag)", "Steel Area (Ast)", "Inertia Ix", "Inertia Iy"],
+                    "Value": [b, h if shape == "Rectangular" else b, f"{engine.Ag:.2f}", f"{total_ast:.2f}", f"{Ix:,.0f}", f"{Iy:,.0f}"],
+                    "Unit": ["cm", "cm", "cm²", "cm²", "cm⁴", "cm⁴"]
+                })
+                st.table(prop_df)
+            
+            with c_e2:
+                st.markdown("#### ⌨️ AutoCAD CLI Script")
+                st.caption("Paste into AutoCAD Command Line")
+                
+                # --- แก้ไขให้รองรับเสากลมและเสาเหลี่ยม ---
+                if shape == "Rectangular":
+                    cad_script = f"COLOR 4\nRECTANG {-b/2},{-h/2} {b/2},{h/2}\nCOLOR 2\nRECTANG {-(b/2-cv)},{-(h/2-cv)} {(b/2-cv)},{(h/2-cv)}\nCOLOR 1\n"
+                else:
+                    cad_script = f"COLOR 4\nCIRCLE 0,0 {b/2}\nCOLOR 2\nCIRCLE 0,0 {b/2-cv}\nCOLOR 1\n"
+                    
+                for rx, ry in zip(bx, by):
+                    cad_script += f"CIRCLE {rx},{ry} 1.0\n"
+                cad_script += "ZOOM E"
+                st.code(cad_script, language="bash")
+
+
+    with tab4:
+        st.markdown("### 🌪️ Shear Design & Seismic Detailing (ACI 318)")
+        
+        # --- UI Controls สำหรับ Shear & Seismic ---
+        st.markdown("""<div style="padding: 10px; background-color: #f1f5f9; border-radius: 8px; margin-bottom: 15px;">
+                    <strong>⚙️ Design Parameters</strong></div>""", unsafe_allow_html=True)
+        
+        c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+        with c_s1:
+            Vu = st.number_input("Factored Shear, Vu (ton)", value=15.0, step=1.0)
+        with c_s2:
+            Hc = st.number_input("Clear Height, Hc (m)", value=3.0, step=0.1)
+        with c_s3:
+            seismic_frame = st.selectbox("Seismic Frame Type", ["SMF (Special)", "IMF (Intermediate)", "OMF (Ordinary)"])
+        with c_s4:
+            tie_db = st.selectbox("Tie Bar Size", ["RB6", "RB9", "DB10", "DB12"], index=2)
+            
+        d_tie = 1.0 if "10" in tie_db else (1.2 if "12" in tie_db else 0.9)
+        d_long = 2.0 # สมมติเหล็กแกน DB20
+        
+        st.markdown("---")
+        
+        # --- 1. คำนวณ Shear Capacity พื้นฐาน ---
+        d = h - cv - d_tie - (d_long / 2) if shape == "Rectangular" else b - cv - d_tie - (d_long / 2)
+        bw = b
+        
+        # Vc คำนวณแบบคร่าวๆ (Simplified ACI: Vc = 0.17 * sqrt(fc) * bw * d) -> แปลงเป็น ton
+        Vc_ton = 0.17 * np.sqrt(fc) * (bw * 10) * (d * 10) / 10000 
+        phi_V = 0.75
+        phi_Vc = phi_V * Vc_ton
+        
+        # ต้องการเหล็กปลอกรับแรงเฉือนหรือไม่
+        Vs_req = max(0, (Vu / phi_V) - Vc_ton)
+        
+        # --- 2. คำนวณ Seismic Detailing ---
+        H_cm = Hc * 100
+        max_dim = max(b, h) if shape == "Rectangular" else b
+        min_dim = min(b, h) if shape == "Rectangular" else b
+        
+        if seismic_frame == "SMF (Special)":
+            L0 = max(max_dim, H_cm / 6, 45.0) 
+            S0_max = min(min_dim / 4, 6 * d_long, 15.0)
+            S_mid = min(6 * d_long, 15.0) * 2 
+        elif seismic_frame == "IMF (Intermediate)":
+            L0 = max(max_dim, H_cm / 6, 45.0)
+            S0_max = min(8 * d_long, 24 * d_tie, 0.5 * min_dim, 30.0)
+            S_mid = min(min_dim, 30.0)
+        else: 
+            L0 = 0 
+            S0_max = min(16 * d_long, 48 * d_tie, min_dim)
+            S_mid = S0_max
+
+        S0_design = math.floor(S0_max / 2.5) * 2.5
+        Smid_design = math.floor(S_mid / 5.0) * 5.0
+        
+        Av = 2 * (math.pi * (d_tie**2) / 4) # 2 ขา
+        Vs_prov = (Av * fy * d) / S0_design / 10 
+        phi_Vn = phi_V * (Vc_ton + Vs_prov)
+        is_shear_safe = phi_Vn >= Vu
+        
+        # --- ส่วนแสดงผล Dashboard ---
+        col_res1, col_res2 = st.columns([1, 1])
+        
+        with col_res1:
+            st.markdown(
+                f"""
+                <div style="padding: 20px; border-radius: 10px; background-color: #1e293b; color: white; height: 100%;">
+                    <h4 style="margin-top: 0; color: #38bdf8;">📊 Shear & Confinement Summary</h4>
+                    <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">{seismic_frame} Provisions Applied</p>
+                    
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
+                        <span>Factored Shear (Vu)</span>
+                        <span style="font-weight: bold; color: #fbbf24;">{Vu:.2f} ton</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
+                        <span>Concrete Capacity (φVc)</span>
+                        <span style="font-weight: bold;">{phi_Vc:.2f} ton</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px;">
+                        <span>Steel Capacity Provided (φVs)</span>
+                        <span style="font-weight: bold;">{phi_V * Vs_prov:.2f} ton</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 18px;">
+                        <span>Total Capacity (φVn)</span>
+                        <span style="font-weight: bold; color: {'#4ade80' if is_shear_safe else '#f87171'};">{phi_Vn:.2f} ton</span>
+                    </div>
+                    
+                    <h5 style="color: #cbd5e1;">🛠️ Detailing Prescription</h5>
+                    <ul style="color: #aebbc9; line-height: 1.8;">
+                        <li><strong>Critical Zone (L0):</strong> {L0:.0f} cm from joint</li>
+                        <li><strong>Tie Spacing in L0:</strong> {tie_db} @ {S0_design:.1f} cm</li>
+                        <li><strong>Tie Spacing Mid-span:</strong> {tie_db} @ {Smid_design:.1f} cm</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True
+            )
+            
+        with col_res2:
+            st.markdown("#### 📏 Elevation Detailing View")
+            
+            fig_elev = go.Figure()
+            
+            # วาดกรอบเสา
+            fig_elev.add_shape(type="rect", x0=0, y0=0, x1=max_dim, y1=H_cm, 
+                               line=dict(color="#38bdf8", width=2), fillcolor="rgba(56, 189, 248, 0.05)")
+            
+            # วาดเหล็กแกน
+            fig_elev.add_shape(type="line", x0=cv, y0=0, x1=cv, y1=H_cm, line=dict(color="#ef4444", width=3))
+            fig_elev.add_shape(type="line", x0=max_dim-cv, y0=0, x1=max_dim-cv, y1=H_cm, line=dict(color="#ef4444", width=3))
+            
+            # วาดเหล็กปลอก
+            y_ties = []
+            current_y = S0_design / 2
+            
+            while current_y < H_cm:
+                y_ties.append(current_y)
+                if current_y <= L0 or current_y >= (H_cm - L0):
+                    current_y += S0_design
+                else:
+                    current_y += Smid_design
+            
+            for ty in y_ties:
+                fig_elev.add_shape(type="line", x0=cv, y0=ty, x1=max_dim-cv, y1=ty, line=dict(color="#fbbf24", width=2))
+            
+            # วาด Annotation
+            if seismic_frame != "OMF (Ordinary)":
+                fig_elev.add_shape(type="rect", x0=-10, y0=0, x1=0, y1=L0, line=dict(color="#10b981", width=2), fillcolor="rgba(16, 185, 129, 0.2)")
+                fig_elev.add_annotation(x=-15, y=L0/2, text=f"L0 = {L0:.0f} cm<br>@{S0_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#10b981"))
+                
+                fig_elev.add_shape(type="rect", x0=-10, y0=H_cm-L0, x1=0, y1=H_cm, line=dict(color="#10b981", width=2), fillcolor="rgba(16, 185, 129, 0.2)")
+                fig_elev.add_annotation(x=-15, y=H_cm-(L0/2), text=f"L0 = {L0:.0f} cm<br>@{S0_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#10b981"))
+                
+                fig_elev.add_annotation(x=-15, y=H_cm/2, text=f"Mid-span<br>@{Smid_design:.1f} cm", showarrow=False, textangle=-90, font=dict(color="#94a3b8"))
+
+            fig_elev.update_layout(
+                xaxis=dict(visible=False, range=[-30, max_dim+10]),
+                yaxis=dict(title="Column Height (cm)", showgrid=False, zeroline=False, range=[0, H_cm]),
+                height=500,
+                margin=dict(l=0, r=0, t=30, b=0),
+                plot_bgcolor="white", paper_bgcolor="white"
+            )
+            
+            st.plotly_chart(fig_elev, use_container_width=True)
+
+    with tab5:
+        st.markdown("### 📖 Parameter Guide")
+        st.markdown("---")
+        st.markdown("#### 1. Applied Loads")
+        st.markdown("* **Pu (Factored Axial Load):** The ultimate axial load acting on the column. *(Unit: tons)*")
+        st.markdown("* **Mux, Muy (Factored Moments):** The ultimate bending moments acting about the X and Y axes. *(Unit: ton-m)*")
+        st.markdown("#### 2. Frame Type")
+        st.markdown("* **Non-Sway Frame (Braced Frame):** A structure equipped with a stiff lateral force-resisting system. Joints experience practically no lateral translation.")
+        st.markdown("* **Sway Frame (Unbraced Frame):** Relies entirely on the stiffness of its beams and columns. Joints can translate laterally, generating P-Delta effect.")
+
+    with tab6:
+        st.markdown("### 📝 Detailed Calculation Report")
+        st.info("💡 รายงานนี้แสดงการคำนวณแบบ Step-by-Step พร้อมระบุตัวแปรที่ใช้ใน Source Code")
+        st.markdown("---")
+
+        with st.expander("1. Section & Material Properties", expanded=False):
+            st.markdown("#### 1.1 Geometry & Section Properties")
+            if shape == "Rectangular":
+                st.latex(f"A_g = {b} \\times {h} = {engine.Ag:,.2f} \\text{{ cm}}^2")
+                st.latex(f"I_{{gx}} = \\frac{{{b} \\times {h}^3}}{{12}} = {engine.Igx:,.2f} \\text{{ cm}}^4")
+                st.latex(f"I_{{gy}} = \\frac{{{h} \\times {b}^3}}{{12}} = {engine.Igy:,.2f} \\text{{ cm}}^4")
+            else:
+                st.latex(f"A_g = \\frac{{\\pi \\times {b}^2}}{{4}} = {engine.Ag:,.2f} \\text{{ cm}}^2")
+                st.latex(f"I_{{gx}} = I_{{gy}} = \\frac{{\\pi \\times {b}^4}}{{64}} = {engine.Igx:,.2f} \\text{{ cm}}^4")
+            st.markdown("#### 1.2 Material Properties")
+            st.latex(f"E_c = 15100 \\sqrt{{{fc}}} = {engine.Ec:,.0f} \\text{{ ksc}}")
+
+        with st.expander("2. Minimum Design Moments (ACI 318-19)", expanded=False):
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.markdown("**X-Axis (Major):**")
+                st.latex(f"M_{{u,min,x}} = {Pu} \\times (0.015 + 0.03 \\times \\frac{{{h}}}{{100}}) = {e_min_x:,.3f} \\text{{ t-m}}")
+                st.latex(f"M_{{ux,dsgn}} = \\max({Mux:,.2f}, {e_min_x:,.3f}) = {Mu_x_dsgn:,.2f} \\text{{ t-m}}")
+            with col_m2:
+                st.markdown("**Y-Axis (Minor):**")
+                st.latex(f"M_{{u,min,y}} = {Pu} \\times (0.015 + 0.03 \\times \\frac{{{b}}}{{100}}) = {e_min_y:,.3f} \\text{{ t-m}}")
+                st.latex(f"M_{{uy,dsgn}} = \\max({Muy:,.2f}, {e_min_y:,.3f}) = {Mu_y_dsgn:,.2f} \\text{{ t-m}}")
+
+        # --- Part 3: Moment Magnification (X-Axis) ---
+        with st.expander(f"3. Moment Magnification (X-Axis) - {frame_type}", expanded=False):
+            if frame_type == "Non-Sway (Braced)":
+                st.markdown("**3.1 Effective Stiffness ($EI_x$):** *(Ref: ACI 318-19, 6.6.4.4.4)*")
+                st.latex(r"EI_x = \frac{0.2 E_c I_{gx} + E_s I_{se,x}}{1 + \beta_d}")
+                
+                Ise_x = engine.Ise_x
+                EIx_val = (0.2 * engine.Ec * engine.Igx + engine.Es * Ise_x) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,x}} = {Ise_x:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_x = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igx:,.0f}) + ({engine.Es:,.0f} \\times {Ise_x:,.2f})}}{{1 + {beta_d}}} = {EIx_val:,.0f} \\text{{ kg-cm}}^2")
+                
+                st.markdown("**3.2 Euler Critical Load ($P_{cx}$):**")
+                st.latex(r"P_{cx} = \frac{\pi^2 EI_x}{(K_x L_{ux})^2}")
+                st.latex(f"P_{{cx}} = \\frac{{\\pi^2 \\times {EIx_val:,.0f}}}{{({K_x} \\times {Lu_x} \\times 100)^2}} \\times 10^{{-3}} = {Pcx:,.2f} \\text{{ ton}}")
+                
+                st.markdown("**3.3 Magnification Factor ($\delta_x$):**")
+                if kl_rx > 22:
+                    st.latex(r"\delta_x = \frac{C_{mx}}{1 - \frac{P_u}{0.75 P_{cx}}} \ge 1.0")
+                    st.latex(f"\\delta_x = \\frac{{{Cm_x}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcx:,.2f}}}}} = {del_x:,.3f}")
+                else:
+                    st.write(f"Slenderness ignored (kl/r = {kl_rx:.2f} $\\le$ 22)")
+                    st.latex(r"\delta_x = 1.0")
+
+                st.markdown("**3.4 Final Magnified Moment ($M_{cx}$):**")
+                st.latex(f"M_{{cx}} = \\delta_x \\times M_{{ux,dsgn}} = {Mcx:,.2f} \\text{{ ton-m}}")
+            else:
+                st.markdown("**Sway Frame Design:**")
+                st.latex(r"M_{cx} = \delta_{sx} M_{ux,dsgn}")
+                st.latex(f"M_{{cx}} = {delta_sx:.2f} \\times {Mu_x_dsgn:,.2f} = {Mcx:,.2f} \\text{{ ton-m}}")
+            st.caption("💻 *Code Vars: `Ise_x`, `Pcx`, `del_x`, `Mcx`*")
+
+        # --- Part 4: Moment Magnification (Y-Axis) ---
+        with st.expander(f"4. Moment Magnification (Y-Axis) - {frame_type}", expanded=False):
+            if frame_type == "Non-Sway (Braced)":
+                st.markdown("**4.1 Effective Stiffness ($EI_y$):**")
+                st.latex(r"EI_y = \frac{0.2 E_c I_{gy} + E_s I_{se,y}}{1 + \beta_d}")
+                
+                Ise_y = engine.Ise_y 
+                EIy_val = (0.2 * engine.Ec * engine.Igy + engine.Es * Ise_y) / (1 + beta_d)
+                
+                st.latex(f"I_{{se,y}} = {Ise_y:,.2f} \\text{{ cm}}^4")
+                st.latex(f"EI_y = \\frac{{(0.2 \\times {engine.Ec:,.0f} \\times {engine.Igy:,.0f}) + ({engine.Es:,.0f} \\times {Ise_y:,.2f})}}{{1 + {beta_d}}} = {EIy_val:,.0f} \\text{{ kg-cm}}^2")
+                
+                st.markdown("**4.2 Euler Critical Load ($P_{cy}$):**")
+                st.latex(f"P_{{cy}} = \\frac{{\\pi^2 \\times {EIy_val:,.0f}}}{{({K_y} \\times {Lu_y} \\times 100)^2}} \\times 10^{{-3}} = {Pcy:,.2f} \\text{{ ton}}")
+                
+                st.markdown("**4.3 Magnification Factor ($\delta_y$):**")
+                if kl_ry > 22:
+                    st.latex(r"\delta_y = \frac{C_{my}}{1 - \frac{P_u}{0.75 P_{cy}}} \ge 1.0")
+                    st.latex(f"\\delta_y = \\frac{{{Cm_y}}}{{1 - \\frac{{{Pu}}}{{0.75 \\times {Pcy:,.2f}}}}} = {del_y:,.3f}")
+                else:
+                    st.write(f"Slenderness ignored (kl/r = {kl_ry:.2f} $\\le$ 22)")
+                    st.latex(r"\delta_y = 1.0")
+
+                st.markdown("**4.4 Final Magnified Moment ($M_{cy}$):**")
+                st.latex(f"M_{{cy}} = \\delta_y \\times M_{{uy,dsgn}} = {Mcy:,.2f} \\text{{ ton-m}}")
+            else:
+                st.markdown("**Sway Frame Design:**")
+                st.latex(r"M_{cy} = \delta_{sy} M_{uy,dsgn}")
+                st.latex(f"M_{{cy}} = {delta_sy:.2f} \\times {Mu_y_dsgn:,.2f} = {Mcy:,.2f} \\text{{ ton-m}}")
+            st.caption("💻 *Code Vars: `Ise_y`, `Pcy`, `del_y`, `Mcy`*")
+
+        # --- Part 5: Biaxial Bending Check ---
+        with st.expander("5. Biaxial Bending Interaction (PCA Method)", expanded=True):
+            st.markdown("**PCA Load Contour Method** *(Ref: PCA Notes on ACI 318)*")
+            st.markdown(f"At factored axial load $P_u = {Pu:,.2f}$ tons, the program evaluates the intersection on the P-M Curve to determine the Uniaxial Moment Capacities:")
+            st.latex(f"\\phi M_{{nox}} = {phi_Mnox:,.2f} \\text{{ ton-m}}")
+            st.latex(f"\\phi M_{{noy}} = {phi_Mnoy:,.2f} \\text{{ ton-m}}")
+            
+            st.markdown("**Interaction Equation:**")
+            st.latex(r"\left( \frac{M_{cx}}{\phi M_{nox}} \right)^\alpha + \left( \frac{M_{cy}}{\phi M_{noy}} \right)^\alpha \le 1.0")
+            
+            if phi_Mnox > 0 and phi_Mnoy > 0:
+                st.markdown("**Substituting the values:**")
+                st.latex(f"\\text{{Ratio}} = \\left( \\frac{{{Mcx:,.2f}}}{{{phi_Mnox:,.2f}}} \\right)^{{{alpha:.3f}}} + \\left( \\frac{{{Mcy:,.2f}}}{{{phi_Mnoy:,.2f}}} \\right)^{{{alpha:.3f}}} = {demand_ratio:,.3f}")
+                st.caption(f"💻 *Code Vars: `alpha` (={alpha:.3f}), `demand_ratio`, `phi_Mnox`, `phi_Mnoy`*")
+            else:
+                st.error("⚠️ Unable to calculate because the applied axial load ($P_u$) exceeds the maximum compressive strength of the section.")
+
+        # --- Final Part: Conclusion ---
+        st.markdown("---")
+        if is_safe:
+            st.success(f"✅ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is $\\le$ 1.0 $\\rightarrow$ **SECTION IS SAFE**")
+        else:
+            st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
