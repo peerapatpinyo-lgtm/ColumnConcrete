@@ -304,6 +304,19 @@ with col1:
             
             Lu_x = K_x = Cm_x = Lu_y = K_y = Cm_y = beta_d = 0 
 
+    # --- ส่วนที่เพิ่มใหม่: Expander สำหรับ Shear, Torsion และ Seismic ---
+    with st.expander("3. Shear, Torsion & Seismic", expanded=True):
+        st.subheader("🛡️ Shear Design (Stirrups)")
+        vu_ton = st.number_input("Factored Shear, Vu (ton)", value=5.0, step=1.0)
+        c7, c8 = st.columns(2)
+        tie_dia = c7.selectbox("Tie Diameter", [6, 9, 12, 16], index=1, format_func=lambda x: f"RB{x}" if x<10 else f"DB{x}")
+        tie_legs = c8.number_input("Stirrup Legs", value=2, min_value=2, step=1)
+        
+        st.markdown("---")
+        st.subheader("🌪️ Torsion & Seismic")
+        tu_tonm = st.number_input("Factored Torsion, Tu (ton-m)", value=0.0, step=0.5)
+        is_seismic = st.toggle("Seismic Detailing (Special Moment Frame)", value=True)
+
 # --- Create Engine and Solve ---
 engine = RCColumnProBiaxial(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover)
 df_x, phi_pn_max = engine.solve_pm(axis='X')
