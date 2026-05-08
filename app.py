@@ -1355,3 +1355,73 @@ with col2:
             st.success(f"✅ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is $\\le$ 1.0 $\\rightarrow$ **SECTION IS SAFE**")
         else:
             st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
+
+    with tab7:
+        st.markdown("### ⚡ Quick Preliminary Sizing (Rule of Thumb)")
+        st.info("💡 โมดูลสำหรับ 'คิดเลขเร็ว' เพื่อประเมินขนาดหน้าตัดเสาเบื้องต้นจากความสูง (KL) เพื่อหลีกเลี่ยงพฤติกรรมเสายาว (Long Column Effect) โดยไม่ต้องออกแบบละเอียด")
+        
+        st.markdown("---")
+        
+        # --- UI Inputs สำหรับการกะระยะ ---
+        col_q1, col_q2, col_q3 = st.columns(3)
+        with col_q1:
+            est_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.5, key="est_L")
+        with col_q2:
+            est_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, help="K=1.0 สำหรับ Pinned-Pinned, K=0.5 สำหรับ Fixed-Fixed", key="est_K")
+        with col_q3:
+            target_klr = st.number_input("Target Max kl/r", min_value=10.0, value=22.0, step=1.0, help="ACI Limit = 22 สำหรับ Non-Sway Frame เพื่อละเว้นผลของเสายาว", key="est_klr")
+            
+        # --- Calculations ---
+        est_KL_cm = (est_K * est_L) * 100
+        
+        # รัศมีไจเรชั่น (r) ตาม ACI: r = 0.3h สำหรับสี่เหลี่ยม, r = 0.25D สำหรับวงกลม
+        # สมการ: (KL) / r <= target_klr
+        # สี่เหลี่ยม: h >= KL / (0.3 * target_klr)
+        # วงกลม: D >= KL / (0.25 * target_klr)
+        
+        min_h_rect = est_KL_cm / (0.3 * target_klr)
+        min_d_circ = est_KL_cm / (0.25 * target_klr)
+        
+        # ปัดเศษขึ้นให้เป็นเลขที่ทำงานก่อสร้างได้จริง (เช่น ทีละ 5 cm)
+        def round_up_to_nearest_5(num):
+            return math.ceil(num / 5.0) * 5
+            
+        prac_h_rect = round_up_to_nearest_5(min_h_rect)
+        prac_d_circ = round_up_to_nearest_5(min_d_circ)
+        
+        # --- Dashboard Results ---
+        st.markdown("#### 📐 Minimum Recommended Dimensions")
+        st.caption(f"Based on keeping Slenderness Ratio $\le$ {target_klr} for KL = {est_K * est_L:.2f} m")
+        
+        col_res1, col_res2 = st.columns(2)
+        
+        with col_res1:
+            st.markdown(
+                f"""
+                <div style="padding: 20px; border-radius: 10px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; text-align: center; border: 1px solid #475569;">
+                    <h5 style="color: #94a3b8; margin-top: 0;">Rectangular Column</h5>
+                    <h1 style="color: #38bdf8; margin: 10px 0;">≥ {prac_h_rect} cm</h1>
+                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 0;">(Exact minimum: {min_h_rect:.2f} cm)</p>
+                </div>
+                """, unsafe_allow_html=True
+            )
+            
+        with col_res2:
+            st.markdown(
+                f"""
+                <div style="padding: 20px; border-radius: 10px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; text-align: center; border: 1px solid #475569;">
+                    <h5 style="color: #94a3b8; margin-top: 0;">Circular Column</h5>
+                    <h1 style="color: #4ade80; margin: 10px 0;">Ø ≥ {prac_d_circ} cm</h1>
+                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 0;">(Exact minimum: {min_d_circ:.2f} cm)</p>
+                </div>
+                """, unsafe_allow_html=True
+            )
+            
+        # --- Engineering Theory Note ---
+        with st.expander("📚 Engineering Theory Behind This Check"):
+            st.markdown("ตามมาตรฐาน ACI 318-19 Section 6.2.5.1 รัศมีไจเรชั่น ($r$) สามารถประมาณค่าได้ดังนี้:")
+            st.markdown("* **หน้าตัดสี่เหลี่ยม:** $r \\approx 0.3h$ (ในทิศทางที่พิจารณา)")
+            st.markdown("* **หน้าตัดวงกลม:** $r \\approx 0.25D$")
+            st.markdown("เมื่อต้องการคุมให้เป็น **เสาสั้น (Short Column)** ในระบบโครงสร้างแบบ Non-Sway เพื่อละเว้นการคิด Moment Magnification อัตราส่วนความชะลูดต้องไม่เกินขีดจำกัด (มักตั้งไว้ที่ 22):")
+            st.latex(r"\frac{KL}{r} \le 22")
+            st.markdown("ดังนั้น เราจึงสามารถย้ายข้างสมการเพื่อหาขนาดหน้าตัดที่เล็กที่สุดที่ยังคงพฤติกรรมเสาสั้นได้ทันที")
