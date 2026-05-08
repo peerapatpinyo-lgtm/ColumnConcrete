@@ -1359,40 +1359,65 @@ with col2:
 
     with tab7:
         st.markdown("### ⚡ Quick Preliminary Sizing (Rule of Thumb)")
-        st.info("💡 โมดูลสำหรับ 'คิดเลขเร็ว' เพื่อประเมินขนาดหน้าตัดเสาเบื้องต้นจากความสูง (KL) เพื่อหลีกเลี่ยงพฤติกรรมเสายาว (Long Column Effect) โดยไม่ต้องออกแบบละเอียด")
+        st.info("💡 โมดูลประเมินขนาดหน้าตัดเสาเบื้องต้น โดยพิจารณาทั้ง **ความชะลูด (Slenderness)** เพื่อไม่ให้เป็นเสายาว และ **กำลังรับแรงกดทับแกน (Axial Capacity)**")
         
         st.markdown("---")
         
         # --- UI Inputs สำหรับการกะระยะ ---
-        col_q1, col_q2, col_q3 = st.columns(3)
+        st.markdown("#### 1. Input Parameters for Quick Sizing")
+        col_q1, col_q2, col_q3, col_q4 = st.columns(4)
         with col_q1:
             est_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.5, key="est_L")
         with col_q2:
-            est_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, help="K=1.0 สำหรับ Pinned-Pinned, K=0.5 สำหรับ Fixed-Fixed", key="est_K")
+            est_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, key="est_K")
         with col_q3:
-            target_klr = st.number_input("Target Max kl/r", min_value=10.0, value=22.0, step=1.0, help="ACI Limit = 22 สำหรับ Non-Sway Frame เพื่อละเว้นผลของเสายาว", key="est_klr")
+            est_Pu = st.number_input("Target Axial Load, Pu (ton)", min_value=0.0, value=100.0, step=10.0, key="est_Pu")
+        with col_q4:
+            est_rho = st.number_input("Estimated Rebar Ratio (%)", min_value=1.0, max_value=8.0, value=1.0, step=0.5, key="est_rho") / 100.0
             
+        target_klr = 22.0 # ขีดจำกัดเสาสั้น ACI
+        
         # --- Calculations ---
+        # 1. Slenderness Check (KL/r <= 22)
         est_KL_cm = (est_K * est_L) * 100
+        min_h_slender = est_KL_cm / (0.3 * target_klr)
+        min_d_slender = est_KL_cm / (0.25 * target_klr)
         
-        # รัศมีไจเรชั่น (r) ตาม ACI: r = 0.3h สำหรับสี่เหลี่ยม, r = 0.25D สำหรับวงกลม
-        # สมการ: (KL) / r <= target_klr
-        # สี่เหลี่ยม: h >= KL / (0.3 * target_klr)
-        # วงกลม: D >= KL / (0.25 * target_klr)
+        # 2. Axial Load Check (Rough ACI Formula for Tied Columns)
+        # phi * Pn,max = 0.65 * 0.80 * [0.85*fc*(Ag - Ast) + fy*Ast]
+        # โดยให้ fc, fy ดึงมาจากตัวแปรหลักที่ user ใส่ไว้ใน Tab 1 (ถ้ามี) หรือใช้ค่า Default
+        # เพื่อความเสถียรของโค้ด เราจะใช้ fc, fy ที่กำหนดไว้ในระบบ
+        phi_pn_factor = 0.65 * 0.80
+        # สมมติใช้ fc, fy จากตัวแปรระดับ global ของคุณ (ถ้าไม่มีให้แก้เป็นเลขตรงๆ เช่น fc=280, fy=4000)
+        fc_val = fc if 'fc' in locals() else 280.0
+        fy_val = fy if 'fy' in locals() else 4000.0
         
-        min_h_rect = est_KL_cm / (0.3 * target_klr)
-        min_d_circ = est_KL_cm / (0.25 * target_klr)
+        # Pu (kg) = 0.52 * Ag * [0.85*fc*(1-rho) + fy*rho]
+        Pu_kg = est_Pu * 1000.0
+        stress_term = (0.85 * fc_val * (1 - est_rho)) + (fy_val * est_rho)
+        req_Ag = Pu_kg / (phi_pn_factor * stress_term)
         
-        # ปัดเศษขึ้นให้เป็นเลขที่ทำงานก่อสร้างได้จริง (เช่น ทีละ 5 cm)
+        min_h_axial = math.sqrt(req_Ag)
+        min_d_axial = math.sqrt((4 * req_Ag) / math.pi)
+        
+        # 3. Governing Size
+        gov_h_rect = max(min_h_slender, min_h_axial)
+        gov_d_circ = max(min_d_slender, min_d_axial)
+        
+        # ปัดเศษขึ้นทีละ 5 cm
         def round_up_to_nearest_5(num):
             return math.ceil(num / 5.0) * 5
             
-        prac_h_rect = round_up_to_nearest_5(min_h_rect)
-        prac_d_circ = round_up_to_nearest_5(min_d_circ)
+        prac_h_rect = round_up_to_nearest_5(gov_h_rect)
+        prac_d_circ = round_up_to_nearest_5(gov_d_circ)
         
+        # หาสาเหตุที่ Governing
+        gov_reason_rect = "Slenderness (KL/r)" if min_h_slender > min_h_axial else "Axial Capacity (Pu)"
+        gov_reason_circ = "Slenderness (KL/r)" if min_d_slender > min_d_axial else "Axial Capacity (Pu)"
+
         # --- Dashboard Results ---
-        st.markdown("#### 📐 Minimum Recommended Dimensions")
-        st.caption(f"Based on keeping Slenderness Ratio $\le$ {target_klr} for KL = {est_K * est_L:.2f} m")
+        st.markdown("---")
+        st.markdown("#### 📐 Recommended Minimum Dimensions")
         
         col_res1, col_res2 = st.columns(2)
         
@@ -1401,8 +1426,9 @@ with col2:
                 f"""
                 <div style="padding: 20px; border-radius: 10px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; text-align: center; border: 1px solid #475569;">
                     <h5 style="color: #94a3b8; margin-top: 0;">Rectangular Column</h5>
-                    <h1 style="color: #38bdf8; margin: 10px 0;">≥ {prac_h_rect} cm</h1>
-                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 0;">(Exact minimum: {min_h_rect:.2f} cm)</p>
+                    <h1 style="color: #38bdf8; margin: 10px 0;">≥ {prac_h_rect} × {prac_h_rect} cm</h1>
+                    <p style="font-size: 13px; color: #cbd5e1; margin-bottom: 0;">Governed by: <b>{gov_reason_rect}</b></p>
+                    <p style="font-size: 11px; color: #94a3b8; margin-top: 5px;">(Slender Req: {min_h_slender:.1f} cm | Axial Req: {min_h_axial:.1f} cm)</p>
                 </div>
                 """, unsafe_allow_html=True
             )
@@ -1413,16 +1439,19 @@ with col2:
                 <div style="padding: 20px; border-radius: 10px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; text-align: center; border: 1px solid #475569;">
                     <h5 style="color: #94a3b8; margin-top: 0;">Circular Column</h5>
                     <h1 style="color: #4ade80; margin: 10px 0;">Ø ≥ {prac_d_circ} cm</h1>
-                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 0;">(Exact minimum: {min_d_circ:.2f} cm)</p>
+                    <p style="font-size: 13px; color: #cbd5e1; margin-bottom: 0;">Governed by: <b>{gov_reason_circ}</b></p>
+                    <p style="font-size: 11px; color: #94a3b8; margin-top: 5px;">(Slender Req: {min_d_slender:.1f} cm | Axial Req: {min_d_axial:.1f} cm)</p>
                 </div>
                 """, unsafe_allow_html=True
             )
             
         # --- Engineering Theory Note ---
         with st.expander("📚 Engineering Theory Behind This Check"):
-            st.markdown("ตามมาตรฐาน ACI 318-19 Section 6.2.5.1 รัศมีไจเรชั่น ($r$) สามารถประมาณค่าได้ดังนี้:")
-            st.markdown("* **หน้าตัดสี่เหลี่ยม:** $r \\approx 0.3h$ (ในทิศทางที่พิจารณา)")
-            st.markdown("* **หน้าตัดวงกลม:** $r \\approx 0.25D$")
-            st.markdown("เมื่อต้องการคุมให้เป็น **เสาสั้น (Short Column)** ในระบบโครงสร้างแบบ Non-Sway เพื่อละเว้นการคิด Moment Magnification อัตราส่วนความชะลูดต้องไม่เกินขีดจำกัด (มักตั้งไว้ที่ 22):")
-            st.latex(r"\frac{KL}{r} \le 22")
-            st.markdown("ดังนั้น เราจึงสามารถย้ายข้างสมการเพื่อหาขนาดหน้าตัดที่เล็กที่สุดที่ยังคงพฤติกรรมเสาสั้นได้ทันที")
+            st.markdown("**1. Slenderness Check (เพื่อหลีกเลี่ยง Long Column Effect)**")
+            st.markdown("ตาม ACI 318 ถ้าต้องการให้เป็นเสาสั้น $\\frac{KL}{r} \le 22$")
+            st.markdown(f"* รัศมีไจเรชั่น: สี่เหลี่ยม $r \\approx 0.3h$, วงกลม $r \\approx 0.25D$")
+            
+            st.markdown("**2. Axial Capacity Check (Tied Column)**")
+            st.markdown("หาพื้นที่หน้าตัด $A_g$ ขั้นต่ำเพื่อรับน้ำหนัก $P_u$ โดยอิงจากสมการกำลังรับแรงอัดสูงสุด:")
+            st.latex(r"\phi P_{n,max} = 0.80 \phi \left[ 0.85 f'_c (A_g - A_{st}) + f_y A_{st} \right]")
+            st.markdown(f"เมื่อแทนค่า $\\rho = \\frac{{A_{st}}}{{A_g}} = {est_rho*100}\\%$, $\\phi = 0.65$ และแก้สมการหา $A_g$ จากนั้นจึงถอดรากเพื่อหาขนาดความกว้างหน้าตัด")
