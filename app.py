@@ -1358,148 +1358,130 @@ with col2:
             st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
 
     with tab7:
-        st.markdown("### ⚡ Quick Sizing & Capacity Rating")
-        st.info("💡 Specify the unbraced length and target slenderness to determine the initial section size and its effective axial capacity.")
+        st.markdown("### ⚡ Integrated Column Design & Analysis")
+        st.info("💡 Set your parameters to find the ideal section, select reinforcement, and verify with a P-M Interaction Diagram.")
 
-        st.markdown("---")
-        
-        # --- Section 1: Slenderness Input ---
+        # --- Section 1: Inputs (Design Parameters) ---
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
-            q_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.1, key="q_L_input")
+            q_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.1, key="q_L_main")
         with col_s2:
-            q_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, key="q_K_input")
+            q_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, key="q_K_main")
         with col_s3:
-            q_klr_limit = st.slider("Target kl/r Limit", 10, 50, 22, help="ACI recommends <= 22 for short columns in non-sway frames", key="q_klr_limit_input")
+            q_klr_limit = st.slider("Target kl/r Limit", 10, 50, 22, key="q_klr_main")
 
-        # --- Section 2: Material & Rebar (Quick Settings) ---
-        with st.expander("🛠️ Quick Material Settings", expanded=False):
+        with st.expander("🛠️ Material & Rebar Ratio Settings", expanded=False):
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
-                q_fc = st.number_input("f'c (ksc)", value=280, key="q_fc_input")
+                q_fc = st.number_input("f'c (ksc)", value=280, key="q_fc_main")
             with col_m2:
-                q_fy = st.number_input("fy (ksc)", value=4000, key="q_fy_input")
+                q_fy = st.number_input("fy (ksc)", value=4000, key="q_fy_main")
             with col_m3:
-                q_rho = st.slider("Rebar Ratio (%)", 1.0, 6.0, 1.5, step=0.5, key="q_rho_input") / 100.0
+                q_rho_target = st.slider("Target Rebar Ratio (%)", 1.0, 6.0, 1.5, step=0.5, key="q_rho_main") / 100.0
 
-        # --- Section 3: Smart Calculation ---
+        # --- Section 2: Smart Sizing Calculation ---
         KL_cm = (q_K * q_L) * 100
-        
-        # 1. Minimum size based on kl/r limit
         min_h_req = KL_cm / (0.3 * q_klr_limit)
-        min_d_req = KL_cm / (0.25 * q_klr_limit)
-        
-        # Rounding up to the nearest 5 cm
         suggest_h = math.ceil(min_h_req / 5.0) * 5
-        suggest_d = math.ceil(min_d_req / 5.0) * 5
-
-        # 2. Capacity Calculation with Slenderness Penalty
-        def calc_capacity(Ag, shape_type, dimension):
-            Ast = Ag * q_rho
-            if shape_type == "Tied":
-                phi, alpha = 0.65, 0.80
-                r = 0.3 * dimension
-            else:
-                phi, alpha = 0.75, 0.85
-                r = 0.25 * dimension
-            
-            # Nominal pure axial capacity
-            pn_max = phi * alpha * (0.85 * q_fc * (Ag - Ast) + q_fy * Ast) / 1000.0 # Tons
-            
-            # Slenderness Penalty Factor (Approximate 1% reduction per excess kl/r unit)
+        
+        # Capacity Function with Penalty
+        def calc_cap_with_penalty(Ag, dimension, shape="Tied"):
+            Ast = Ag * q_rho_target
+            phi, alpha, r_factor = (0.65, 0.80, 0.3) if shape == "Tied" else (0.75, 0.85, 0.25)
+            r = r_factor * dimension
+            pn_max = phi * alpha * (0.85 * q_fc * (Ag - Ast) + q_fy * Ast) / 1000.0
             klr_actual = KL_cm / r
-            penalty_factor = 1.0
-            if klr_actual > q_klr_limit:
-                penalty_factor = max(0.1, 1.0 - 0.01 * (klr_actual - q_klr_limit))
-                
-            eff_capacity = pn_max * penalty_factor
-            return eff_capacity, penalty_factor, klr_actual
+            penalty = max(0.1, 1.0 - 0.01 * (klr_actual - q_klr_limit)) if klr_actual > q_klr_limit else 1.0
+            return pn_max * penalty, penalty, klr_actual
 
-        cap_rect, pf_rect, klr_rect = calc_capacity(suggest_h * suggest_h, "Tied", suggest_h)
-        cap_circ, pf_circ, klr_circ = calc_capacity((math.pi/4) * (suggest_d**2), "Spiral", suggest_d)
+        cap_rect, pf_rect, klr_rect = calc_cap_with_penalty(suggest_h * suggest_h, suggest_h)
 
-        # --- Section 4: Display Results ---
-        st.markdown(f"#### 🔍 Suggested Sections for $kl/r \le {q_klr_limit}$")
-        
-        res_c1, res_c2 = st.columns(2)
-        
+        # --- Section 3: Display Sizing Results ---
+        st.markdown(f"#### 🔍 Suggested Section: {suggest_h}x{suggest_h} cm")
+        res_c1, res_c2 = st.columns([1, 2])
         with res_c1:
             st.markdown(f"""
-            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border-top: 5px solid #38bdf8;">
-                <p style="color: #94a3b8; margin:0;">Rectangular (Tied)</p>
-                <h2 style="color: white; margin: 10px 0;">{suggest_h} × {suggest_h} cm</h2>
-                <hr style="border-color: #334155;">
-                <p style="color: #94a3b8; font-size: 14px;">Effective Factored Load (Pu):</p>
-                <h1 style="color: #38bdf8; margin: 0;">{cap_rect:,.1f} <span style="font-size: 20px;">Tons</span></h1>
-                <p style="color: #4ade80; font-size: 12px; margin-top: 5px;">Actual kl/r = {klr_rect:,.1f} (Penalty: {pf_rect:.2f})</p>
+            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border-top: 5px solid #38bdf8; text-align: center;">
+                <p style="color: #94a3b8; margin:0;">Effective Capacity (Pu)</p>
+                <h1 style="color: #38bdf8; margin: 10px 0;">{cap_rect:,.1f} <span style="font-size: 20px;">Tons</span></h1>
+                <p style="color: #4ade80; font-size: 13px;">kl/r: {klr_rect:.1f} | Penalty: {pf_rect:.2f}</p>
             </div>
             """, unsafe_allow_html=True)
-
+        
         with res_c2:
-            st.markdown(f"""
-            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border-top: 5px solid #4ade80;">
-                <p style="color: #94a3b8; margin:0;">Circular (Spiral)</p>
-                <h2 style="color: white; margin: 10px 0;">Ø {suggest_d} cm</h2>
-                <hr style="border-color: #334155;">
-                <p style="color: #94a3b8; font-size: 14px;">Effective Factored Load (Pu):</p>
-                <h1 style="color: #4ade80; margin: 0;">{cap_circ:,.1f} <span style="font-size: 20px;">Tons</span></h1>
-                <p style="color: #4ade80; font-size: 12px; margin-top: 5px;">Actual kl/r = {klr_circ:,.1f} (Penalty: {pf_circ:.2f})</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # "What-If" Table
+            sizes = [suggest_h - 5, suggest_h, suggest_h + 5, suggest_h + 10]
+            comparison_data = []
+            for s in sizes:
+                if s <= 0: continue
+                c, p, k = calc_cap_with_penalty(s*s, s)
+                comparison_data.append({"Size": f"{s}x{s}", "kl/r": round(k,1), "Status": "🔴" if k > q_klr_limit else "🟢", "Capacity": f"{c:,.1f} T"})
+            st.table(comparison_data)
 
-        # --- Section 5: "What-If" Analysis Table ---
-        st.markdown("<br>#### 📈 Capacity Sensitivity Table (Rectangular)", unsafe_allow_html=True)
-        st.write("Observe how changing the section size affects the slenderness penalty and effective capacity:")
-        
-        sizes = [suggest_h - 10, suggest_h - 5, suggest_h, suggest_h + 5, suggest_h + 10, suggest_h + 15]
-        comparison_data = []
-        for s in sizes:
-            if s <= 0: continue
-            ag = s * s
-            cap, pf, klr_val = calc_capacity(ag, "Tied", s)
-            status = "🔴 Slender" if klr_val > q_klr_limit else "🟢 Short"
-            comparison_data.append({
-                "Size (cm)": f"{s}x{s}",
-                "kl/r": round(klr_val, 1),
-                "Status": status,
-                "Penalty Factor": f"{pf:.2f}",
-                "Eff. Capacity (Tons)": round(cap, 1)
-            })
-        
-        st.table(comparison_data)
-
-        # --- Section 6: Detailed Calculation Report ---
+        # --- Section 4: Auto Rebar & P-M Diagram ---
         st.markdown("---")
-        with st.expander("📝 Step-by-Step Calculation Report", expanded=False):
-            st.markdown("#### 1. Slenderness Check (Sizing to Avoid Long Column Effects)")
-            st.markdown("According to ACI 318, it is recommended to limit the slenderness ratio to $KL/r \le 22$ (for non-sway frames) to safely neglect slenderness effects.")
-            st.latex(f"KL = {q_K} \\times {q_L} \\times 100 = {KL_cm:,.0f} \\text{{ cm}}")
+        st.markdown("#### 🎯 Reinforcement & Interaction Diagram")
+        
+        # Auto Detailing Logic
+        Ag_actual = suggest_h * suggest_h
+        req_Ast = Ag_actual * q_rho_target
+        rebar_sizes = {"DB12": 1.13, "DB16": 2.01, "DB20": 3.14, "DB25": 4.91}
+        
+        detail_cols = st.columns(2)
+        with detail_cols[0]:
+            options = []
+            for name, area in rebar_sizes.items():
+                n = math.ceil(req_Ast / area)
+                n = max(4, n if n % 2 == 0 else n + 1)
+                options.append(f"{n}-{name} (As={n*area:.2f} cm²)")
             
-            st.markdown("**For Rectangular Columns:** $r \\approx 0.3h$")
-            st.latex(f"h_{{min}} = \\frac{{KL}}{{0.3 \\times (kl/r)_{{limit}}}} = \\frac{{{KL_cm:,.0f}}}{{0.3 \\times {q_klr_limit}}} = {min_h_req:,.2f} \\text{{ cm}}")
-            st.write(f"$\rightarrow$ Rounding up for practical construction, recommended $h = {suggest_h}$ cm")
+            selected_set = st.selectbox("Select Reinforcement for P-M Curve:", options)
+            n_bars = int(selected_set.split('-')[0])
+            bar_area = rebar_sizes[selected_set.split('-')[1].split(' ')[0]]
+            Ast_prov = n_bars * bar_area
 
-            st.markdown("**For Circular Columns:** $r \\approx 0.25D$")
-            st.latex(f"D_{{min}} = \\frac{{KL}}{{0.25 \\times (kl/r)_{{limit}}}} = \\frac{{{KL_cm:,.0f}}}{{0.25 \\times {q_klr_limit}}} = {min_d_req:,.2f} \\text{{ cm}}")
-            st.write(f"$\rightarrow$ Rounding up for practical construction, recommended $D = {suggest_d}$ cm")
+        # P-M Calculation (Simplified)
+        with detail_cols[1]:
+            st.write(f"**Provided ρ:** {(Ast_prov/Ag_actual)*100:.2f}%")
+            st.write(f"**Steel Area:** {Ast_prov:.2f} cm²")
 
-            st.markdown("---")
-            st.markdown("#### 2. Axial Load Capacity Calculation (Base)")
-            st.markdown(f"The maximum axial compressive capacity equation is based on ACI 318 provisions, evaluated at a reinforcement ratio of $\\rho = {q_rho*100}\\%$.")
+        # P-M Curve Generation
+        import numpy as np
+        c_vals = np.linspace(suggest_h*2, 4.1, 40)
+        pn_pts, mn_pts, phipn_pts, phimn_pts = [], [], [], []
+        d_prime, d = 4.0, suggest_h - 4.0
+        As_side = Ast_prov / 2.0
+
+        for c in c_vals:
+            a = min(0.85 * c, suggest_h) # Beta1 approx 0.85
+            eps_s = 0.003 * (d - c) / c
+            fs = min(max(eps_s * 2.04e6, -q_fy), q_fy)
+            fs_prime = min(0.003 * (c - d_prime) / c * 2.04e6, q_fy)
             
-            # --- Calculate values for equation display ---
-            ag_rect = suggest_h * suggest_h
-            ast_rect = ag_rect * q_rho
-            ag_circ = (math.pi/4) * (suggest_d**2)
-            ast_circ = ag_circ * q_rho
+            Cc = 0.85 * q_fc * a * suggest_h
+            Cs = As_side * (fs_prime - 0.85 * q_fc)
+            T = As_side * fs
             
-            st.markdown("**For Rectangular Tied Columns:** $\\phi = 0.65, \\alpha = 0.80$")
-            st.latex(f"A_g = {suggest_h} \\times {suggest_h} = {ag_rect:,.2f} \\text{{ cm}}^2")
-            st.latex(f"A_{{st}} = {q_rho} \\times {ag_rect:,.2f} = {ast_rect:,.2f} \\text{{ cm}}^2")
-            st.latex(r"P_{u,rect(base)} = \phi \alpha \left[ 0.85 f'_c (A_g - A_{st}) + f_y A_{st} \right]")
-            st.latex(f"P_{{u,rect(base)}} = 0.65 \\times 0.80 \\times \\left[ 0.85({q_fc})({ag_rect:,.2f} - {ast_rect:,.2f}) + {q_fy}({ast_rect:,.2f}) \\right] \\times 10^{{-3}}")
+            Pn = (Cc + Cs - T) / 1000.0
+            Mn = (Cc * (suggest_h/2 - a/2) + Cs * (suggest_h/2 - d_prime) + T * (d - suggest_h/2)) / 100000.0
             
-            # Handle Penalty string
-            st.markdown("#### 3. Slenderness Modification")
-            st.markdown("If the section is determined to be slender, an approximate penalty factor is applied to account for P-Delta effects and buckling susceptibility (1% reduction per excess kl/r unit).")
-            st.latex(f"\\text{{Effective Capacity}} = P_{{u(base)}} \\times \\text{{Penalty Factor}}")
+            phi = 0.65 if eps_s <= (q_fy/2.04e6) else (0.9 if eps_s >= 0.005 else 0.65 + (eps_s - q_fy/2.04e6) * 0.25 / (0.005 - q_fy/2.04e6))
+            
+            pn_pts.append(min(Pn, 0.8 * (0.85*q_fc*(Ag_actual-Ast_prov) + q_fy*Ast_prov)/1000.0))
+            mn_pts.append(Mn)
+            phipn_pts.append(pn_pts[-1] * (0.65/0.8 if phi==0.65 else phi)) # Simplified phi mapping
+            phimn_pts.append(Mn * phi)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=mn_pts, y=pn_pts, name="Nominal", line=dict(color='gray', dash='dash')))
+        fig.add_trace(go.Scatter(x=phimn_pts, y=phipn_pts, name="Design (φ)", fill='tozeroy', line=dict(color='#38bdf8', width=3)))
+        fig.update_layout(height=400, margin=dict(l=20, r=20, t=30, b=20), xaxis_title="Moment (T-m)", yaxis_title="Axial (Tons)", template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # --- Section 5: Calculation Report ---
+        with st.expander("📝 View Detailed Calculation Report", expanded=False):
+            st.markdown("#### 1. Slenderness & Sizing")
+            st.latex(f"KL = {KL_cm:,.0f} \\text{{ cm}}, \\quad h_{{min}} = \\frac{{KL}}{{0.3 \\times {q_klr_limit}}} = {min_h_req:.2f} \\text{{ cm}}")
+            st.markdown("#### 2. Capacity & Interaction")
+            st.latex(r"P_u = \phi \alpha [0.85 f'_c (A_g - A_{st}) + f_y A_{st}]")
+            st.write(f"Calculated based on ACI 318 with slenderness penalty of {pf_rect:.2f}")
