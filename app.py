@@ -1476,31 +1476,50 @@ with col2:
             st.markdown(f"#### 3. Slenderness Modification Penalty = {pf_rect:.2f}")
 
         # --- Section 7: Auto Detailing & Advanced P-M Interaction ---
+        # --- Section 7: Manual Detailing & Advanced P-M Interaction ---
         st.markdown("---")
-        st.markdown("#### 🎯 Advanced P-M Interaction Diagram (Rectangular Section)")
+        st.markdown("#### 🎯 Interactive Reinforcement & P-M Diagram")
         
         col_pm1, col_pm2 = st.columns([1, 2])
         
-        # Detailing side
         with col_pm1:
-            req_Ast = (suggest_h * suggest_h) * q_rho
-            rebar_sizes = {"DB12": 1.13, "DB16": 2.01, "DB20": 3.14, "DB25": 4.91}
-            options = []
-            for name, area in rebar_sizes.items():
-                n = max(4, math.ceil(req_Ast / area))
-                if n % 2 != 0: n += 1
-                options.append(f"{n}-{name} (As={n*area:.2f} cm²)")
+            st.markdown("##### 🏗️ Custom Reinforcement")
+            # 1. ให้เลือกขนาดเหล็กก่อน
+            bar_size_name = st.selectbox("Select Bar Size:", ["DB12", "DB16", "DB20", "DB25"], index=2) # Default DB20
+            bar_area_map = {"DB12": 1.13, "DB16": 2.01, "DB20": 3.14, "DB25": 4.91}
+            selected_bar_area = bar_area_map[bar_size_name]
             
-            selected_set = st.selectbox("Select Reinforcement:", options, key="pm_rebar_select")
-            n_bars = int(selected_set.split('-')[0])
-            bar_area = rebar_sizes[selected_set.split('-')[1].split(' ')[0]]
-            Ast_prov = n_bars * bar_area
+            # 2. คำนวณจำนวนเส้นขั้นต่ำตามทฤษฎีเพื่อให้ User ดูเป็นแนวทาง
+            req_Ast_theoretical = (suggest_h * suggest_h) * q_rho
+            min_bars_suggested = max(4, math.ceil(req_Ast_theoretical / selected_bar_area))
+            if min_bars_suggested % 2 != 0: min_bars_suggested += 1 # ปรับเป็นเลขคู่
             
+            # 3. ให้ User เลือกจำนวนเส้นเอง (Manual)
+            n_bars_input = st.number_input("Number of Bars (Total):", min_value=4, value=min_bars_suggested, step=2)
+            
+            Ast_prov = n_bars_input * selected_bar_area
+            rho_actual = (Ast_prov / (suggest_h * suggest_h)) * 100
+            
+            # 4. ตรวจสอบเกณฑ์และระยะห่าง (Validation)
+            st.write(f"**Actual $A_{{st}}$:** {Ast_prov:.2f} cm²")
+            if 1.0 <= rho_actual <= 8.0:
+                st.success(f"**Actual ρ:** {rho_actual:.2f}% (Within 1-8% limit)")
+            else:
+                st.error(f"**Actual ρ:** {rho_actual:.2f}% (Out of ACI limits!)")
+            
+            # เช็ก Clear Spacing เบื้องต้น (สมมติจัดเหล็ก 2 ฝั่ง)
+            side_bars = n_bars_input / 2
+            clear_sp = (suggest_h - (2 * 4.0) - (side_bars * (int(bar_size_name[2:])/10.0))) / (side_bars - 1) if side_bars > 1 else 99
+            if clear_sp < 2.5:
+                st.warning(f"⚠️ Spacing: {clear_sp:.1f} cm (Too tight! Concrete may not flow)")
+            else:
+                st.info(f"✅ Spacing: {clear_sp:.1f} cm (OK)")
+
             st.markdown("##### 📍 Design Demands")
-            req_Pu = st.number_input("Actual Load, Pu (Tons)", value=float(round(cap_rect * 0.5, 1)))
+            req_Pu = st.number_input("Actual Load, Pu (Tons)", value=float(round(cap_rect * 0.7, 1)))
             req_Mu = st.number_input("Actual Moment, Mu (Ton-m)", value=5.0)
 
-        # Diagram Generation
+        # --- ส่วนวาดกราฟ (เหมือนเดิมแต่ใช้ค่าจากการเลือก Manual) ---
         with col_pm2:
             import numpy as np
             import plotly.graph_objects as go
@@ -1508,28 +1527,21 @@ with col2:
             Ag = suggest_h * suggest_h
             d_prime = 4.0
             d = suggest_h - d_prime
-            As_side = Ast_prov / 2.0
+            As_side = Ast_prov / 2.0 # วิเคราะห์แบบสมมาตร
             Es = 2.04e6
             beta1 = max(0.65, 0.85 - 0.05 * ((q_fc - 280) / 70)) if q_fc > 280 else 0.85
             
-            # 1. Pure Compression
+            # คำนวณจุดบนกราฟ (เหมือนเวอร์ชันก่อนหน้า)
             Po = (0.85 * q_fc * (Ag - Ast_prov) + q_fy * Ast_prov) / 1000.0
             Pn_max = 0.80 * Po
             
-            # 2. Iterative Points (high compression down to pure tension)
-            c_vals = np.concatenate([
-                np.linspace(suggest_h * 10, suggest_h, 15), # Extreme compression
-                np.linspace(suggest_h, d_prime + 0.1, 40),  # Transition zone
-                np.linspace(d_prime, 0.1, 10)               # High tension zone
-            ])
-            
-            pn_pts, mn_pts, phipn_pts, phimn_pts = [], [], [], []
+            c_vals = np.concatenate([np.linspace(suggest_h*5, suggest_h, 10), np.linspace(suggest_h, d_prime+0.1, 40), np.linspace(d_prime, 0.1, 10)])
+            phipn_pts, phimn_pts = [], []
             
             for c in c_vals:
                 a = min(beta1 * c, suggest_h)
                 eps_s = 0.003 * (d - c) / c
                 eps_s_prime = 0.003 * (c - d_prime) / c
-                
                 fs = min(max(eps_s * Es, -q_fy), q_fy)
                 fs_prime = min(max(eps_s_prime * Es, -q_fy), q_fy)
                 
@@ -1541,60 +1553,15 @@ with col2:
                 Mn = (Cc * (suggest_h/2 - a/2) + Cs * (suggest_h/2 - d_prime) + T * (d - suggest_h/2)) / 100000.0
                 
                 eps_ty = q_fy / Es
-                if eps_s <= eps_ty:
-                    phi = 0.65
-                elif eps_s >= 0.005:
-                    phi = 0.90
-                else:
-                    phi = 0.65 + (eps_s - eps_ty) * (0.25) / (0.005 - eps_ty)
+                phi = 0.65 if eps_s <= eps_ty else (0.90 if eps_s >= 0.005 else 0.65 + (eps_s - eps_ty) * 0.25 / (0.005 - eps_ty))
                 
-                pn_pts.append(Pn)
-                mn_pts.append(Mn)
-                
-                # Apply limits for Design Envelope
-                design_pn = min(Pn * phi, Pn_max * 0.65) if Pn > 0 else Pn * phi
-                phipn_pts.append(design_pn)
+                phipn_pts.append(min(Pn * phi, Pn_max * 0.65) if Pn > 0 else Pn * phi)
                 phimn_pts.append(Mn * phi)
 
-            # 3. Pure Tension (c -> 0)
-            Pt = - (Ast_prov * q_fy) / 1000.0
-            pn_pts.append(Pt)
-            mn_pts.append(0)
-            phipn_pts.append(Pt * 0.90)
-            phimn_pts.append(0)
-            
-            # Plotly Visualization
+            # Plotly
             fig = go.Figure()
+            fig.add_trace(go.Scatter(x=phimn_pts, y=phipn_pts, mode='lines', name='Design Capacity', fill='tozeroy', line=dict(color='#38bdf8', width=3)))
+            fig.add_trace(go.Scatter(x=[req_Mu], y=[req_Pu], mode='markers', name='Demand', marker=dict(color='#f87171', size=12, symbol='diamond')))
             
-            # Nominal Envelope
-            fig.add_trace(go.Scatter(x=mn_pts, y=[min(p, Pn_max) for p in pn_pts], 
-                                     mode='lines', name='Nominal Capacity (Pn, Mn)', 
-                                     line=dict(color='rgba(255, 255, 255, 0.3)', dash='dash')))
-            
-            # Design Envelope
-            fig.add_trace(go.Scatter(x=phimn_pts, y=phipn_pts, 
-                                     mode='lines', name='Design Envelope (φPn, φMn)', 
-                                     fill='tozeroy', fillcolor='rgba(56, 189, 248, 0.1)',
-                                     line=dict(color='#38bdf8', width=3)))
-            
-            # Demand Point
-            demand_status = "🟢 SAFE"
-            fig.add_trace(go.Scatter(x=[req_Mu], y=[req_Pu], 
-                                     mode='markers', name=f'Demand: {req_Mu} T-m, {req_Pu} T',
-                                     marker=dict(color='#f87171', size=10, symbol='x')))
-                                     
-            fig.update_layout(
-                title=f'P-M Diagram ({suggest_h}x{suggest_h} cm, {selected_set.split(" ")[0]})',
-                xaxis_title='Bending Moment, M (Ton-m)',
-                yaxis_title='Axial Load, P (Tons)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='white'),
-                legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
-                margin=dict(l=20, r=20, t=40, b=20),
-                height=450
-            )
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#334155', zeroline=True, zerolinecolor='white', zerolinewidth=1)
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#334155', zeroline=True, zerolinecolor='white', zerolinewidth=1)
-            
+            fig.update_layout(title=f"Interaction Diagram: {n_bars_input}-{bar_size_name}", height=450, template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
