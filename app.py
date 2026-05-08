@@ -1461,39 +1461,40 @@ with col2:
         
         st.table(comparison_data)
 
+
         # --- Section 6: Detailed Calculation Report ---
         st.markdown("---")
-        with st.expander("📝 รายการคำนวณแบบ Step-by-Step (Calculation Details)", expanded=False):
-            st.markdown("#### 1. Slenderness Check (การหาขนาดหน้าตัดเพื่อไม่ให้เป็นเสายาว)")
-            st.markdown("ตามมาตรฐาน ACI 318 แนะนำให้คุมค่าความชะลูด $KL/r \le 22$ (สำหรับ Non-Sway Frame) เพื่อละเว้นผลของ Slenderness Effect")
+        with st.expander("📝 Step-by-Step Calculation Report", expanded=False):
+            st.markdown("#### 1. Slenderness Check (Sizing to Avoid Long Column Effects)")
+            st.markdown("According to ACI 318, it is recommended to limit the slenderness ratio to $KL/r \le 22$ (for non-sway frames) to safely neglect slenderness effects.")
             st.latex(f"KL = {q_K} \\times {q_L} \\times 100 = {KL_cm:,.0f} \\text{{ cm}}")
             
-            st.markdown("**สำหรับเสาสี่เหลี่ยม (Rectangular):** $r \\approx 0.3h$")
+            st.markdown("**For Rectangular Columns:** $r \\approx 0.3h$")
             st.latex(f"h_{{min}} = \\frac{{KL}}{{0.3 \\times (kl/r)_{{limit}}}} = \\frac{{{KL_cm:,.0f}}}{{0.3 \\times {q_klr_limit}}} = {min_h_req:,.2f} \\text{{ cm}}")
-            st.write(f"$\rightarrow$ ปัดเศษขึ้นให้ทำงานง่าย แนะนำใช้ $h = {suggest_h}$ cm")
+            st.write(f"$\rightarrow$ Rounding up for practical construction, recommended $h = {suggest_h}$ cm")
 
-            st.markdown("**สำหรับเสากลม (Circular):** $r \\approx 0.25D$")
+            st.markdown("**For Circular Columns:** $r \\approx 0.25D$")
             st.latex(f"D_{{min}} = \\frac{{KL}}{{0.25 \\times (kl/r)_{{limit}}}} = \\frac{{{KL_cm:,.0f}}}{{0.25 \\times {q_klr_limit}}} = {min_d_req:,.2f} \\text{{ cm}}")
-            st.write(f"$\rightarrow$ ปัดเศษขึ้นให้ทำงานง่าย แนะนำใช้ $D = {suggest_d}$ cm")
+            st.write(f"$\rightarrow$ Rounding up for practical construction, recommended $D = {suggest_d}$ cm")
 
             st.markdown("---")
-            st.markdown("#### 2. Axial Load Capacity (การคำนวณกำลังรับแรงกดสูงสุด)")
-            st.markdown(f"สมการกำลังรับแรงอัดสูงสุดตามแนวแกน (Axial Capacity) อ้างอิง ACI 318 โดยคิดที่ $\\rho = {q_rho*100}\\%$")
+            st.markdown("#### 2. Axial Load Capacity Calculation")
+            st.markdown(f"The maximum axial compressive capacity equation is based on ACI 318 provisions, evaluated at a reinforcement ratio of $\\rho = {q_rho*100}\\%$.")
             
-            # --- คำนวณตัวเลขเพื่อแสดงในสมการ ---
+            # --- Calculate values for equation display ---
             ag_rect = suggest_h * suggest_h
             ast_rect = ag_rect * q_rho
             ag_circ = (math.pi/4) * (suggest_d**2)
             ast_circ = ag_circ * q_rho
             
-            st.markdown("**สำหรับเสาสี่เหลี่ยมปลอกเดี่ยว (Tied Column):** $\\phi = 0.65, \\alpha = 0.80$")
+            st.markdown("**For Rectangular Tied Columns:** $\\phi = 0.65, \\alpha = 0.80$")
             st.latex(f"A_g = {suggest_h} \\times {suggest_h} = {ag_rect:,.2f} \\text{{ cm}}^2")
             st.latex(f"A_{{st}} = {q_rho} \\times {ag_rect:,.2f} = {ast_rect:,.2f} \\text{{ cm}}^2")
             st.latex(r"P_{u,rect} = \phi \alpha \left[ 0.85 f'_c (A_g - A_{st}) + f_y A_{st} \right]")
             st.latex(f"P_{{u,rect}} = 0.65 \\times 0.80 \\times \\left[ 0.85({q_fc})({ag_rect:,.2f} - {ast_rect:,.2f}) + {q_fy}({ast_rect:,.2f}) \\right] \\times 10^{{-3}}")
             st.latex(f"P_{{u,rect}} = {cap_rect:,.2f} \\text{{ Tons}}")
 
-            st.markdown("**สำหรับเสากลมปลอกเกลียว (Spiral Column):** $\\phi = 0.75, \\alpha = 0.85$")
+            st.markdown("**For Circular Spiral Columns:** $\\phi = 0.75, \\alpha = 0.85$")
             st.latex(f"A_g = \\frac{{\\pi \\times {suggest_d}^2}}{{4}} = {ag_circ:,.2f} \\text{{ cm}}^2")
             st.latex(f"A_{{st}} = {q_rho} \\times {ag_circ:,.2f} = {ast_circ:,.2f} \\text{{ cm}}^2")
             st.latex(r"P_{u,circ} = \phi \alpha \left[ 0.85 f'_c (A_g - A_{st}) + f_y A_{st} \right]")
