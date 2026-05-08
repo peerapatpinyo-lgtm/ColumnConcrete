@@ -1366,21 +1366,24 @@ with col2:
         # --- Section 1: Slenderness Input ---
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
-            q_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.1)
+            q_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.1, key="q_L_input")
         with col_s2:
-            q_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1)
+            q_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, key="q_K_input")
         with col_s3:
-            q_klr_limit = st.slider("Target kl/r Limit", 10, 50, 22, help="ACI แนะนำ 22 สำหรับเสาสั้น")
+            q_klr_limit = st.slider("Target kl/r Limit", 10, 50, 22, help="ACI แนะนำ 22 สำหรับเสาสั้น", key="q_klr_limit_input")
 
         # --- Section 2: Material & Rebar (Quick Settings) ---
         with st.expander("🛠️ Quick Material Settings", expanded=False):
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
-                q_fc = st.number_input("f'c (ksc)", value=280)
+                # เติม key เข้าไปตรงนี้ครับ
+                q_fc = st.number_input("f'c (ksc)", value=280, key="q_fc_input")
             with col_m2:
-                q_fy = st.number_input("fy (ksc)", value=4000)
+                # เติม key เข้าไปตรงนี้ครับ
+                q_fy = st.number_input("fy (ksc)", value=4000, key="q_fy_input")
             with col_m3:
-                q_rho = st.slider("Rebar Ratio (%)", 1.0, 6.0, 1.5, step=0.5) / 100.0
+                # เติม key เข้าไปตรงนี้ครับ
+                q_rho = st.slider("Rebar Ratio (%)", 1.0, 6.0, 1.5, step=0.5, key="q_rho_input") / 100.0
 
         # --- Section 3: Smart Calculation ---
         KL_cm = (q_K * q_L) * 100
