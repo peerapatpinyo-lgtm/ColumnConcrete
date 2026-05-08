@@ -1358,125 +1358,102 @@ with col2:
             st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
 
     with tab7:
-        st.markdown("### ⚡ Smart Preliminary Sizing (Pro Edition)")
-        st.info("💡 ประเมินขนาดหน้าตัดเสาแบบแม่นยำสูง โดยแยกสมการ Tied/Spiral Column และรองรับข้อจำกัดทางสถาปัตยกรรม (Architectural Constraints)")
-        
+        st.markdown("### ⚡ Quick Sizing & Capacity Rating")
+        st.info("💡 ระบุความสูงและค่าความชะลูดที่ต้องการ เพื่อหาขนาดหน้าตัดเริ่มต้นและขีดความสามารถในการรับแรง (Axial Capacity)")
+
         st.markdown("---")
         
-        # --- 1. Input Parameters ---
-        st.markdown("#### 1. Design Parameters")
-        col_q1, col_q2, col_q3, col_q4 = st.columns(4)
-        with col_q1:
-            est_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.5, key="est_L")
-        with col_q2:
-            est_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1, key="est_K")
-        with col_q3:
-            est_Pu = st.number_input("Target Axial Load, Pu (ton)", min_value=0.0, value=100.0, step=10.0, key="est_Pu")
-        with col_q4:
-            est_rho = st.number_input("Estimated Rebar Ratio (%)", min_value=1.0, max_value=8.0, value=1.5, step=0.5, key="est_rho") / 100.0
-            
-        st.markdown("#### 2. Architectural Constraints")
-        col_c1, col_c2 = st.columns([1, 3])
-        with col_c1:
-            target_b = st.number_input("Target Width 'b' (cm)", min_value=15.0, value=20.0, step=5.0, help="กำหนดความกว้างเสา (เช่น เพื่อซ่อนในผนัง)")
-            
-        # --- 2. Smart Calculations ---
-        target_klr = 22.0
-        est_KL_cm = (est_K * est_L) * 100
-        
-        # ตัวแปร Material (ดึงจากระบบ หรือตั้งค่า Default)
-        fc_val = fc if 'fc' in locals() else 280.0
-        fy_val = fy if 'fy' in locals() else 4000.0
-        Pu_kg = est_Pu * 1000.0
-        
-        # -- RECTANGULAR (Tied Column) --
-        # Slenderness limits
-        min_dim_slender = est_KL_cm / (0.3 * target_klr) # มิติที่เล็กที่สุดที่จะไม่ชะลูด
-        # Axial limit (Tied: phi=0.65, Pn,max=0.80)
-        phi_pn_tied = 0.65 * 0.80
-        stress_term_tied = (0.85 * fc_val * (1 - est_rho)) + (fy_val * est_rho)
-        req_Ag_rect = Pu_kg / (phi_pn_tied * stress_term_tied)
-        
-        # Calculate required 'h' based on fixed 'b'
-        req_h_axial = req_Ag_rect / target_b
-        req_h_slender = min_dim_slender
-        
-        # -- CIRCULAR (Spiral Column) --
-        # Slenderness limit
-        min_d_slender = est_KL_cm / (0.25 * target_klr)
-        # Axial limit (Spiral: phi=0.75, Pn,max=0.85) => มีประสิทธิภาพรับแรงอัดดีกว่า
-        phi_pn_spiral = 0.75 * 0.85
-        req_Ag_circ = Pu_kg / (phi_pn_spiral * stress_term_tied)
-        min_d_axial = math.sqrt((4 * req_Ag_circ) / math.pi)
-        
-        # --- 3. Governing Logic & Rounding ---
-        def round_up_5(num):
-            return math.ceil(num / 5.0) * 5
+        # --- Section 1: Slenderness Input ---
+        col_s1, col_s2, col_s3 = st.columns(3)
+        with col_s1:
+            q_L = st.number_input("Unbraced Length, L (m)", min_value=1.0, value=3.5, step=0.1)
+        with col_s2:
+            q_K = st.number_input("Effective Length Factor, K", min_value=0.5, value=1.0, step=0.1)
+        with col_s3:
+            q_klr_limit = st.slider("Target kl/r Limit", 10, 50, 22, help="ACI แนะนำ 22 สำหรับเสาสั้น")
 
-        # ตรวจสอบว่า target_b รอดจาก Slenderness ไหม
-        is_b_slender_safe = target_b >= min_dim_slender
-        
-        prac_h_rect = round_up_5(max(req_h_axial, req_h_slender))
-        prac_d_circ = round_up_5(max(min_d_slender, min_d_axial))
-        
-        gov_rect_reason = "Slenderness (KL/r)" if req_h_slender > req_h_axial else "Axial Capacity (Pu)"
-        gov_circ_reason = "Slenderness (KL/r)" if min_d_slender > min_d_axial else "Axial Capacity (Pu)"
+        # --- Section 2: Material & Rebar (Quick Settings) ---
+        with st.expander("🛠️ Quick Material Settings", expanded=False):
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                q_fc = st.number_input("f'c (ksc)", value=280)
+            with col_m2:
+                q_fy = st.number_input("fy (ksc)", value=4000)
+            with col_m3:
+                q_rho = st.slider("Rebar Ratio (%)", 1.0, 6.0, 1.5, step=0.5) / 100.0
 
-        # --- 4. Dashboard Visuals ---
-        st.markdown("---")
-        st.markdown("#### 📐 Optimized Section Sizes")
+        # --- Section 3: Smart Calculation ---
+        KL_cm = (q_K * q_L) * 100
         
-        if not is_b_slender_safe:
-            st.warning(f"⚠️ **Architectural Warning:** ความกว้างเสาที่กำหนด ($b = {target_b}$ cm) เล็กกว่าค่าความชะลูดขั้นต่ำ ({min_dim_slender:.1f} cm) เสานี้จะเกิดพฤติกรรม Long Column ในแกนรอง (Y-Axis) จำเป็นต้องคำนวณ Moment Magnification อย่างละเอียด!")
+        # 1. หาขนาดขั้นต่ำตาม kl/r
+        # r = 0.3h (Rect), r = 0.25D (Circ)
+        min_h_req = KL_cm / (0.3 * q_klr_limit)
+        min_d_req = KL_cm / (0.25 * q_klr_limit)
+        
+        # ปัดเศษเป็นเลขก่อสร้าง (ทีละ 5 cm)
+        suggest_h = math.ceil(min_h_req / 5.0) * 5
+        suggest_d = math.ceil(min_d_req / 5.0) * 5
 
-        col_res1, col_res2 = st.columns(2)
-        
-        with col_res1:
-            st.markdown(
-                f"""
-                <div style="padding: 20px; border-radius: 10px; background: #1e293b; color: white; border-left: 5px solid #38bdf8;">
-                    <h5 style="color: #94a3b8; margin-top: 0;">Rectangular (Tied)</h5>
-                    <h2 style="color: #38bdf8; margin: 5px 0;">{target_b} × {prac_h_rect} cm</h2>
-                    <p style="font-size: 13px; color: #cbd5e1; margin-bottom: 0;">Depth Governed by: <b>{gov_rect_reason}</b></p>
-                    <p style="font-size: 11px; color: #64748b; margin-top: 5px;">(Req $h$ for Load: {req_h_axial:.1f} cm | Req $h$ for Slenderness: {req_h_slender:.1f} cm)</p>
-                </div>
-                """, unsafe_allow_html=True
-            )
-            
-        with col_res2:
-            st.markdown(
-                f"""
-                <div style="padding: 20px; border-radius: 10px; background: #1e293b; color: white; border-left: 5px solid #4ade80;">
-                    <h5 style="color: #94a3b8; margin-top: 0;">Circular (Spiral)</h5>
-                    <h2 style="color: #4ade80; margin: 5px 0;">Ø {prac_d_circ} cm</h2>
-                    <p style="font-size: 13px; color: #cbd5e1; margin-bottom: 0;">Diameter Governed by: <b>{gov_circ_reason}</b></p>
-                    <p style="font-size: 11px; color: #64748b; margin-top: 5px;">(Req $D$ for Load: {min_d_axial:.1f} cm | Req $D$ for Slenderness: {min_d_slender:.1f} cm)</p>
-                </div>
-                """, unsafe_allow_html=True
-            )
+        # 2. คำนวณ Capacity (Pn_max)
+        def calc_capacity(Ag, shape_type):
+            Ast = Ag * q_rho
+            if shape_type == "Tied":
+                phi, alpha = 0.65, 0.80
+            else:
+                phi, alpha = 0.75, 0.85
+            # Pn = phi * alpha * [0.85*fc*(Ag-Ast) + fy*Ast]
+            pn = phi * alpha * (0.85 * q_fc * (Ag - Ast) + q_fy * Ast)
+            return pn / 1000.0 # Convert to Tons
 
-        # --- 5. Interactive Chart ---
-        st.markdown("<br>", unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            name='Required by Axial Load',
-            x=['Rectangular Area ($cm^2$)', 'Circular Area ($cm^2$)'],
-            y=[req_Ag_rect, req_Ag_circ],
-            marker_color='#3b82f6'
-        ))
-        fig.add_trace(go.Bar(
-            name='Required by Slenderness limit',
-            x=['Rectangular Area ($cm^2$)', 'Circular Area ($cm^2$)'],
-            y=[target_b * min_dim_slender, (math.pi/4) * (min_d_slender**2)],
-            marker_color='#f59e0b'
-        ))
+        cap_rect = calc_capacity(suggest_h * suggest_h, "Tied")
+        cap_circ = calc_capacity((math.pi/4) * (suggest_d**2), "Spiral")
+
+        # --- Section 4: Display Results ---
+        st.markdown(f"#### 🔍 Suggested Sections for $kl/r \le {q_klr_limit}$")
         
-        fig.update_layout(
-            title='📊 Minimum Gross Area Required (Comparison)',
-            barmode='group',
-            height=350,
-            margin=dict(l=20, r=20, t=40, b=20),
-            plot_bgcolor='rgba(0,0,0,0)',
-            yaxis=dict(title='Gross Area (Ag), cm²')
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        res_c1, res_c2 = st.columns(2)
+        
+        with res_c1:
+            st.markdown(f"""
+            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border-top: 5px solid #38bdf8;">
+                <p style="color: #94a3b8; margin:0;">Rectangular (Square)</p>
+                <h2 style="color: white; margin: 10px 0;">{suggest_h} × {suggest_h} cm</h2>
+                <hr style="border-color: #334155;">
+                <p style="color: #94a3b8; font-size: 14px;">Max Factored Load (Pu):</p>
+                <h1 style="color: #38bdf8; margin: 0;">{cap_rect:,.1f} <span style="font-size: 20px;">Tons</span></h1>
+                <p style="color: #4ade80; font-size: 12px; margin-top: 5px;">Actual kl/r = {(KL_cm/(0.3*suggest_h)):,.1f}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with res_c2:
+            st.markdown(f"""
+            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border-top: 5px solid #4ade80;">
+                <p style="color: #94a3b8; margin:0;">Circular (Spiral)</p>
+                <h2 style="color: white; margin: 10px 0;">Ø {suggest_d} cm</h2>
+                <hr style="border-color: #334155;">
+                <p style="color: #94a3b8; font-size: 14px;">Max Factored Load (Pu):</p>
+                <h1 style="color: #4ade80; margin: 0;">{cap_circ:,.1f} <span style="font-size: 20px;">Tons</span></h1>
+                <p style="color: #4ade80; font-size: 12px; margin-top: 5px;">Actual kl/r = {(KL_cm/(0.25*suggest_d)):,.1f}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # --- Section 5: "What-If" Analysis Table ---
+        st.markdown("<br>#### 📈 Capacity Sensitivity Table (Rectangular)", unsafe_allow_html=True)
+        st.write("ลองเปรียบเทียบดูว่าถ้าเปลี่ยนขนาดเสา แรงที่รับได้จะเปลี่ยนไปอย่างไร:")
+        
+        sizes = [suggest_h - 10, suggest_h - 5, suggest_h, suggest_h + 5, suggest_h + 10, suggest_h + 15]
+        comparison_data = []
+        for s in sizes:
+            if s <= 0: continue
+            ag = s * s
+            cap = calc_capacity(ag, "Tied")
+            klr_val = KL_cm / (0.3 * s)
+            status = "🔴 Slender" if klr_val > q_klr_limit else "🟢 Short"
+            comparison_data.append({
+                "Size (cm)": f"{s}x{s}",
+                "kl/r": round(klr_val, 1),
+                "Status": status,
+                "Capacity (Pu ton)": round(cap, 1)
+            })
+        
+        st.table(comparison_data)
