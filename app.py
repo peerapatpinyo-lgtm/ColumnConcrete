@@ -1381,7 +1381,7 @@ with col2:
                     st.error(f"❌ **Unsafe:** {rho_actual:.2f}% is out of limit (1% - 8%)")
 
             st.markdown("---")
-            st.markdown("#### 6.2 Transverse Reinforcement (Ties/Spirals)")
+            st.markdown("#### 6.2 Transverse Reinforcement (Tie Spacing Limits)")
             
             dt_cm = 0.9  # Implicitly RB9 based on d_prime
             At_single = (math.pi * dt_cm**2) / 4
@@ -1399,26 +1399,70 @@ with col2:
                     st.latex(f"s_{{max}} = \\min({s1:.1f}, {s2:.1f}, {s3:.1f}) = {s_max:.1f} \\text{{ cm}}")
                     
                 with col_t2:
-                    st.markdown("**2. Provided Spacing ($s_{prov}$)**")
-                    # ให้ผู้ใช้เลือก Spacing ได้เอง
+                    st.markdown("**2. Provided Tie Details**")
+                    # ให้ผู้ใช้เลือกระยะแอดเหล็กปลอก
                     s_prov = st.number_input("Select Provided Spacing (cm):", min_value=5.0, max_value=50.0, value=float(math.floor(s_max)), step=1.0, key="s_prov_rect")
+                    # ให้ผู้ใช้เลือกจำนวนขารับแรงเฉือน (Legs)
+                    n_legs = st.number_input("Number of Tie Legs (ในทิศทางรับแรงเฉือน):", min_value=2, max_value=10, value=2, step=1, key="n_legs")
                     
                     if s_prov <= s_max:
-                        st.success(f"✅ **Safe:** $s_{{prov}}$ ({s_prov:.1f} cm) $\\le s_{{max}}$")
+                        st.success(f"✅ **Spacing Check:** Safe ($s_{{prov}} \\le s_{{max}}$)")
                     else:
-                        st.error(f"❌ **Unsafe:** $s_{{prov}}$ exceeds limit!")
+                        st.error(f"❌ **Spacing Check:** Unsafe! $s_{{prov}}$ exceeds limit.")
 
-                st.markdown("**3. Provided Transverse Ratio Check**")
-                st.markdown("Assuming 2 legs of tie reinforcement ($A_v = 2 A_t$), the transverse reinforcement ratio ($\\rho_v$) is:")
-                Av = 2 * At_single
-                rho_v = (Av / (engine.b * s_prov)) * 100
+                st.markdown("---")
+                st.markdown("#### 6.3 Shear Capacity Check ($V_u \\le \\phi V_n$)")
                 
-                st.latex(r"A_v = 2 \times \frac{\pi \times d_t^2}{4}")
-                st.latex(f"A_v = 2 \times {At_single:.3f} = {Av:.2f} \\text{{ cm}}^2")
-                st.latex(r"\rho_v = \frac{A_v}{b \times s_{prov}} \times 100")
-                st.latex(f"\\rho_v = \\frac{{{Av:.2f}}}{{{engine.b} \\times {s_prov:.1f}}} \\times 100 = {rho_v:.3f}\\%")
+                # รับค่าแรงเฉือนประลัยจากผู้ใช้ (หรือดึงจากตัวแปรของคุณถ้ามี)
+                Vu = st.number_input("Factored Shear Force, $V_u$ (tons):", min_value=0.0, value=10.0, step=1.0, key="vu_input")
+                
+                # คำนวณ Shear
+                d_eff = engine.h - engine.d_prime # Effective depth in cm
+                Av = n_legs * At_single
+                
+                # Concrete Shear Capacity (Vc) - MKS Unit (ksc)
+                Vc_kg = 0.53 * math.sqrt(engine.fc) * engine.b * d_eff
+                Vc_ton = Vc_kg / 1000.0
+                
+                # Steel Shear Capacity (Vs)
+                Vs_kg = (Av * engine.fy * d_eff) / s_prov
+                Vs_ton = Vs_kg / 1000.0
+                
+                # Total Capacity
+                phi_shear = 0.75
+                phi_Vn = phi_shear * (Vc_ton + Vs_ton)
+                
+                col_v1, col_v2 = st.columns(2)
+                with col_v1:
+                    st.markdown("**1. Concrete Capacity ($V_c$)**")
+                    st.latex(r"V_c = 0.53 \sqrt{f'_c} b_w d")
+                    st.latex(f"V_c = 0.53 \\sqrt{{{engine.fc}}} \\times {engine.b} \\times {d_eff:.1f}")
+                    st.latex(f"V_c = {Vc_kg:,.0f} \\text{{ kg}} = {Vc_ton:.2f} \\text{{ tons}}")
+
+                    st.markdown("**2. Steel Capacity ($V_s$)**")
+                    st.latex(r"A_v = n_{legs} \times A_t")
+                    st.latex(f"A_v = {n_legs} \\times {At_single:.3f} = {Av:.2f} \\text{{ cm}}^2")
+                    st.latex(r"V_s = \frac{A_v f_{yt} d}{s}")
+                    st.latex(f"V_s = \\frac{{{Av:.2f} \\times {engine.fy} \\times {d_eff:.1f}}}{{{s_prov:.1f}}}")
+                    st.latex(f"V_s = {Vs_kg:,.0f} \\text{{ kg}} = {Vs_ton:.2f} \\text{{ tons}}")
+
+                with col_v2:
+                    st.markdown("**3. Total Shear Capacity ($\\phi V_n$)**")
+                    st.markdown("Using strength reduction factor for shear, $\\phi = 0.75$")
+                    st.latex(r"\phi V_n = \phi (V_c + V_s)")
+                    st.latex(f"\\phi V_n = 0.75 \\times ({Vc_ton:.2f} + {Vs_ton:.2f})")
+                    st.latex(f"\\phi V_n = {phi_Vn:.2f} \\text{{ tons}}")
+                    
+                    st.markdown("**4. Design Summary**")
+                    st.latex(f"V_u = {Vu:.2f} \\text{{ tons}}")
+                    
+                    if Vu <= phi_Vn:
+                        st.success(f"✅ **Shear Check:** Safe ($V_u \\le \\phi V_n$)")
+                    else:
+                        st.error(f"❌ **Shear Check:** Unsafe! Section needs more tie legs, closer spacing, or larger section.")
 
             elif engine.shape == "Circular":
+                # สำหรับเสากลมก็มีข้อกำหนดของ Spiral Ratio คล้ายกันครับ
                 cover_cm = engine.d_prime - dt_cm - (db_cm / 2)
                 Dc = engine.D - 2 * cover_cm
                 Ach = math.pi * (Dc**2) / 4
