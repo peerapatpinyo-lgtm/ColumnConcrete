@@ -1350,6 +1350,59 @@ with col2:
             else:
                 st.error("⚠️ Unable to calculate because the applied axial load ($P_u$) exceeds the maximum compressive strength of the section.")
 
+        # --- Part 6: Reinforcement Detailing (Longitudinal & Transverse) ---
+        with st.expander("6. Reinforcement Detailing (ACI 318)", expanded=True):
+            # หมายเหตุ: นำตัวแปรเหล่านี้มาจาก UI หรือ Engine ของคุณ (สมมติตัวแปรเบื้องต้นให้)
+            Ast_prov = engine.Ast_prov if hasattr(engine, 'Ast_prov') else 25.12  # พื้นที่เหล็กยืน (cm^2)
+            db_main = engine.db_main if hasattr(engine, 'db_main') else 2.0       # ขนาดเส้นผ่านศูนย์กลางเหล็กยืน (cm) เช่น DB20 = 2.0
+            dt_tie = engine.dt_tie if hasattr(engine, 'dt_tie') else 0.9          # ขนาดเส้นผ่านศูนย์กลางเหล็กปลอก (cm) เช่น RB9 = 0.9
+            s_prov = engine.tie_spacing if hasattr(engine, 'tie_spacing') else 20.0 # ระยะเรียงเหล็กปลอกจริง (cm)
+            
+            rho_actual = (Ast_prov / engine.Ag) * 100
+
+            st.markdown("#### 6.1 Longitudinal Reinforcement (เหล็กยืน)")
+            st.markdown("**1. Steel Ratio Limit:**")
+            st.markdown("ACI 318 requires the longitudinal reinforcement ratio to be between 1% and 8%.")
+            st.latex(r"1.0\% \le \rho_g \le 8.0\%")
+            st.latex(f"\\rho_g = \\frac{{A_{{st}}}}{{A_g}} \\times 100 = \\frac{{{Ast_prov:.2f}}}{{{engine.Ag:,.2f}}} \\times 100 = {rho_actual:.2f}\\%")
+            
+            if 1.0 <= rho_actual <= 8.0:
+                st.success(f"✅ **Check:** $\\rho_g = {rho_actual:.2f}\\%$ is within limits.")
+            else:
+                st.error(f"❌ **Check:** $\\rho_g = {rho_actual:.2f}\\%$ is out of limits!")
+
+            st.markdown("#### 6.2 Transverse Reinforcement (เหล็กปลอก)")
+            if shape == "Rectangular":
+                st.markdown("**1. Tie Size:**")
+                st.markdown("For longitudinal bars $\\le$ 32 mm, tie size must be at least 10 mm (or RB9 minimum in local practice).")
+                st.latex(f"d_t = {dt_tie:.1f} \\text{{ cm}}")
+
+                st.markdown("**2. Maximum Tie Spacing ($s_{max}$):**")
+                s1 = 16 * db_main
+                s2 = 48 * dt_tie
+                s3 = min(b, h)
+                s_max = min(s1, s2, s3)
+                
+                st.latex(r"s_{max} = \min \begin{cases} 16 d_b \\ 48 d_t \\ \text{Least column dimension} \end{cases}")
+                st.latex(f"s_{{max}} = \\min \\begin{{cases}} 16({db_main:.1f}) = {s1:.1f} \\text{{ cm}} \\\\ 48({dt_tie:.1f}) = {s2:.1f} \\text{{ cm}} \\\\ \\min({b}, {h}) = {s3:.1f} \\text{{ cm}} \\end{{cases}}")
+                st.latex(f"\\therefore s_{{max}} = {s_max:.1f} \\text{{ cm}}")
+                
+                st.markdown(f"**Provided Tie Spacing:** $$s_{{prov}} = {s_prov:.1f}$$ cm")
+                
+                if s_prov <= s_max:
+                    st.success(f"✅ **Check:** Provided spacing ($s = {s_prov:.1f}$ cm) $\\le s_{{max}}$. Detail is SAFE.")
+                else:
+                    st.error(f"❌ **Check:** Provided spacing ($s = {s_prov:.1f}$ cm) exceeds limits!")
+                    
+            else:
+                st.markdown("**1. Spiral Reinforcement Limit:**")
+                st.markdown("For spiral columns, the volumetric spiral reinforcement ratio $\\rho_s$ must satisfy:")
+                st.latex(r"\rho_s \ge 0.45 \left( \frac{A_g}{A_{ch}} - 1 \right) \frac{f'_c}{f_{yt}}")
+                # สมมติการคำนวณ Ach สำหรับเสากลม
+                cover = 4.0
+                Ach = math.pi * ((b - 2*cover)/2)**2
+                st.latex(f"A_{{ch}} = {Ach:,.2f} \\text{{ cm}}^2")
+                st.info("💡 Note: You can expand the spiral calculations here similarly by defining pitch limits (2.5 cm to 7.5 cm) based on your engine variables.")
         # --- Final Part: Conclusion ---
         st.markdown("---")
         if is_safe:
