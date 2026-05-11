@@ -1352,64 +1352,87 @@ with col2:
 
         # --- Part 6: Reinforcement Detailing (Longitudinal & Transverse) ---
         with st.expander("6. Reinforcement Detailing (ACI 318)", expanded=True):
-            # หมายเหตุ: นำตัวแปรเหล่านี้มาจาก UI หรือ Engine ของคุณ (สมมติตัวแปรเบื้องต้นให้)
-            Ast_prov = engine.Ast_prov if hasattr(engine, 'Ast_prov') else 25.12  # พื้นที่เหล็กยืน (cm^2)
-            db_main = engine.db_main if hasattr(engine, 'db_main') else 2.0       # ขนาดเส้นผ่านศูนย์กลางเหล็กยืน (cm) เช่น DB20 = 2.0
-            dt_tie = engine.dt_tie if hasattr(engine, 'dt_tie') else 0.9          # ขนาดเส้นผ่านศูนย์กลางเหล็กปลอก (cm) เช่น RB9 = 0.9
-            s_prov = engine.tie_spacing if hasattr(engine, 'tie_spacing') else 20.0 # ระยะเรียงเหล็กปลอกจริง (cm)
             
-            rho_actual = (Ast_prov / engine.Ag) * 100
-
-            st.markdown("#### 6.1 Longitudinal Reinforcement (เหล็กยืน)")
-            st.markdown("**1. Steel Ratio Limit:**")
-            st.markdown("ACI 318 requires the longitudinal reinforcement ratio to be between 1% and 8%.")
-            st.latex(r"1.0\% \le \rho_g \le 8.0\%")
-            st.latex(f"\\rho_g = \\frac{{A_{{st}}}}{{A_g}} \\times 100 = \\frac{{{Ast_prov:.2f}}}{{{engine.Ag:,.2f}}} \\times 100 = {rho_actual:.2f}\\%")
+            # Link variables directly from the ColumnPMEngine instance
+            Ast_prov = engine.total_as
+            db_cm = engine.db_cm
+            rho_actual = engine.rho * 100
+            
+            st.markdown("#### 6.1 Longitudinal Reinforcement")
+            st.markdown("**1. Steel Ratio Limit**")
+            st.markdown("The longitudinal reinforcement ratio must be between **1.0%** and **8.0%**.")
+            
+            # Formula -> Substitution -> Answer
+            st.latex(r"\rho_g = \frac{A_{st}}{A_g} \times 100")
+            st.latex(f"\\rho_g = \\frac{{{Ast_prov:,.2f}}}{{{engine.Ag:,.2f}}} \\times 100")
+            st.latex(f"\\rho_g = {rho_actual:.2f}\\%")
             
             if 1.0 <= rho_actual <= 8.0:
-                st.success(f"✅ **Check:** $\\rho_g = {rho_actual:.2f}\\%$ is within limits.")
+                st.success(f"✅ **Status:** Safe (**1.0%** $\\le$ **{rho_actual:.2f}%** $\\le$ **8.0%**)")
             else:
-                st.error(f"❌ **Check:** $\\rho_g = {rho_actual:.2f}\\%$ is out of limits!")
+                st.error(f"❌ **Status:** Unsafe (Ratio is out of the 1% - 8% limit)")
 
-            st.markdown("#### 6.2 Transverse Reinforcement (เหล็กปลอก)")
-            if shape == "Rectangular":
-                st.markdown("**1. Tie Size:**")
-                st.markdown("For longitudinal bars $\\le$ 32 mm, tie size must be at least 10 mm (or RB9 minimum in local practice).")
-                st.latex(f"d_t = {dt_tie:.1f} \\text{{ cm}}")
+            st.markdown("#### 6.2 Transverse Reinforcement (Ties)")
+            if engine.shape == "Rectangular":
+                # From engine's d_prime formula: cover_cm + 0.9 + (self.db_cm/2)
+                # The tie diameter (dt) is implicitly 0.9 cm.
+                dt_cm = 0.9 
+                st.markdown("**1. Tie Diameter ($d_t$)**")
+                st.markdown("Based on the internal section properties calculation, the transverse tie diameter is:")
+                st.latex(f"d_t = {dt_cm} \\text{{ cm}}")
 
-                st.markdown("**2. Maximum Tie Spacing ($s_{max}$):**")
-                s1 = 16 * db_main
-                s2 = 48 * dt_tie
-                s3 = min(b, h)
+                st.markdown("**2. Maximum Tie Spacing ($s_{max}$)**")
+                st.markdown("The maximum spacing of ties shall be the smallest of the following three criteria:")
+                
+                s1 = 16 * db_cm
+                s2 = 48 * dt_cm
+                s3 = min(engine.b, engine.h)
                 s_max = min(s1, s2, s3)
                 
-                st.latex(r"s_{max} = \min \begin{cases} 16 d_b \\ 48 d_t \\ \text{Least column dimension} \end{cases}")
-                st.latex(f"s_{{max}} = \\min \\begin{{cases}} 16({db_main:.1f}) = {s1:.1f} \\text{{ cm}} \\\\ 48({dt_tie:.1f}) = {s2:.1f} \\text{{ cm}} \\\\ \\min({b}, {h}) = {s3:.1f} \\text{{ cm}} \\end{{cases}}")
-                st.latex(f"\\therefore s_{{max}} = {s_max:.1f} \\text{{ cm}}")
+                # Criterion 1
+                st.markdown("- **16 times the longitudinal bar diameter:**")
+                st.latex(r"s_1 = 16 \times d_b")
+                st.latex(f"s_1 = 16 \\times {db_cm:.1f}")
+                st.latex(f"s_1 = {s1:.1f} \\text{{ cm}}")
                 
-                st.markdown(f"**Provided Tie Spacing:** $$s_{{prov}} = {s_prov:.1f}$$ cm")
+                # Criterion 2
+                st.markdown("- **48 times the tie bar diameter:**")
+                st.latex(r"s_2 = 48 \times d_t")
+                st.latex(f"s_2 = 48 \\times {dt_cm:.1f}")
+                st.latex(f"s_2 = {s2:.1f} \\text{{ cm}}")
                 
-                if s_prov <= s_max:
-                    st.success(f"✅ **Check:** Provided spacing ($s = {s_prov:.1f}$ cm) $\\le s_{{max}}$. Detail is SAFE.")
-                else:
-                    st.error(f"❌ **Check:** Provided spacing ($s = {s_prov:.1f}$ cm) exceeds limits!")
-                    
-            else:
-                st.markdown("**1. Spiral Reinforcement Limit:**")
-                st.markdown("For spiral columns, the volumetric spiral reinforcement ratio $\\rho_s$ must satisfy:")
-                st.latex(r"\rho_s \ge 0.45 \left( \frac{A_g}{A_{ch}} - 1 \right) \frac{f'_c}{f_{yt}}")
-                # สมมติการคำนวณ Ach สำหรับเสากลม
-                cover = 4.0
-                Ach = math.pi * ((b - 2*cover)/2)**2
-                st.latex(f"A_{{ch}} = {Ach:,.2f} \\text{{ cm}}^2")
-                st.info("💡 Note: You can expand the spiral calculations here similarly by defining pitch limits (2.5 cm to 7.5 cm) based on your engine variables.")
-        # --- Final Part: Conclusion ---
-        st.markdown("---")
-        if is_safe:
-            st.success(f"✅ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is $\\le$ 1.0 $\\rightarrow$ **SECTION IS SAFE**")
-        else:
-            st.error(f"❌ **Check Summary:** The Demand Ratio = **{demand_ratio:,.3f}** which is > 1.0 $\\rightarrow$ **SECTION IS UNSAFE**")
+                # Criterion 3
+                st.markdown("- **Least column dimension:**")
+                st.latex(r"s_3 = \min(b, h)")
+                st.latex(f"s_3 = \\min({engine.b:.1f}, {engine.h:.1f})")
+                st.latex(f"s_3 = {s3:.1f} \\text{{ cm}}")
+                
+                # Final Answer
+                st.markdown("**Governing Maximum Spacing:**")
+                st.latex(r"s_{max} = \min(s_1, s_2, s_3)")
+                st.latex(f"s_{{max}} = \\min({s1:.1f}, {s2:.1f}, {s3:.1f})")
+                st.latex(f"s_{{max}} = {s_max:.1f} \\text{{ cm}}")
+                
+                st.info(f"💡 **Conclusion:** The provided tie spacing must not exceed **{s_max:.1f} cm**.")
 
+            elif engine.shape == "Circular":
+                st.markdown("**1. Spiral Reinforcement Limit**")
+                dt_cm = 0.9
+                # Recovering the cover value from the engine's d_prime equation
+                cover_cm = engine.d_prime - 0.9 - (db_cm / 2)
+                Ach = np.pi * (engine.D - 2 * cover_cm)**2 / 4
+                
+                st.markdown("**Core area of the spirally reinforced column ($A_{ch}$):**")
+                st.latex(r"A_{ch} = \frac{\pi (D - 2 \times \text{cover})^2}{4}")
+                st.latex(f"A_{{ch}} = \\frac{{\\pi ({engine.D:.1f} - 2 \\times {cover_cm:.1f})^2}}{{4}}")
+                st.latex(f"A_{{ch}} = {Ach:,.2f} \\text{{ cm}}^2")
+                
+                st.markdown("**Minimum volumetric spiral reinforcement ratio ($\\rho_{s,min}$):**")
+                rho_s_min = 0.45 * (engine.Ag / Ach - 1) * (engine.fc / engine.fy)
+                
+                st.latex(r"\rho_{s,min} = 0.45 \left( \frac{A_g}{A_{ch}} - 1 \right) \frac{f'_c}{f_{yt}}")
+                st.latex(f"\\rho_{{s,min}} = 0.45 \\left( \\frac{{{engine.Ag:,.2f}}}{{{Ach:,.2f}}} - 1 \\right) \\frac{{{engine.fc}}}{{{engine.fy}}}")
+                st.latex(f"\\rho_{{s,min}} = {rho_s_min:.4f}")
     with tab7:
         st.markdown("### ⚡ Integrated Column Design & Analysis")
         st.info("💡 Specify the unbraced length and target slenderness to determine the initial section size, then verify it with a P-M Interaction Diagram.")
