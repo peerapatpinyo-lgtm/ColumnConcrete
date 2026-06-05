@@ -710,133 +710,149 @@ with col2:
             st.plotly_chart(fig_pmy, use_container_width=True)
 
     with tab2:
-        st.markdown("### 📊 Advanced P-M Interaction Diagram")
-        
-        # --- UI Controls สำหรับกราฟ ---
-        col_ctrl1, col_ctrl2 = st.columns([1, 1])
-        with col_ctrl1:
-            show_boundaries = st.toggle("Show ACI Boundaries (ρ = 1% - 8%)", value=True)
-        with col_ctrl2:
-            show_keypoints = st.toggle("Highlight Key Points (Max, Balance, Min)", value=True)
+            st.markdown("### 📊 Advanced P-M Interaction Diagram")
             
-        st.markdown("---")
+            # --- UI Controls สำหรับกราฟ ---
+            col_ctrl1, col_ctrl2 = st.columns([1, 1])
+            with col_ctrl1:
+                show_boundaries = st.toggle("Show ACI Boundaries (ρ = 1% - 8%)", value=True)
+            with col_ctrl2:
+                show_keypoints = st.toggle("Highlight Key Points (Max, Balance, Min)", value=True)
+                
+            st.markdown("---")
 
-        # --- สร้าง High-End Plotly Chart ---
-        fig_pm = go.Figure()
+            # --- สร้าง High-End Plotly Chart ---
+            fig_pm = go.Figure()
 
-        # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
-        if show_boundaries:
-            def get_ref_curve(target_rho):
-                target_as = target_rho * engine.Ag
-                ref_n_bars = max(4, int(target_as / 3.14)) 
-                if shape == "Rectangular":
-                    ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
-                    ref_ny = max(2, int(ref_n_bars / 2) - ref_nx + 2)
-                    ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
-                else:
-                    ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
-                ref_df, _ = ref_engine.solve_pm(axis='X')
-                return ref_df
+            # ตัวแปรเก็บค่า min/max เพื่อตั้งขอบเขตแกน Y ให้ครอบคลุมทุกเส้น
+            global_p_max = df_x['phiPn'].max()
+            global_p_min = df_x['phiPn'].min()
 
-            with st.spinner("Rendering ACI boundary limits..."):
-                df_1pct = get_ref_curve(0.01)
-                df_8pct = get_ref_curve(0.08)
+            # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
+            if show_boundaries:
+                def get_ref_curve(target_rho):
+                    target_as = target_rho * engine.Ag
+                    ref_n_bars = max(4, int(target_as / 3.14)) 
+                    if shape == "Rectangular":
+                        ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
+                        # แก้ไขสูตรคำนวณจำนวนเหล็กให้แม่นยำขึ้นป้องกัน Error
+                        ref_ny = max(2, int((ref_n_bars - 2*ref_nx)/2) + 2) 
+                        ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
+                    else:
+                        ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
+                    ref_df, _ = ref_engine.solve_pm(axis='X')
+                    return ref_df
 
+                with st.spinner("Rendering ACI boundary limits..."):
+                    df_1pct = get_ref_curve(0.01)
+                    df_8pct = get_ref_curve(0.08)
+
+                    # อัปเดตขอบเขตสูงสุด-ต่ำสุด เพื่อบังคับแกน Y ให้แสดงผลครบถ้วน
+                    global_p_max = max(global_p_max, df_8pct['phiPn'].max())
+                    global_p_min = min(global_p_min, df_8pct['phiPn'].min())
+
+                fig_pm.add_trace(go.Scatter(
+                    x=df_1pct['phiMn'], y=df_1pct['phiPn'],
+                    name="Min Limit (1%)", mode='lines',
+                    line=dict(color='rgba(149, 165, 166, 0.8)', width=1.5, dash='dashdot'),
+                    hoverinfo='skip'
+                ))
+                fig_pm.add_trace(go.Scatter(
+                    x=df_8pct['phiMn'], y=df_8pct['phiPn'],
+                    name="Max Limit (8%)", mode='lines',
+                    line=dict(color='rgba(231, 76, 60, 0.8)', width=1.5, dash='dashdot'),
+                    # 🟢 แก้ไข: ลบ fill='tonexty' ออก เพื่อป้องกันบั๊กแรเงาสะเปะสะปะของ Plotly
+                    hoverinfo='skip'
+                ))
+
+            # 2. เส้น Capacity จริงของหน้าตัด
             fig_pm.add_trace(go.Scatter(
-                x=df_1pct['phiMn'], y=df_1pct['phiPn'],
-                name="Min Limit (1%)", mode='lines',
-                line=dict(color='rgba(100, 100, 100, 0.4)', width=1.5, dash='dot'),
-                hoverinfo='skip'
+                x=df_x['phiMn'], y=df_x['phiPn'], 
+                name=f"X-Axis Capacity", mode='lines',
+                line=dict(color='#2980b9', width=3),
+                hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
             fig_pm.add_trace(go.Scatter(
-                x=df_8pct['phiMn'], y=df_8pct['phiPn'],
-                name="Max Limit (8%)", mode='lines',
-                line=dict(color='rgba(231, 76, 60, 0.3)', width=1.5, dash='dot'),
-                fill='tonexty', fillcolor='rgba(46, 204, 113, 0.08)',
-                hoverinfo='skip'
+                x=df_y['phiMn'], y=df_y['phiPn'], 
+                name=f"Y-Axis Capacity", mode='lines',
+                line=dict(color='#27ae60', width=3, dash='dash'),
+                hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
 
-        # 2. เส้น Capacity จริงของหน้าตัด
-        fig_pm.add_trace(go.Scatter(
-            x=df_x['phiMn'], y=df_x['phiPn'], 
-            name=f"X-Axis Capacity", mode='lines',
-            line=dict(color='#1f77b4', width=3),
-            hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
-        ))
-        fig_pm.add_trace(go.Scatter(
-            x=df_y['phiMn'], y=df_y['phiPn'], 
-            name=f"Y-Axis Capacity", mode='lines',
-            line=dict(color='#2ca02c', width=3, dash='dash'),
-            hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
-        ))
+            # 3. จุด Key Points (จุดสูงสุด, จุด Balance, จุดดัดล้วน และ จุดดึงล้วน)
+            if show_keypoints:
+                bal_idx = df_x['phiMn'].idxmax()
+                bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
+                max_P = df_x['phiPn'].max()
+                min_P = df_x['phiPn'].min() # 🟢 เพิ่มการหาจุดแรงดึงต่ำสุด
+                max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
 
-        # 3. จุด Key Points (จุดสูงสุด, จุด Balance, จุดดัดล้วน)
-        if show_keypoints:
-            # คำนวณหาจุด Balance Point โดยประมาณ (จุดที่ Moment สูงสุด) สำหรับแกน X
-            bal_idx = df_x['phiMn'].idxmax()
-            bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
-            max_P = df_x['phiPn'].max()
-            max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
+                # เพิ่มข้อความชี้จุด
+                annotations = [
+                    dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
+                    dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
+                    dict(x=max_M, y=0, xref="x", yref="y", text="Pure Bending", showarrow=True, arrowhead=2, ax=0, ay=-40, font=dict(size=10, color="#7f8c8d")),
+                    # 🟢 แสดงจุด Pure Tension ด้านล่างสุด
+                    dict(x=0, y=min_P, xref="x", yref="y", text="Pure Tension", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d"))
+                ]
+                fig_pm.update_layout(annotations=annotations)
 
-            # เพิ่มข้อความชี้จุด
-            annotations = [
-                dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
-                dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
-                dict(x=max_M, y=0, xref="x", yref="y", text="Pure Bending", showarrow=True, arrowhead=2, ax=0, ay=-40, font=dict(size=10, color="#7f8c8d"))
-            ]
-            fig_pm.update_layout(annotations=annotations)
+            # 4. จุด Demand Load พร้อมเส้นนำสายตา (Crosshairs)
+            fig_pm.add_trace(go.Scatter(
+                x=[Mcx, Mcy], y=[Pu, Pu], 
+                mode='markers', name="Factored Demands", 
+                marker=dict(color=['#e74c3c', '#e67e22'], size=14, symbol='cross', line=dict(width=2, color='white')),
+                hovertemplate="<b>Demand</b><br>Mc: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
+            ))
 
-        # 4. จุด Demand Load พร้อมเส้นนำสายตา (Crosshairs)
-        fig_pm.add_trace(go.Scatter(
-            x=[Mcx, Mcy], y=[Pu, Pu], 
-            mode='markers', name="Factored Demands", 
-            marker=dict(color=['#e74c3c', '#e67e22'], size=14, symbol='cross', line=dict(width=2, color='white')),
-            hovertemplate="<b>Demand</b><br>Mc: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
-        ))
+            # ลากเส้นนำสายตาไปยังแกน X และ Y สำหรับ Mcx (สีแดง)
+            fig_pm.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+            fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
+            # ลากเส้นนำสายตาสำหรับ Mcy (สีส้ม)
+            fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
 
-        # ลากเส้นนำสายตาไปยังแกน X และ Y สำหรับ Mcx (สีแดง)
-        fig_pm.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
-        fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
-        # ลากเส้นนำสายตาสำหรับ Mcy (สีส้ม)
-        fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
+            # 🟢 คำนวณ Range ของแกน Y ให้แสดงผลครบถ้วน
+            y_min = global_p_min * 1.1 if global_p_min < 0 else -10
+            y_max = global_p_max * 1.1
 
-        # --- การตกแต่ง Layout ขั้นสุด ---
-        fig_pm.update_layout(
-            xaxis=dict(
-                title="<b>Design Moment, φMn (ton-m)</b>",
-                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-                zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-                rangemode='tozero'
-            ),
-            yaxis=dict(
-                title="<b>Design Axial Strength, φPn (ton)</b>",
-                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
-                zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)'
-            ),
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            height=650,
-            hovermode="closest",
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-                bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1
-            ),
-            margin=dict(l=40, r=40, t=60, b=40)
-        )
+            # --- การตกแต่ง Layout ขั้นสุด ---
+            fig_pm.update_layout(
+                xaxis=dict(
+                    title="<b>Design Moment, φMn (ton-m)</b>",
+                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
+                    rangemode='tozero'
+                ),
+                yaxis=dict(
+                    title="<b>Design Axial Strength, φPn (ton)</b>",
+                    showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
+                    zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
+                    range=[y_min, y_max] # 🟢 บังคับให้แสดงจนสุดขอบด้านล่าง (Tension)
+                ),
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                height=650,
+                hovermode="closest",
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                    bgcolor='rgba(255,255,255,0.9)', bordercolor='rgba(0,0,0,0.1)', borderwidth=1
+                ),
+                margin=dict(l=40, r=40, t=60, b=40)
+            )
 
-        st.plotly_chart(fig_pm, use_container_width=True)
-        
-        # กล่องสรุปสถานะใต้กราฟ
-        st.markdown(
-            f"""
-            <div style="padding: 15px; border-radius: 5px; background-color: #f8f9fa; border-left: 5px solid {'#2ecc71' if is_safe else '#e74c3c'};">
-                <h4 style="margin-top: 0px; color: #2c3e50;">📊 P-M Analysis Result</h4>
-                <p style="margin-bottom: 0px;">The current reinforcement ratio is <strong>{engine.rho*100:.2f}%</strong>. 
-                Demand coordinates (M, P) must fall strictly <em>inside</em> the solid capacity curves to be considered structurally safe. 
-                Ensure your design also falls within the green optimal zone (1% - 8%) for constructability.</p>
-            </div>
-            """, unsafe_allow_html=True
-        )
+            st.plotly_chart(fig_pm, use_container_width=True)
+            
+            # กล่องสรุปสถานะใต้กราฟ
+            st.markdown(
+                f"""
+                <div style="padding: 15px; border-radius: 5px; background-color: #f8f9fa; border-left: 5px solid {'#2ecc71' if is_safe else '#e74c3c'};">
+                    <h4 style="margin-top: 0px; color: #2c3e50;">📊 P-M Analysis Result</h4>
+                    <p style="margin-bottom: 0px;">The current reinforcement ratio is <strong>{engine.rho*100:.2f}%</strong>. 
+                    Demand coordinates (M, P) must fall strictly <em>inside</em> the solid capacity curves to be considered structurally safe. 
+                    Ensure your design also falls within the green optimal zone (1% - 8%) for constructability.</p>
+                </div>
+                """, unsafe_allow_html=True
+            )
         
     with tab3:
         st.markdown("### 🏛️ God-Tier Structural Blueprint & BIM Dashboard")
