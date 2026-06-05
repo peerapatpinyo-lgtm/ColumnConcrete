@@ -748,7 +748,7 @@ with col2:
                     global_p_max = max(global_p_max, df_8pct['phiPn'].max())
                     global_p_min = min(global_p_min, df_8pct['phiPn'].min())
 
-                # สร้าง Polygon สำหรับแรเงาสีเขียว (เพิ่มการปิดลูปหัวท้ายให้สนิท)
+                # สร้าง Polygon สำหรับแรเงาสีเขียว (ปิดลูปหัวท้ายให้สนิท)
                 x_polygon = list(df_8pct['phiMn']) + list(df_1pct['phiMn'])[::-1]
                 y_polygon = list(df_8pct['phiPn']) + list(df_1pct['phiPn'])[::-1]
                 x_polygon.append(x_polygon[0]) # ล็อกรอยต่อไม่ให้แรเงาขาด
@@ -762,36 +762,31 @@ with col2:
                     hoverinfo='skip'
                 ))
 
-                # 🟢 แก้ไข: เปลี่ยนขอบเขต 1% และ 8% เป็น "เส้นทึบ" และดัดให้ "โค้งสมูท"
+                # 🟢 ลบ line_shape='spline' ออก เพื่อแก้ปัญหาเส้นขาด/แหว่ง
                 fig_pm.add_trace(go.Scatter(
                     x=df_1pct['phiMn'], y=df_1pct['phiPn'],
                     name="Min Limit (1%)", mode='lines',
                     line=dict(color='rgba(149, 165, 166, 0.9)', width=1.5), 
-                    line_shape='spline', # ดัดเส้นโค้ง
                     hoverinfo='skip'
                 ))
                 fig_pm.add_trace(go.Scatter(
                     x=df_8pct['phiMn'], y=df_8pct['phiPn'],
                     name="Max Limit (8%)", mode='lines',
                     line=dict(color='rgba(231, 76, 60, 0.6)', width=1.5), 
-                    line_shape='spline', # ดัดเส้นโค้ง
                     hoverinfo='skip'
                 ))
 
             # 2. เส้น Capacity จริงของหน้าตัด
-            # 🟢 แก้ไข: เปลี่ยน X และ Y เป็น "เส้นทึบทั้งหมด" แยกด้วยสีน้ำเงินและเขียว
             fig_pm.add_trace(go.Scatter(
                 x=df_x['phiMn'], y=df_x['phiPn'], 
                 name=f"X-Axis Capacity", mode='lines',
                 line=dict(color='#2980b9', width=3.5), 
-                line_shape='spline', # ดัดเส้นโค้ง
                 hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
             fig_pm.add_trace(go.Scatter(
                 x=df_y['phiMn'], y=df_y['phiPn'], 
                 name=f"Y-Axis Capacity", mode='lines',
-                line=dict(color='#27ae60', width=3.5), # ลบ dash='dash' ออก กลายเป็นเส้นทึบ
-                line_shape='spline', # ดัดเส้นโค้ง
+                line=dict(color='#27ae60', width=3.5),
                 hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
 
