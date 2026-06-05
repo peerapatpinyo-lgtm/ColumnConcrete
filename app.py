@@ -724,19 +724,18 @@ with col2:
             # --- สร้าง High-End Plotly Chart ---
             fig_pm = go.Figure()
 
-            # ตัวแปรเก็บค่า min/max เพื่อตั้งขอบเขตแกน Y ให้ครอบคลุมทุกเส้น
+            # ตัวแปรเก็บค่า min/max เพื่อตั้งขอบเขตแกน Y ให้ครอบคลุมการดึง-อัด 100%
             global_p_max = df_x['phiPn'].max()
             global_p_min = df_x['phiPn'].min()
 
-            # 1. จัดการเส้นขอบเขต 1% และ 8% (ถ้าเปิดใช้งาน)
+            # 1. จัดการเส้นขอบเขต 1% และ 8% และแถบแรเงาสีเขียว (Optimal Zone)
             if show_boundaries:
                 def get_ref_curve(target_rho):
                     target_as = target_rho * engine.Ag
                     ref_n_bars = max(4, int(target_as / 3.14)) 
                     if shape == "Rectangular":
                         ref_nx = max(2, int(np.sqrt(ref_n_bars * (b/h))))
-                        # แก้ไขสูตรคำนวณจำนวนเหล็กให้แม่นยำขึ้นป้องกัน Error
-                        ref_ny = max(2, int((ref_n_bars - 2*ref_nx)/2) + 2) 
+                        ref_ny = max(2, int((ref_n_bars - 2*ref_nx)/2) + 2)
                         ref_engine = RCColumnProBiaxial(shape, "4-Faces (Uniform)", b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
                     else:
                         ref_engine = RCColumnProBiaxial(shape, "Circular", b, h, fc, fy, 20, ref_n_bars, 0, 0, cover)
@@ -747,10 +746,23 @@ with col2:
                     df_1pct = get_ref_curve(0.01)
                     df_8pct = get_ref_curve(0.08)
 
-                    # อัปเดตขอบเขตสูงสุด-ต่ำสุด เพื่อบังคับแกน Y ให้แสดงผลครบถ้วน
                     global_p_max = max(global_p_max, df_8pct['phiPn'].max())
                     global_p_min = min(global_p_min, df_8pct['phiPn'].min())
 
+                # 🌟 ไฮไลต์ฟีเจอร์: เทคนิคการแรเงาพื้นที่สีเขียวแบบเนียนกริบ (ปิดบั๊ก Plotly)
+                # นำพิกัด 8% วนกลับไปหาพิกัด 1% เพื่อสร้างเป็นรูปปิด (Polygon)
+                x_polygon = list(df_8pct['phiMn']) + list(df_1pct['phiMn'])[::-1]
+                y_polygon = list(df_8pct['phiPn']) + list(df_1pct['phiPn'])[::-1]
+
+                fig_pm.add_trace(go.Scatter(
+                    x=x_polygon, y=y_polygon,
+                    fill='toself', fillcolor='rgba(46, 204, 113, 0.1)', # แรเงาสีเขียวจางๆ
+                    line=dict(color='rgba(255,255,255,0)'), # ซ่อนเส้นขอบของรูปปิด
+                    name="Optimal Zone (1%-8%)",
+                    hoverinfo='skip'
+                ))
+
+                # วาดเส้นประแสดง Limit 1% และ 8% ทับลงไป
                 fig_pm.add_trace(go.Scatter(
                     x=df_1pct['phiMn'], y=df_1pct['phiPn'],
                     name="Min Limit (1%)", mode='lines',
@@ -761,7 +773,6 @@ with col2:
                     x=df_8pct['phiMn'], y=df_8pct['phiPn'],
                     name="Max Limit (8%)", mode='lines',
                     line=dict(color='rgba(231, 76, 60, 0.8)', width=1.5, dash='dashdot'),
-                    # 🟢 แก้ไข: ลบ fill='tonexty' ออก เพื่อป้องกันบั๊กแรเงาสะเปะสะปะของ Plotly
                     hoverinfo='skip'
                 ))
 
@@ -784,15 +795,14 @@ with col2:
                 bal_idx = df_x['phiMn'].idxmax()
                 bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
                 max_P = df_x['phiPn'].max()
-                min_P = df_x['phiPn'].min() # 🟢 เพิ่มการหาจุดแรงดึงต่ำสุด
+                min_P = df_x['phiPn'].min() # เก็บค่าล่างสุด (ดึง)
                 max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
 
-                # เพิ่มข้อความชี้จุด
+                # ข้อความชี้จุด Key Points
                 annotations = [
                     dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
                     dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
                     dict(x=max_M, y=0, xref="x", yref="y", text="Pure Bending", showarrow=True, arrowhead=2, ax=0, ay=-40, font=dict(size=10, color="#7f8c8d")),
-                    # 🟢 แสดงจุด Pure Tension ด้านล่างสุด
                     dict(x=0, y=min_P, xref="x", yref="y", text="Pure Tension", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d"))
                 ]
                 fig_pm.update_layout(annotations=annotations)
@@ -805,13 +815,11 @@ with col2:
                 hovertemplate="<b>Demand</b><br>Mc: %{x:.2f} t-m<br>Pu: %{y:.2f} ton<extra></extra>"
             ))
 
-            # ลากเส้นนำสายตาไปยังแกน X และ Y สำหรับ Mcx (สีแดง)
             fig_pm.add_shape(type="line", x0=0, y0=Pu, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
             fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
-            # ลากเส้นนำสายตาสำหรับ Mcy (สีส้ม)
             fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
 
-            # 🟢 คำนวณ Range ของแกน Y ให้แสดงผลครบถ้วน
+            # 🟢 คำนวณ Range ของแกน Y ให้ครอบคลุมทุกเส้นไปจนถึงแกนดึง
             y_min = global_p_min * 1.1 if global_p_min < 0 else -10
             y_max = global_p_max * 1.1
 
@@ -827,7 +835,7 @@ with col2:
                     title="<b>Design Axial Strength, φPn (ton)</b>",
                     showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
                     zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-                    range=[y_min, y_max] # 🟢 บังคับให้แสดงจนสุดขอบด้านล่าง (Tension)
+                    range=[y_min, y_max] # แสดงกราฟจนสุดด้านล่าง
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
