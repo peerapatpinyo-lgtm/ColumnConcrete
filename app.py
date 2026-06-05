@@ -724,7 +724,6 @@ with col2:
             # --- สร้าง High-End Plotly Chart ---
             fig_pm = go.Figure()
 
-            # ตัวแปรเก็บค่า min/max เพื่อตั้งขอบเขตแกน Y ให้ครอบคลุมการดึง-อัด 100%
             global_p_max = df_x['phiPn'].max()
             global_p_min = df_x['phiPn'].min()
 
@@ -749,44 +748,50 @@ with col2:
                     global_p_max = max(global_p_max, df_8pct['phiPn'].max())
                     global_p_min = min(global_p_min, df_8pct['phiPn'].min())
 
-                # 🌟 ไฮไลต์ฟีเจอร์: เทคนิคการแรเงาพื้นที่สีเขียวแบบเนียนกริบ (ปิดบั๊ก Plotly)
-                # นำพิกัด 8% วนกลับไปหาพิกัด 1% เพื่อสร้างเป็นรูปปิด (Polygon)
+                # สร้าง Polygon สำหรับแรเงาสีเขียว (เพิ่มการปิดลูปหัวท้ายให้สนิท)
                 x_polygon = list(df_8pct['phiMn']) + list(df_1pct['phiMn'])[::-1]
                 y_polygon = list(df_8pct['phiPn']) + list(df_1pct['phiPn'])[::-1]
+                x_polygon.append(x_polygon[0]) # ล็อกรอยต่อไม่ให้แรเงาขาด
+                y_polygon.append(y_polygon[0])
 
                 fig_pm.add_trace(go.Scatter(
                     x=x_polygon, y=y_polygon,
-                    fill='toself', fillcolor='rgba(46, 204, 113, 0.1)', # แรเงาสีเขียวจางๆ
-                    line=dict(color='rgba(255,255,255,0)'), # ซ่อนเส้นขอบของรูปปิด
+                    fill='toself', fillcolor='rgba(46, 204, 113, 0.12)', 
+                    line=dict(color='rgba(255,255,255,0)'), 
                     name="Optimal Zone (1%-8%)",
                     hoverinfo='skip'
                 ))
 
-                # วาดเส้นประแสดง Limit 1% และ 8% ทับลงไป
+                # 🟢 แก้ไข: เปลี่ยนขอบเขต 1% และ 8% เป็น "เส้นทึบ" และดัดให้ "โค้งสมูท"
                 fig_pm.add_trace(go.Scatter(
                     x=df_1pct['phiMn'], y=df_1pct['phiPn'],
                     name="Min Limit (1%)", mode='lines',
-                    line=dict(color='rgba(149, 165, 166, 0.8)', width=1.5, dash='dashdot'),
+                    line=dict(color='rgba(149, 165, 166, 0.9)', width=1.5), 
+                    line_shape='spline', # ดัดเส้นโค้ง
                     hoverinfo='skip'
                 ))
                 fig_pm.add_trace(go.Scatter(
                     x=df_8pct['phiMn'], y=df_8pct['phiPn'],
                     name="Max Limit (8%)", mode='lines',
-                    line=dict(color='rgba(231, 76, 60, 0.8)', width=1.5, dash='dashdot'),
+                    line=dict(color='rgba(231, 76, 60, 0.6)', width=1.5), 
+                    line_shape='spline', # ดัดเส้นโค้ง
                     hoverinfo='skip'
                 ))
 
             # 2. เส้น Capacity จริงของหน้าตัด
+            # 🟢 แก้ไข: เปลี่ยน X และ Y เป็น "เส้นทึบทั้งหมด" แยกด้วยสีน้ำเงินและเขียว
             fig_pm.add_trace(go.Scatter(
                 x=df_x['phiMn'], y=df_x['phiPn'], 
                 name=f"X-Axis Capacity", mode='lines',
-                line=dict(color='#2980b9', width=3),
+                line=dict(color='#2980b9', width=3.5), 
+                line_shape='spline', # ดัดเส้นโค้ง
                 hovertemplate="<b>X-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
             fig_pm.add_trace(go.Scatter(
                 x=df_y['phiMn'], y=df_y['phiPn'], 
                 name=f"Y-Axis Capacity", mode='lines',
-                line=dict(color='#27ae60', width=3, dash='dash'),
+                line=dict(color='#27ae60', width=3.5), # ลบ dash='dash' ออก กลายเป็นเส้นทึบ
+                line_shape='spline', # ดัดเส้นโค้ง
                 hovertemplate="<b>Y-Axis</b><br>φMn: %{x:.2f} t-m<br>φPn: %{y:.2f} ton<extra></extra>"
             ))
 
@@ -795,10 +800,9 @@ with col2:
                 bal_idx = df_x['phiMn'].idxmax()
                 bal_M, bal_P = df_x.loc[bal_idx, 'phiMn'], df_x.loc[bal_idx, 'phiPn']
                 max_P = df_x['phiPn'].max()
-                min_P = df_x['phiPn'].min() # เก็บค่าล่างสุด (ดึง)
+                min_P = df_x['phiPn'].min() 
                 max_M = df_x.loc[df_x['phiPn'] <= 0.01, 'phiMn'].max() if not df_x[df_x['phiPn'] <= 0.01].empty else df_x['phiMn'].iloc[-1]
 
-                # ข้อความชี้จุด Key Points
                 annotations = [
                     dict(x=0, y=max_P, xref="x", yref="y", text="Pure Compression", showarrow=True, arrowhead=2, ax=50, ay=0, font=dict(size=10, color="#7f8c8d")),
                     dict(x=bal_M, y=bal_P, xref="x", yref="y", text="Balance Point", showarrow=True, arrowhead=2, ax=40, ay=-30, font=dict(size=10, color="#7f8c8d")),
@@ -807,7 +811,7 @@ with col2:
                 ]
                 fig_pm.update_layout(annotations=annotations)
 
-            # 4. จุด Demand Load พร้อมเส้นนำสายตา (Crosshairs)
+            # 4. จุด Demand Load พร้อมเส้นนำสายตา
             fig_pm.add_trace(go.Scatter(
                 x=[Mcx, Mcy], y=[Pu, Pu], 
                 mode='markers', name="Factored Demands", 
@@ -819,11 +823,10 @@ with col2:
             fig_pm.add_shape(type="line", x0=Mcx, y0=0, x1=Mcx, y1=Pu, line=dict(color="#e74c3c", width=1, dash="dot"))
             fig_pm.add_shape(type="line", x0=Mcy, y0=0, x1=Mcy, y1=Pu, line=dict(color="#e67e22", width=1, dash="dot"))
 
-            # 🟢 คำนวณ Range ของแกน Y ให้ครอบคลุมทุกเส้นไปจนถึงแกนดึง
             y_min = global_p_min * 1.1 if global_p_min < 0 else -10
             y_max = global_p_max * 1.1
 
-            # --- การตกแต่ง Layout ขั้นสุด ---
+            # --- การตกแต่ง Layout ---
             fig_pm.update_layout(
                 xaxis=dict(
                     title="<b>Design Moment, φMn (ton-m)</b>",
@@ -835,7 +838,7 @@ with col2:
                     title="<b>Design Axial Strength, φPn (ton)</b>",
                     showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)',
                     zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.2)',
-                    range=[y_min, y_max] # แสดงกราฟจนสุดด้านล่าง
+                    range=[y_min, y_max] 
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
@@ -850,7 +853,6 @@ with col2:
 
             st.plotly_chart(fig_pm, use_container_width=True)
             
-            # กล่องสรุปสถานะใต้กราฟ
             st.markdown(
                 f"""
                 <div style="padding: 15px; border-radius: 5px; background-color: #f8f9fa; border-left: 5px solid {'#2ecc71' if is_safe else '#e74c3c'};">
