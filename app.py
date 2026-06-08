@@ -504,72 +504,65 @@ col1, col_main = st.columns([1, 2.5])
 # ══════════════════════════════════════════════════════════════════════════════
 with col1:
     with st.expander("1. Section & Reinforcement", expanded=True):
-        shape = st.radio("Section Shape", ["Rectangular", "Circular"], horizontal=True)
-        fc    = st.number_input("f'c (ksc)", value=280, min_value=140, max_value=700)
-        fy    = st.number_input("fy  (ksc)", value=4000, min_value=2400, max_value=6000)
+        shape = st.radio("Section Shape", ["Rectangular", "Circular"], horizontal=True, key="shape")
+        fc    = st.number_input("f'c (ksc)", value=280, min_value=140, max_value=700, key="fc_main")
+        fy    = st.number_input("fy  (ksc)", value=4000, min_value=2400, max_value=6000, key="fy_main")
 
         if shape == "Rectangular":
             c1, c2 = st.columns(2)
-            b = c1.number_input("Width b (cm) [X]",  value=40, min_value=20)
-            h = c2.number_input("Depth h (cm) [Y]",  value=60, min_value=20)
-            layout = st.selectbox("Rebar Layout",
-                                  ["4-Faces (Uniform)", "2-Faces (Top/Bottom)"])
+            b = c1.number_input("Width b (cm) [X]", value=40, min_value=20, key="b_main")
+            h = c2.number_input("Depth h (cm) [Y]", value=60, min_value=20, key="h_main")
+            layout = st.selectbox("Rebar Layout", ["4-Faces (Uniform)", "2-Faces (Top/Bottom)"], key="layout_main")
             if layout == "2-Faces (Top/Bottom)":
-                n_bars = st.number_input("Total Bars (even)", 4, 40, 8, step=2)
+                n_bars = st.number_input("Total Bars (even)", 4, 40, 8, step=2, key="n_bars_2f")
                 nx = ny = 0
             else:
                 c3, c4 = st.columns(2)
-                nx = c3.number_input("Bars on X-faces (nx)", 2, 20, 3)
-                ny = c4.number_input("Bars on Y-faces (ny)", 2, 20, 4)
+                nx = c3.number_input("Bars on X-faces (nx)", 2, 20, 3, key="nx_main")
+                ny = c4.number_input("Bars on Y-faces (ny)", 2, 20, 4, key="ny_main")
                 n_bars = 2 * nx + 2 * (ny - 2) + 4  # corner bars shared
         else:
-            b = h = st.number_input("Diameter D (cm)", value=50, min_value=30)
+            b = h = st.number_input("Diameter D (cm)", value=50, min_value=30, key="D_main")
             layout   = "Circular"
-            n_bars   = st.number_input("Total Bars (≥ 6)", 6, 60, 8)
+            n_bars   = st.number_input("Total Bars (≥ 6)", 6, 60, 8, key="n_bars_circ")
             nx = ny  = 0
 
-        db     = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2)
-        cover  = st.number_input("Clear Cover (cm)", value=4.0, min_value=2.5)
+        db     = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2, key="db_main")
+        cover  = st.number_input("Clear Cover (cm)", value=4.0, min_value=2.5, key="cover_main")
 
     with st.expander("2. Loads & Frame Type", expanded=True):
-        Pu    = st.number_input("Factored Axial Pu (ton)", value=150.0, min_value=0.0)
+        Pu    = st.number_input("Factored Axial Pu (ton)", value=150.0, min_value=0.0, key="Pu_main")
         c5, c6 = st.columns(2)
-        Mux   = c5.number_input("Mux (ton-m)", value=15.0, help="Moment about X-axis (bending in h-direction)")
-        Muy   = c6.number_input("Muy (ton-m)", value=10.0, help="Moment about Y-axis (bending in b-direction)")
+        Mux   = c5.number_input("Mux (ton-m)", value=15.0, key="Mux_main", help="Moment about X-axis (bending in h-direction)")
+        Muy   = c6.number_input("Muy (ton-m)", value=10.0, key="Muy_main", help="Moment about Y-axis (bending in b-direction)")
 
         st.markdown("---")
-        frame_type = st.radio("Frame Type",
-                              ["Non-Sway (Braced)", "Sway (Unbraced)"],
-                              horizontal=True)
+        frame_type = st.radio("Frame Type", ["Non-Sway (Braced)", "Sway (Unbraced)"], horizontal=True, key="frame_type_main")
 
         if frame_type == "Non-Sway (Braced)":
             cx1, cx2, cx3 = st.columns(3)
-            Lu_x  = cx1.number_input("Lu X (m)", value=4.0, step=0.5)
-            K_x   = cx2.number_input("K  X",     value=1.0, step=0.1, min_value=0.5)
-            Cm_x  = cx3.number_input("Cm X",     value=1.0, step=0.05, min_value=0.4)
+            Lu_x  = cx1.number_input("Lu X (m)", value=4.0, step=0.5, key="Lu_x_ns")
+            K_x   = cx2.number_input("K  X", value=1.0, step=0.1, min_value=0.5, key="K_x_main")
+            Cm_x  = cx3.number_input("Cm X", value=1.0, step=0.05, min_value=0.4, key="Cm_x_main")
 
             cy1, cy2, cy3 = st.columns(3)
-            Lu_y  = cy1.number_input("Lu Y (m)", value=4.0, step=0.5)
-            K_y   = cy2.number_input("K  Y",     value=1.0, step=0.1, min_value=0.5)
-            Cm_y  = cy3.number_input("Cm Y",     value=1.0, step=0.05, min_value=0.4)
+            Lu_y  = cy1.number_input("Lu Y (m)", value=4.0, step=0.5, key="Lu_y_ns")
+            K_y   = cy2.number_input("K  Y", value=1.0, step=0.1, min_value=0.5, key="K_y_main")
+            Cm_y  = cy3.number_input("Cm Y", value=1.0, step=0.05, min_value=0.4, key="Cm_y_main")
 
-            beta_d = st.slider("β_d (Sustained Load Ratio)", 0.0, 1.0, 0.6)
+            beta_d = st.slider("β_d (Sustained Load Ratio)", 0.0, 1.0, 0.6, key="beta_d_ns")
             delta_sx = delta_sy = 1.0
 
         else:  # Sway
-            sway_method = st.radio("δs Method",
-                                   ["Stability Index Q",
-                                    "ΣPu & ΣPc",
-                                    "Direct Input"],
-                                   horizontal=True)
+            sway_method = st.radio("δs Method", ["Stability Index Q", "ΣPu & ΣPc", "Direct Input"], horizontal=True, key="sway_method")
             if sway_method == "Stability Index Q":
-                Q_val     = st.number_input("Q", 0.0, 0.99, 0.05, step=0.01)
+                Q_val     = st.number_input("Q", 0.0, 0.99, 0.05, step=0.01, key="Q_sway")
                 delta_sx  = delta_sy = max(1.0, 1.0 / (1.0 - Q_val))
                 st.info(f"δs = {delta_sx:.3f}")
             elif sway_method == "ΣPu & ΣPc":
                 cs1, cs2 = st.columns(2)
-                sum_Pu = cs1.number_input("ΣPu (ton)", 0.1, value=500.0)
-                sum_Pc = cs2.number_input("ΣPc (ton)", 0.1, value=2000.0)
+                sum_Pu = cs1.number_input("ΣPu (ton)", 0.1, value=500.0, key="sum_Pu_sway")
+                sum_Pc = cs2.number_input("ΣPc (ton)", 0.1, value=2000.0, key="sum_Pc_sway")
                 limit  = 0.75 * sum_Pc
                 if sum_Pu >= limit:
                     st.error("⚠️ ΣPu ≥ 0.75ΣPc → Frame unstable!")
@@ -579,34 +572,33 @@ with col1:
                     st.info(f"δs = {delta_sx:.3f}")
             else:
                 cs1, cs2 = st.columns(2)
-                delta_sx = cs1.number_input("δs X", value=1.2, step=0.05, min_value=1.0)
-                delta_sy = cs2.number_input("δs Y", value=1.2, step=0.05, min_value=1.0)
+                delta_sx = cs1.number_input("δs X", value=1.2, step=0.05, min_value=1.0, key="delta_sx_dir")
+                delta_sy = cs2.number_input("δs Y", value=1.2, step=0.05, min_value=1.0, key="delta_sy_dir")
 
             # Sway frames: non-sway magnifier still required for non-sway component
             cx1, cx2, cx3 = st.columns(3)
-            Lu_x  = cx1.number_input("Lu X (m)", value=4.0, step=0.5)
-            K_x   = cx2.number_input("K  X (NS)", value=0.5, step=0.05, min_value=0.1)
-            Cm_x  = cx3.number_input("Cm X",      value=1.0, step=0.05, min_value=0.4)
+            Lu_x  = cx1.number_input("Lu X (m)", value=4.0, step=0.5, key="Lu_x_sw")
+            K_x   = cx2.number_input("K  X (NS)", value=0.5, step=0.05, min_value=0.1, key="K_x_sw")
+            Cm_x  = cx3.number_input("Cm X", value=1.0, step=0.05, min_value=0.4, key="Cm_x_sw")
             cy1, cy2, cy3 = st.columns(3)
-            Lu_y  = cy1.number_input("Lu Y (m)", value=4.0, step=0.5)
-            K_y   = cy2.number_input("K  Y (NS)", value=0.5, step=0.05, min_value=0.1)
-            Cm_y  = cy3.number_input("Cm Y",      value=1.0, step=0.05, min_value=0.4)
-            beta_d = st.slider("β_d", 0.0, 1.0, 0.6)
+            Lu_y  = cy1.number_input("Lu Y (m)", value=4.0, step=0.5, key="Lu_y_sw")
+            K_y   = cy2.number_input("K  Y (NS)", value=0.5, step=0.05, min_value=0.1, key="K_y_sw")
+            Cm_y  = cy3.number_input("Cm Y", value=1.0, step=0.05, min_value=0.4, key="Cm_y_sw")
+            beta_d = st.slider("β_d", 0.0, 1.0, 0.6, key="beta_d_sw")
 
     with st.expander("3. Shear, Torsion & Seismic", expanded=True):
         st.subheader("🛡️ Shear Design")
         cv5, cv6 = st.columns(2)
-        vux_ton = cv5.number_input("Vux (ton)", value=5.0, step=1.0)
-        vuy_ton = cv6.number_input("Vuy (ton)", value=5.0, step=1.0)
+        vux_ton = cv5.number_input("Vux (ton)", value=5.0, step=1.0, key="vux_main")
+        vuy_ton = cv6.number_input("Vuy (ton)", value=5.0, step=1.0, key="vuy_main")
 
         c7, c8 = st.columns(2)
-        tie_dia  = c7.selectbox("Tie ⌀ (mm)", [6, 9, 12, 16], index=1,
-                                format_func=lambda x: f"RB{x}" if x < 10 else f"DB{x}")
-        tie_legs = c8.number_input("Stirrup Legs", 2, 10, 2)
+        tie_dia  = c7.selectbox("Tie ⌀ (mm)", [6, 9, 12, 16], index=1, format_func=lambda x: f"RB{x}" if x < 10 else f"DB{x}", key="tie_dia_main")
+        tie_legs = c8.number_input("Stirrup Legs", 2, 10, 2, key="tie_legs_main")
 
         st.markdown("---")
-        tu_tonm    = st.number_input("Tu (ton-m)", value=0.0, step=0.5)
-        is_seismic = st.toggle("Seismic Detailing (SMF)", value=True)
+        tu_tonm    = st.number_input("Tu (ton-m)", value=0.0, step=0.5, key="tu_main")
+        is_seismic = st.toggle("Seismic Detailing (SMF)", value=True, key="seismic_main")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -892,8 +884,8 @@ with col_main:
     # ─────────────────────────────────────────────────────────────────────────
     with tab2:
         st.markdown("### 📊 P-M Interaction Diagram")
-        show_bounds = st.toggle("Show ACI ρ-limits (1% & 8%)", value=True)
-        show_keys   = st.toggle("Label Key Points", value=True)
+        show_bounds = st.toggle("Show ACI ρ-limits (1% & 8%)", value=True, key="show_bounds_t2")
+        show_keys   = st.toggle("Label Key Points", value=True, key="show_keys_t2")
 
         fig_pm = go.Figure()
 
@@ -1001,9 +993,9 @@ with col_main:
 
         sub1, sub2 = st.tabs(["2D Section", "3D Cage"])
         with sub1:
-            show_dim  = st.toggle("Show Dimensions", value=True)
-            show_lid  = st.toggle("Bar Labels",       value=True)
-            show_spec = st.toggle("Material Specs",   value=True)
+            show_dim  = st.toggle("Show Dimensions", value=True, key="show_dim_t3")
+            show_lid  = st.toggle("Bar Labels", value=True, key="show_lid_t3")
+            show_spec = st.toggle("Material Specs", value=True, key="show_spec_t3")
 
             dark = '#020617'; blue = '#38bdf8'; red = '#ef4444'; gold = '#fbbf24'
             fig2d = go.Figure()
@@ -1254,15 +1246,15 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
         st.markdown("Estimate minimum section dimensions from slenderness limits.")
 
         qs1, qs2, qs3 = st.columns(3)
-        q_L       = qs1.number_input("Unbraced Length (m)", 1.0, 30.0, 4.0, 0.5)
-        q_K       = qs2.number_input("K factor", 0.5, 2.0, 1.0, 0.1)
-        q_klr_lim = qs3.slider("Target kl/r limit", 10, 50, 22)
+        q_L       = qs1.number_input("Unbraced Length (m)", 1.0, 30.0, 4.0, 0.5, key="q_L_qs")
+        q_K       = qs2.number_input("K factor", 0.5, 2.0, 1.0, 0.1, key="q_K_qs")
+        q_klr_lim = qs3.slider("Target kl/r limit", 10, 50, 22, key="q_klr_qs")
 
         with st.expander("Material Settings", expanded=False):
             qm1, qm2, qm3 = st.columns(3)
-            q_fc  = qm1.number_input("f'c (ksc)", 140, 700, 280)
-            q_fy  = qm2.number_input("fy  (ksc)", 2400, 6000, 4000)
-            q_rho = qm3.slider("Target ρ (%)", 1.0, 6.0, 2.0, 0.5) / 100.0
+            q_fc  = qm1.number_input("f'c (ksc)", 140, 700, 280, key="q_fc_qs")
+            q_fy  = qm2.number_input("fy  (ksc)", 2400, 6000, 4000, key="q_fy_qs")
+            q_rho = qm3.slider("Target ρ (%)", 1.0, 6.0, 2.0, 0.5, key="q_rho_qs") / 100.0
 
         KL_cm = q_K * q_L * 100.0
         min_h = KL_cm / (0.3 * q_klr_lim)
