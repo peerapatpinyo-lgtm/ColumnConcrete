@@ -222,15 +222,17 @@ class RCColumn:
             Mn = (Mc + Mn_s)  / 100_000.0          # ton-m
 
             # ── φ factor (extreme tension strain in outermost steel) ────────
+            # ACI 318-19 §21.2.2: εt,lim = fy/Es + 0.003  (fy-dependent, not constant)
             et   = EPS_CU * (dt - c) / c
             ey   = self.fy / self.Es
-            if et >= EPS_TY_LIM:
+            eps_ty = self.eps_ty_lim   # fy/Es + 0.003  (correct per §21.2.2)
+            if et >= eps_ty:
                 phi = PHI_FLEX
             elif et <= ey:
                 phi = phi_comp
             else:
                 phi = phi_comp + (PHI_FLEX - phi_comp) * \
-                      (et - ey) / (EPS_TY_LIM - ey)
+                      (et - ey) / (eps_ty - ey)
 
             results.append({
                 'c': c, 'Pn': Pn, 'Mn': abs(Mn),
@@ -254,8 +256,12 @@ class RCColumn:
         df = pd.DataFrame(results).sort_values('Pn').reset_index(drop=True)
         # Clip phiPn to the code-limited maximum (ACI 22.4.2)
         df['phiPn'] = df['phiPn'].clip(upper=phi_pn_max)
-        # Remove duplicate phiPn values to keep interp1d monotonic
-        df = df.drop_duplicates(subset=['phiPn'], keep='first')
+        # Remove duplicate phiPn values to keep np.interp monotonic.
+        # IMPORTANT: keep='last' so the squash point (highest Pn, appended last)
+        # is the one that survives when multiple rows share the same clipped phiPn.
+        # This preserves the full Pn range on the curve.
+        df = df.drop_duplicates(subset=['phiPn'], keep='last')
+        df = df.sort_values('phiPn').reset_index(drop=True)
 
         return df, phi_pn_max
 
@@ -601,9 +607,15 @@ with col1:
                 nx = ny = 0
             else:
                 c3, c4 = st.columns(2)
-                nx = c3.number_input("Bars on X-faces (nx)", 2, 20, 3, key="nx_main")
-                ny = c4.number_input("Bars on Y-faces (ny)", 2, 20, 4, key="ny_main")
-                n_bars = 2 * nx + 2 * (ny - 2) + 4  # corner bars shared
+                nx = c3.number_input("Bars on X-faces (nx)", 2, 20, 3, key="nx_main",
+                                     help="Bars along top & bottom faces (including corners)")
+                ny = c4.number_input("Bars on Y-faces (ny)", 2, 20, 4, key="ny_main",
+                                     help="Bars along left & right faces (including corners)")
+                # nx bars on top + nx on bottom + (ny-2) on left + (ny-2) on right
+                # Corners are shared with top/bottom, so excluded from side count.
+                n_bars = 2 * nx + 2 * (ny - 2)
+                st.caption(f"→ **{n_bars} bundle positions** "
+                           f"({nx} top + {nx} bottom + {ny-2} left + {ny-2} right)")
         else:
             b = h = st.number_input("Diameter D (cm)", value=50, min_value=30, key="D_main")
             layout   = "Circular"
@@ -1396,9 +1408,13 @@ MKS coefficient 0.53 ≡ SI coefficient 0.17 (√(10.2 ksc/MPa) ≈ 3.19; 0.53/3
 * **bwy** (web width for Y-shear) = {s['bwy']} cm
 
 #### 2. Concrete Shear Capacity (ACI 318-19 Table 22.5.5.1)
-$$V_c = 0.53\\sqrt{{f'_c}}\\,b_w\\,d\\left(1 + \\frac{{N_u}}{{140 A_g}}\\right)$$
-* **Vcx** = 0.53 × √{fc} × {s['bwx']} × {s['dx']:.2f} × (1 + {Pu*1000:.0f}/{140*engine.Ag:.0f}) = **{s['Vcx_ton']:.3f} ton**
-* **Vcy** = 0.53 × √{fc} × {s['bwy']} × {s['dy']:.2f} × (1 + {Pu*1000:.0f}/{140*engine.Ag:.0f}) = **{s['Vcy_ton']:.3f} ton**
+Exact formula applied via MPa conversion (ACI SI form, then converted to MKS):
+$$V_c = \\left[0.543\\sqrt{{f'_c(ksc)}} + \\frac{{N_u\\,(kgf)}}{{6\\,A_g(cm^2)}}\\right] b_w\\,d \\quad [kgf]$$
+*(0.543 = 0.17 × √10.197; N_u/(6·A_g) is the axial term in ksc — additive, not multiplicative)*
+* f'c = {fc} ksc → {fc/10.197:.3f} MPa; Ag = {engine.Ag:.0f} cm²
+* Nu = {Pu*1000:.0f} kgf; Nu/(6·Ag) = {Pu*1000/(6*engine.Ag):.4f} ksc
+* **Vcx** = [0.543×√{fc} + {Pu*1000/(6*engine.Ag):.4f}] × {s['bwx']} × {s['dx']:.2f} / 1000 = **{s['Vcx_ton']:.3f} ton**
+* **Vcy** = [0.543×√{fc} + {Pu*1000/(6*engine.Ag):.4f}] × {s['bwy']} × {s['dy']:.2f} / 1000 = **{s['Vcy_ton']:.3f} ton**
 
 #### 3. Transverse Steel Provided
 * Tie: {f"RB{tie_dia}" if tie_dia<10 else f"DB{tie_dia}"}, legs = {tie_legs}
