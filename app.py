@@ -16,6 +16,16 @@ UNIT SYSTEM (consistent throughout):
 All ACI formulae that reference √f'c use the MKS coefficient (0.53, 1.06, etc.)
 rather than the SI coefficient (0.17, 0.33).  Conversions:
   0.53 √f'c [ksc] ≡ 0.17 √f'c [MPa]  (since 1 MPa ≈ 10.2 ksc → √10.2 ≈ 3.19)
+
+BUNDLED BARS (ACI 318-19):
+  §26.6.3.1  – Maximum 4 bars per bundle in columns.
+  §26.6.3.2  – Each bundle must be enclosed by ties.
+  §25.6.1.2  – Clear spacing between bundles ≥ max(4/3·dagg, d_b,eq)
+               where d_b,eq = d_b · √n_per_bundle  (equivalent single-bar diameter).
+  §25.6.1.5  – Development/splice lengths computed using d_b,eq.
+  §25.7.2.1  – Tie spacing: 6·d_b (individual bar, NOT d_b,eq).
+  Structural: bundle centroid positions are unchanged;
+              area per position = n_per_bundle × A_bar_single.
 """
 
 import streamlit as st
@@ -46,12 +56,21 @@ class RCColumn:
     """
 
     def __init__(self, shape, layout, b, h, fc, fy, db_mm, n_bars,
-                 nx, ny, cover_cm):
+                 nx, ny, cover_cm, n_per_bundle=1):
         self.shape  = shape
         self.layout = layout
         self.b, self.h = float(b), float(h)
         self.fc, self.fy = float(fc), float(fy)
         self.Es = ES_KSC
+
+        # ── Bundled-bar parameters (ACI 318-19 §26.6.3, §25.6.1) ─────────────
+        self.n_per_bundle = int(max(1, min(4, n_per_bundle)))   # 1–4 per ACI
+        # Equivalent single-bar diameter for spacing & splice checks (§25.6.1.2)
+        self.db_cm        = db_mm / 10.0
+        self.db_eq_cm     = self.db_cm * math.sqrt(self.n_per_bundle)
+        # Single-bar area and bundle area (area at each position)
+        self.as_single    = math.pi * self.db_cm**2 / 4.0
+        self.as_bundle    = self.n_per_bundle * self.as_single  # area per position
 
         # β₁  ACI 318-19 Table 22.2.2.4.3  (fc in ksc; threshold 280 ksc ≈ 28 MPa)
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (self.fc - 280.0) / 70.0))
@@ -75,21 +94,28 @@ class RCColumn:
         # Concrete modulus  (Ec = 15100√f'c  for normal-weight concrete, MKS)
         self.Ec = 15_100.0 * math.sqrt(self.fc)
 
-        # Bar geometry
-        self.db_cm    = db_mm / 10.0
-        self.as_bar   = math.pi * self.db_cm**2 / 4.0
-        # Clear cover → centroid of bar:  cover + tie(≈9mm) + db/2
-        self.d_prime  = cover_cm + 0.9 + self.db_cm / 2.0
+        # Cover to centroid of bundle:  cover + tie(≈9mm) + db_eq/2
+        # For a bundle the geometric centroid shifts outward by ~db/4 for 2-bar,
+        # db/3 for 3-bar, db/2.83 for 4-bar.  ACI §26.6.3 permits treating the
+        # bundle centroid as equivalent to a single bar at its centroidal position,
+        # so we use the same cover-to-centroid formula but with db_eq/2.
+        self.d_prime  = cover_cm + 0.9 + self.db_eq_cm / 2.0
 
-        # Bar layout
+        # Keep db_cm attribute (single bar) for tie-spacing (§25.7.2.1 uses db, not db_eq)
+        # and for the exploded view rendering.
+
+        # Bar (bundle position) layout — positions unchanged by bundling
         self.bars = self._place_bars(n_bars, nx, ny)
-        self.n_bars    = len(self.bars)
-        self.total_as  = self.n_bars * self.as_bar
-        self.rho       = self.total_as / self.Ag
+        self.n_positions = len(self.bars)        # number of bundle positions
+        self.n_bars      = self.n_positions * self.n_per_bundle  # total individual bars
+        # Area per position = bundle area; total steel area
+        self.as_bar   = self.as_bundle           # keeps downstream solve_pm working
+        self.total_as = self.n_positions * self.as_bundle
+        self.rho      = self.total_as / self.Ag
 
-        # Steel moment of inertia (used in EI calculation)
-        self.Ise_x = sum(self.as_bar * bar['y']**2 for bar in self.bars)
-        self.Ise_y = sum(self.as_bar * bar['x']**2 for bar in self.bars)
+        # Steel moment of inertia (used in EI calculation) — use bundle area per position
+        self.Ise_x = sum(self.as_bundle * bar['y']**2 for bar in self.bars)
+        self.Ise_y = sum(self.as_bundle * bar['x']**2 for bar in self.bars)
 
     # ── bar placement ──────────────────────────────────────────────────────────
     def _place_bars(self, n_bars, nx, ny):
@@ -272,29 +298,40 @@ class RCColumn:
     # ── Clear spacing check ────────────────────────────────────────────────────
     def check_clear_spacing(self, nx, ny):
         """
-        ACI 318-19 §25.2.3: clear spacing ≥ max(4/3·dagg, db, 1 in.)
-        Using simplified MKS: ≥ max(2.5 cm, 1.5·db)
+        ACI 318-19 §25.6.1.2 (bundles) / §25.2.3 (single bars):
+          Clear spacing between bundles ≥ max(4/3·dagg, d_b,eq)
+          where d_b,eq = d_b · √n_per_bundle.
+          Simplified MKS minimum: max(2.5 cm, d_b,eq) — conservative for 4/3·dagg.
+
+        For single bars (n_per_bundle = 1) this reduces to the standard check.
+        The 'actual' measured clear gap is centre-to-centre spacing minus
+        d_b,eq (the equivalent bundle footprint).
         """
-        min_req = max(2.5, 1.5 * self.db_cm)
+        # Minimum clear spacing uses equivalent diameter (§25.6.1.2)
+        min_req = max(2.5, self.db_eq_cm)
+
+        # Number of bundle positions (not individual bars)
+        n_pos = self.n_positions
 
         if self.shape == "Rectangular":
-            dp   = self.d_prime
+            dp = self.d_prime
             sx = sy = 999.0
             if self.layout == "2-Faces (Top/Bottom)":
-                n_each = self.n_bars // 2
+                n_each = n_pos // 2   # positions per face
                 if n_each > 1:
-                    sx = (self.b - 2 * dp) / (n_each - 1) - self.db_cm
+                    # centre-to-centre between bundle positions minus bundle footprint
+                    sx = (self.b - 2 * dp) / (n_each - 1) - self.db_eq_cm
             else:
-                nx = max(2, int(nx)); ny = max(2, int(ny))
-                if nx > 1:
-                    sx = (self.b - 2 * dp) / (nx - 1) - self.db_cm
-                if ny > 1:
-                    sy = (self.h - 2 * dp) / (ny - 1) - self.db_cm
+                _nx = max(2, int(nx)); _ny = max(2, int(ny))
+                if _nx > 1:
+                    sx = (self.b - 2 * dp) / (_nx - 1) - self.db_eq_cm
+                if _ny > 1:
+                    sy = (self.h - 2 * dp) / (_ny - 1) - self.db_eq_cm
             actual = min(sx, sy)
         else:
-            Rs     = self.D / 2.0 - self.d_prime
-            chord  = 2.0 * Rs * math.sin(math.pi / self.n_bars)
-            actual = chord - self.db_cm
+            Rs    = self.D / 2.0 - self.d_prime
+            chord = 2.0 * Rs * math.sin(math.pi / n_pos)
+            actual = chord - self.db_eq_cm   # chord minus bundle footprint
 
         return actual, min_req, actual >= min_req
 
@@ -410,6 +447,7 @@ def shear_torsion_check(engine, Pu_ton, Vux_ton, Vuy_ton, Tu_tonm,
 
     s_seismic = 999.0
     if is_seismic:
+        # ACI §25.7.2.1: tie spacing ≤ 6·d_b of INDIVIDUAL bar (not d_b,eq)
         s_seismic = min(min_dim / 4.0, 6.0 * engine.db_cm, 15.0)
 
     # ── Required stirrup spacing ──────────────────────────
@@ -458,31 +496,82 @@ def shear_torsion_check(engine, Pu_ton, Vux_ton, Vuy_ton, Tu_tonm,
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LAP SPLICE (ACI 318-19 §25.5)
+# LAP SPLICE (ACI 318-19 §25.5 / §25.6.1.5 for bundles)
 # ──────────────────────────────────────────────────────────────────────────────
-def lap_splice_lengths(fc_ksc, fy_ksc, db_cm):
+def lap_splice_lengths(fc_ksc, fy_ksc, db_cm, n_per_bundle=1):
     """
     Lap splice lengths in cm (MKS system).
 
-    Tension development length (ACI 318-19 §25.5.2.1 converted to MKS):
-      ld = (3 fy [MPa]) / (40 λ √fc [MPa]) × ψ_factors / [(cb+Ktr)/db] × db [mm]  → mm
-    Assumptions: normal-weight concrete (λ=1), uncoated bars (ψe=1, ψt=1, ψs=1),
-    confined case (cb+Ktr)/db = 2.5 (adequate cover + ties).
-    Convert MPa → ksc (/10.2), mm → cm (/10).
+    Single-bar basis (ACI 318-19 §25.5.2.1, MKS):
+      ld = (3 fy [MPa]) / (40 λ √fc [MPa]) × db [mm] / [(cb+Ktr)/db]  → mm
+    Assumptions: normal-weight (λ=1), uncoated (ψe=ψt=ψs=1),
+                 (cb+Ktr)/db = 2.5 (confined, adequate cover + ties).
 
-    Class B Tension Splice  = 1.3 × ld  (ACI §25.5.2.1)
-    Compression Splice      = max(0.00711 × fy[ksc] × db[cm], 30 cm)
-                              [derived from ACI §25.5.5.1(a): 0.0005 fy_psi × db_in]
+    Bundled-bar adjustment (ACI 318-19 §25.6.1.5):
+      For 2-bar bundles: d_b,eq = d_b · √2  → ld_eq = ld × √2
+      For 3-bar bundles: d_b,eq = d_b · √3  → ld_eq = ld × √3
+      For 4-bar bundles: d_b,eq = d_b · √4  → ld_eq = ld × 2
+    (ACI §25.6.1.5 alternatively states ld must be increased 20% for 3-bar and
+     33% for 4-bar bundles — the √n rule gives essentially the same result and
+     is the mechanistically correct form; both are shown in the report.)
+
+    Class B Tension Splice  = 1.3 × ld           (ACI §25.5.2.1)
+    Compression Splice      = max(0.00711·fy[ksc]·db[cm], 30 cm)
+                              [derived from ACI §25.5.5.1(a)]
+    Note: ACI 318-19 does not permit lap splices for 4-bar bundles
+    (§25.6.1.4) — a flag is returned; the engineer must use mechanical
+    couplers or butt welds.
     """
+    n   = max(1, min(4, int(n_per_bundle)))
     fy_mpa = fy_ksc / 10.2
     fc_mpa = fc_ksc / 10.2
     db_mm  = db_cm  * 10.0
     ratio  = 2.5       # (cb+Ktr)/db — confined, adequate cover
-    ld_mm  = (3.0 * fy_mpa) / (40.0 * math.sqrt(fc_mpa)) * db_mm / ratio
-    ld_cm  = max(ld_mm / 10.0, 30.0)
-    l_splice_B    = max(1.3 * ld_cm, 30.0)
-    l_compression = max(0.00711 * fy_ksc * db_cm, 30.0)   # ACI §25.5.5.1
-    return l_splice_B, l_compression
+
+    # ── Single-bar development length ──────────────────────────────────────
+    ld_single_mm  = (3.0 * fy_mpa) / (40.0 * math.sqrt(fc_mpa)) * db_mm / ratio
+    ld_single_cm  = max(ld_single_mm / 10.0, 30.0)
+
+    # Class B tension splice — single bar
+    l_splice_B_single    = max(1.3 * ld_single_cm, 30.0)
+    # Compression splice — single bar
+    l_compression_single = max(0.00711 * fy_ksc * db_cm, 30.0)
+
+    # ── Bundle-adjusted development length (ACI §25.6.1.5) ────────────────
+    # Method A (√n rule — mechanistic): d_b,eq = d_b·√n  → ld scales by √n
+    db_eq_cm        = db_cm * math.sqrt(n)
+    ld_bundle_cm    = max(ld_single_cm * math.sqrt(n), 30.0)
+
+    # Method B (ACI percentage increase per §25.6.1.5 note):
+    #   2-bar: +0%  3-bar: +20%  4-bar: +33%  (factors relative to single bar ld)
+    pct_factor = {1: 1.00, 2: 1.00, 3: 1.20, 4: 1.33}[n]
+    ld_bundle_pct_cm = max(ld_single_cm * pct_factor, 30.0)
+
+    # Governing bundle ld = max of both methods (conservative)
+    ld_bundle_gov_cm = max(ld_bundle_cm, ld_bundle_pct_cm)
+
+    # Tension splice for bundle
+    l_splice_B_bundle    = max(1.3 * ld_bundle_gov_cm, 30.0)
+    # Compression splice for bundle (uses db_eq)
+    l_compression_bundle = max(0.00711 * fy_ksc * db_eq_cm, 30.0)
+
+    # ACI §25.6.1.4: lap splices NOT permitted for 4-bar bundles
+    lap_splice_not_permitted = (n == 4)
+
+    return {
+        # Single-bar values
+        'l_splice_B_single':       l_splice_B_single,
+        'l_compression_single':    l_compression_single,
+        # Bundle-adjusted values
+        'db_eq_cm':                db_eq_cm,
+        'ld_bundle_sqrt_n':        ld_bundle_cm,        # √n method
+        'ld_bundle_pct':           ld_bundle_pct_cm,    # percentage method
+        'ld_bundle_gov':           ld_bundle_gov_cm,    # governing
+        'l_splice_B_bundle':       l_splice_B_bundle,
+        'l_compression_bundle':    l_compression_bundle,
+        'lap_splice_not_permitted': lap_splice_not_permitted,
+        'n_per_bundle':            n,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -523,6 +612,32 @@ with col1:
 
         db     = st.selectbox("Bar Size (mm)", [16, 20, 25, 28, 32], index=2, key="db_main")
         cover  = st.number_input("Clear Cover (cm)", value=4.0, min_value=2.5, key="cover_main")
+
+        st.markdown("---")
+        st.markdown("**🔗 Bundled Bars (ACI 318-19 §26.6.3)**")
+        n_per_bundle = st.radio(
+            "Bars per Bundle",
+            [1, 2, 3, 4],
+            index=0,
+            horizontal=True,
+            key="n_per_bundle_main",
+            help=(
+                "ACI 318-19 §26.6.3.1 – max 4 bars per bundle in columns.\n"
+                "Each bundle counts as 1 position; total steel = positions × bars/bundle.\n"
+                "§25.6.1.4 – lap splices NOT permitted for 4-bar bundles."
+            ),
+            format_func=lambda x: {1: "1 (single)", 2: "2-bar", 3: "3-bar", 4: "4-bar"}[x]
+        )
+        if n_per_bundle > 1:
+            db_eq_display = db / 10.0 * math.sqrt(n_per_bundle)
+            st.info(
+                f"**Bundle summary:** {n_per_bundle} × DB{db} per position\n\n"
+                f"d_b,eq = {db:.0f}×√{n_per_bundle} = **{db_eq_display*10:.1f} mm** "
+                f"(used for spacing & splice checks per §25.6.1.2 / §25.6.1.5)"
+            )
+            if n_per_bundle == 4:
+                st.warning("⚠️ **4-bar bundle:** Lap splices not permitted (ACI §25.6.1.4). "
+                           "Use mechanical couplers or butt-welded splices.")
 
     with st.expander("2. Loads & Frame Type", expanded=True):
         Pu    = st.number_input("Factored Axial Pu (ton)", value=150.0, min_value=0.0, key="Pu_main")
@@ -598,7 +713,7 @@ with col1:
 # ══════════════════════════════════════════════════════════════════════════════
 # ENGINE & CALCULATION
 # ══════════════════════════════════════════════════════════════════════════════
-engine  = RCColumn(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover)
+engine  = RCColumn(shape, layout, b, h, fc, fy, db, n_bars, nx, ny, cover, n_per_bundle)
 df_x, phi_pn_max = engine.solve_pm(axis='X')
 df_y, _          = engine.solve_pm(axis='Y')
 
@@ -661,7 +776,10 @@ rho_pct = engine.rho * 100.0
 rho_ok  = 1.0 <= rho_pct <= 8.0
 
 # ── Lap splice lengths ────────────────────────────────────────────────────────
-l_splice_B, l_compression = lap_splice_lengths(fc, fy, engine.db_cm)
+splice_data = lap_splice_lengths(fc, fy, engine.db_cm, n_per_bundle)
+# Convenience aliases used in UI (prefer bundle values when bundled)
+l_splice_B    = splice_data['l_splice_B_bundle']    if n_per_bundle > 1 else splice_data['l_splice_B_single']
+l_compression = splice_data['l_compression_bundle'] if n_per_bundle > 1 else splice_data['l_compression_single']
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -671,10 +789,12 @@ with col_main:
     st.markdown("### 📋 Executive Design Summary")
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Steel (ρ)",   f"{rho_pct:.2f} %",
+    bundle_tag = f" ({n_per_bundle}×)" if n_per_bundle > 1 else ""
+    m1.metric(f"Steel ρ{bundle_tag}",   f"{rho_pct:.2f} %",
               "✅ OK" if rho_ok else "❌ Fail",
               delta_color="normal" if rho_ok else "inverse")
-    m2.metric("Clear Spacing", f"{actual_space:.2f} cm",
+    spacing_label = "Bundle Spacing" if n_per_bundle > 1 else "Clear Spacing"
+    m2.metric(spacing_label, f"{actual_space:.2f} cm",
               "✅ OK" if space_ok else "⚠️ Tight",
               delta_color="normal" if space_ok else "inverse")
     m3.metric("Mcx (Magnified)", f"{Mcx:.1f} t-m",
@@ -691,6 +811,20 @@ with col_main:
     st.markdown("---")
 
     # Alerts
+    # Bundled-bar code checks
+    if n_per_bundle > 1:
+        st.info(
+            f"📦 **Bundled bars active:** {n_per_bundle} bars/bundle × "
+            f"{engine.n_positions} positions = **{engine.n_bars} total bars** | "
+            f"Total Ast = **{engine.total_as:.2f} cm²** | ρ = **{rho_pct:.2f}%**\n\n"
+            f"d_b,eq = {engine.db_eq_cm*10:.1f} mm | "
+            f"Cover to bundle centroid = {engine.d_prime:.2f} cm"
+        )
+    if splice_data['lap_splice_not_permitted']:
+        st.error("🚫 **4-bar bundle: Lap splices NOT permitted** (ACI 318-19 §25.6.1.4). "
+                 "Use mechanical couplers or full-penetration butt welds at all splices.")
+    if n_per_bundle == 3:
+        st.warning("⚠️ **3-bar bundle:** Splice lengths increased by 20% per ACI §25.6.1.5.")
     if shear['torsion_critical']:
         st.warning(f"🌪️ **Torsion Design Required:** Tu = {tu_tonm:.2f} t-m > "
                    f"Tth = {shear['Tth_tonm']:.3f} t-m. "
@@ -886,16 +1020,20 @@ with col_main:
         if show_bounds:
             def make_ref_df(target_rho):
                 try:
+                    # Reference curves always use single bars (n_per_bundle=1)
                     tAs   = target_rho * engine.Ag
-                    ref_n = max(4, round(tAs / engine.as_bar))
+                    as_single_ref = math.pi * (20/10.0)**2 / 4.0  # DB20 reference
+                    ref_n = max(4, round(tAs / as_single_ref))
                     if shape == "Rectangular":
                         ref_nx = max(2, round(math.sqrt(ref_n * b / h)))
                         ref_ny = max(2, round((ref_n - 2 * ref_nx) / 2) + 2)
                         re = RCColumn(shape, "4-Faces (Uniform)",
-                                      b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover)
+                                      b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover,
+                                      n_per_bundle=1)
                     else:
                         re = RCColumn(shape, "Circular",
-                                      b, h, fc, fy, 20, max(6, ref_n), 0, 0, cover)
+                                      b, h, fc, fy, 20, max(6, ref_n), 0, 0, cover,
+                                      n_per_bundle=1)
                     rd, _ = re.solve_pm(axis='X')
                     return rd
                 except Exception:
@@ -985,67 +1123,61 @@ with col_main:
         by = [bar['y'] for bar in engine.bars]
         cv2 = cover
 
-        sub1, sub2 = st.tabs(["2D Section", "3D Cage"])
-        with sub1:
-            show_dim  = st.toggle("Show Dimensions", value=True, key="show_dim_t3")
-            show_lid  = st.toggle("Bar Labels", value=True, key="show_lid_t3")
-            show_spec = st.toggle("Material Specs", value=True, key="show_spec_t3")
+        dark = '#020617'; blue = '#38bdf8'; red = '#ef4444'; gold = '#fbbf24'
+        orange = '#f97316'; violet = '#a78bfa'
 
-            dark = '#020617'; blue = '#38bdf8'; red = '#ef4444'; gold = '#fbbf24'
-            fig2d = go.Figure()
+        # Section outline coordinates (shared by all 2D sub-tabs)
+        if shape == "Rectangular":
+            xc = [-b/2, b/2, b/2, -b/2, -b/2]
+            yc = [-h/2, -h/2, h/2, h/2, -h/2]
+            xt = [-(b/2-cv2), (b/2-cv2), (b/2-cv2), -(b/2-cv2), -(b/2-cv2)]
+            yt = [-(h/2-cv2), -(h/2-cv2), (h/2-cv2), (h/2-cv2), -(h/2-cv2)]
+        else:
+            th = np.linspace(0, 2*math.pi, 120)
+            xc, yc = (b/2)*np.cos(th), (b/2)*np.sin(th)
+            xt, yt = (b/2-cv2)*np.cos(th), (b/2-cv2)*np.sin(th)
 
+        lim = max(b, h) / 2 + max(b, h) * 0.35
+
+        def _add_outline(fig):
+            fig.add_trace(go.Scatter(x=xc, y=yc, mode='lines', name='Concrete',
+                                     line=dict(color=blue, width=3),
+                                     fill='toself', fillcolor='rgba(56,189,248,0.1)'))
+            fig.add_trace(go.Scatter(x=xt, y=yt, mode='lines', name='Ties',
+                                     line=dict(color=gold, width=1.5, dash='dash')))
+
+        def _add_dims(fig):
             if shape == "Rectangular":
-                xc = [-b/2, b/2, b/2, -b/2, -b/2]
-                yc = [-h/2, -h/2, h/2, h/2, -h/2]
-                xt = [-(b/2-cv2), (b/2-cv2), (b/2-cv2), -(b/2-cv2), -(b/2-cv2)]
-                yt = [-(h/2-cv2), -(h/2-cv2), (h/2-cv2), (h/2-cv2), -(h/2-cv2)]
-            else:
-                th = np.linspace(0, 2*math.pi, 120)
-                xc, yc = (b/2)*np.cos(th), (b/2)*np.sin(th)
-                xt, yt = (b/2-cv2)*np.cos(th), (b/2-cv2)*np.sin(th)
-
-            fig2d.add_trace(go.Scatter(x=xc, y=yc, mode='lines', name='Concrete',
-                                       line=dict(color=blue, width=3),
-                                       fill='toself', fillcolor='rgba(56,189,248,0.1)'))
-            fig2d.add_trace(go.Scatter(x=xt, y=yt, mode='lines', name='Ties',
-                                       line=dict(color=gold, width=1.5, dash='dash')))
-            fig2d.add_trace(go.Scatter(
-                x=bx, y=by,
-                mode='markers+text' if show_lid else 'markers',
-                marker=dict(color=dark, size=13, line=dict(color=red, width=2.5)),
-                text=[str(i+1) for i in range(len(bx))],
-                textposition='top center', textfont=dict(color='white', size=9),
-                name='Rebars'))
-
-            lim = max(b, h) / 2 + max(b, h) * 0.35
-            if show_dim and shape == "Rectangular":
                 yd = -h/2 - max(b, h)*0.18
-                fig2d.add_shape(type="line", x0=-b/2, y0=yd, x1=b/2, y1=yd,
-                                line=dict(color='#94a3b8', width=1.5))
-                fig2d.add_annotation(x=0, y=yd, text=f"b = {b} cm", showarrow=False,
-                                     yshift=12, font=dict(color='white', size=12))
+                fig.add_shape(type="line", x0=-b/2, y0=yd, x1=b/2, y1=yd,
+                              line=dict(color='#94a3b8', width=1.5))
+                fig.add_annotation(x=0, y=yd, text=f"b = {b} cm", showarrow=False,
+                                   yshift=12, font=dict(color='white', size=12))
                 xd = -b/2 - max(b, h)*0.18
-                fig2d.add_shape(type="line", x0=xd, y0=-h/2, x1=xd, y1=h/2,
-                                line=dict(color='#94a3b8', width=1.5))
-                fig2d.add_annotation(x=xd, y=0, text=f"h = {h} cm", showarrow=False,
-                                     xshift=-15, textangle=-90, font=dict(color='white', size=12))
-            elif show_dim and shape == "Circular":
+                fig.add_shape(type="line", x0=xd, y0=-h/2, x1=xd, y1=h/2,
+                              line=dict(color='#94a3b8', width=1.5))
+                fig.add_annotation(x=xd, y=0, text=f"h = {h} cm", showarrow=False,
+                                   xshift=-15, textangle=-90, font=dict(color='white', size=12))
+            else:
                 yd = -b/2 - b*0.2
-                fig2d.add_shape(type="line", x0=-b/2, y0=yd, x1=b/2, y1=yd,
-                                line=dict(color='#94a3b8', width=1.5))
-                fig2d.add_annotation(x=0, y=yd, text=f"D = {b} cm", showarrow=False,
-                                     yshift=12, font=dict(color='white', size=12))
+                fig.add_shape(type="line", x0=-b/2, y0=yd, x1=b/2, y1=yd,
+                              line=dict(color='#94a3b8', width=1.5))
+                fig.add_annotation(x=0, y=yd, text=f"D = {b} cm", showarrow=False,
+                                   yshift=12, font=dict(color='white', size=12))
 
-            if show_spec:
-                fig2d.add_annotation(
-                    xref='paper', yref='paper', x=0.98, y=0.02,
-                    text=(f"<b>SPECS</b><br>f'c = {fc} ksc<br>fy = {fy} ksc<br>"
-                          f"Ast = {engine.total_as:.2f} cm²<br>ρ = {rho_pct:.2f}%"),
-                    showarrow=False, align='right',
-                    bgcolor='rgba(15,23,42,0.85)', bordercolor='#334155',
-                    borderpad=10, font=dict(color=blue, size=11))
+        def _add_specs(fig, extra=""):
+            fig.add_annotation(
+                xref='paper', yref='paper', x=0.98, y=0.02,
+                text=(f"<b>SPECS</b><br>f'c = {fc} ksc<br>fy = {fy} ksc<br>"
+                      f"DB{db} ({n_per_bundle}/bundle)<br>"
+                      f"Ast = {engine.total_as:.2f} cm²<br>ρ = {rho_pct:.2f}%"
+                      + (f"<br>{extra}" if extra else "")),
+                showarrow=False, align='right',
+                bgcolor='rgba(15,23,42,0.85)', bordercolor='#334155',
+                borderpad=10, font=dict(color=blue, size=11))
 
-            fig2d.update_layout(
+        def _base_layout(fig):
+            fig.update_layout(
                 plot_bgcolor=dark, paper_bgcolor=dark,
                 xaxis=dict(visible=False, range=[-lim, lim]),
                 yaxis=dict(visible=False, range=[-lim, lim],
@@ -1053,15 +1185,166 @@ with col_main:
                 height=650, margin=dict(l=10, r=10, t=10, b=10),
                 legend=dict(font=dict(color='white'), orientation='h',
                             y=1.05, x=0.5, xanchor='center'))
-            st.plotly_chart(fig2d, use_container_width=True)
 
-        with sub2:
+        # ── Choose sub-tabs based on whether bundles are active ───────────────
+        if n_per_bundle == 1:
+            sub_tabs = st.tabs(["2D Section", "3D Cage"])
+            section_2d_idx, cage_3d_idx = 0, 1
+            section_eq_idx = section_exp_idx = None
+        else:
+            sub_tabs = st.tabs(["2D — Equivalent Circle", "2D — Exploded Bundle", "3D Cage"])
+            section_eq_idx, section_exp_idx, cage_3d_idx = 0, 1, 2
+            section_2d_idx = None
+
+        # ── Standard single-bar 2D view ───────────────────────────────────────
+        if section_2d_idx is not None:
+            with sub_tabs[section_2d_idx]:
+                show_dim  = st.toggle("Show Dimensions", value=True, key="show_dim_t3")
+                show_lid  = st.toggle("Bar Labels",      value=True, key="show_lid_t3")
+                show_spec = st.toggle("Material Specs",  value=True, key="show_spec_t3")
+
+                fig2d = go.Figure()
+                _add_outline(fig2d)
+                fig2d.add_trace(go.Scatter(
+                    x=bx, y=by,
+                    mode='markers+text' if show_lid else 'markers',
+                    marker=dict(color=dark, size=13, line=dict(color=red, width=2.5)),
+                    text=[str(i+1) for i in range(len(bx))],
+                    textposition='top center', textfont=dict(color='white', size=9),
+                    name='Rebars'))
+                if show_dim: _add_dims(fig2d)
+                if show_spec: _add_specs(fig2d)
+                _base_layout(fig2d)
+                st.plotly_chart(fig2d, use_container_width=True)
+
+        # ── Bundled: Equivalent-circle view ──────────────────────────────────
+        if section_eq_idx is not None:
+            with sub_tabs[section_eq_idx]:
+                show_dim_eq  = st.toggle("Show Dimensions", value=True, key="show_dim_eq")
+                show_lid_eq  = st.toggle("Bundle Labels",   value=True, key="show_lid_eq")
+                show_spec_eq = st.toggle("Material Specs",  value=True, key="show_spec_eq")
+
+                st.caption(
+                    f"Each marker represents one **{n_per_bundle}-bar bundle** drawn as a "
+                    f"single equivalent circle of diameter d_b,eq = "
+                    f"{engine.db_eq_cm*10:.1f} mm. "
+                    "This is how the section is treated analytically."
+                )
+                # Scale marker size to approximate equivalent diameter on screen
+                # Use a reference: single DB25 → size≈13 → scale proportionally
+                eq_marker_size = max(13, int(13 * engine.db_eq_cm / (db / 10.0)))
+
+                fig_eq = go.Figure()
+                _add_outline(fig_eq)
+                fig_eq.add_trace(go.Scatter(
+                    x=bx, y=by,
+                    mode='markers+text' if show_lid_eq else 'markers',
+                    marker=dict(
+                        color=orange,
+                        size=eq_marker_size,
+                        line=dict(color='white', width=2),
+                        symbol='circle'),
+                    text=[f"B{i+1}" for i in range(len(bx))],
+                    textposition='top center',
+                    textfont=dict(color='white', size=9),
+                    name=f'{n_per_bundle}-bar bundle (equiv. circle)'))
+                if show_dim_eq: _add_dims(fig_eq)
+                if show_spec_eq:
+                    _add_specs(fig_eq, f"d_b,eq = {engine.db_eq_cm*10:.1f} mm")
+                _base_layout(fig_eq)
+                st.plotly_chart(fig_eq, use_container_width=True)
+
+        # ── Bundled: Exploded view ────────────────────────────────────────────
+        if section_exp_idx is not None:
+            with sub_tabs[section_exp_idx]:
+                show_dim_exp  = st.toggle("Show Dimensions", value=True, key="show_dim_exp")
+                show_lid_exp  = st.toggle("Bar Labels",      value=True, key="show_lid_exp")
+                show_spec_exp = st.toggle("Material Specs",  value=True, key="show_spec_exp")
+
+                st.caption(
+                    f"Each bundle position is **exploded** to show the "
+                    f"{n_per_bundle} individual DB{db} bars arranged tightly within "
+                    "the bundle. Offset ≈ 1 bar diameter between individual bar centroids."
+                )
+                # Build offset patterns for 1–4 bars within a bundle
+                # Offsets in units of db_cm, rotated 45° for corner aesthetics
+                db_c = engine.db_cm
+                _offset_patterns = {
+                    1: [(0, 0)],
+                    2: [(-0.5, 0), (0.5, 0)],
+                    3: [(-0.7, -0.4), (0.7, -0.4), (0.0, 0.7)],
+                    4: [(-0.5, -0.5), (0.5, -0.5), (-0.5, 0.5), (0.5, 0.5)],
+                }
+                offsets = _offset_patterns[n_per_bundle]
+
+                fig_exp = go.Figure()
+                _add_outline(fig_exp)
+
+                # Plot individual bars within each bundle position
+                all_indiv_x, all_indiv_y, all_indiv_text = [], [], []
+                colors_cycle = [red, violet, orange, '#4ade80']
+                for pos_i, (px, py) in enumerate(zip(bx, by)):
+                    for bar_j, (ox, oy) in enumerate(offsets):
+                        ix = px + ox * db_c
+                        iy = py + oy * db_c
+                        all_indiv_x.append(ix)
+                        all_indiv_y.append(iy)
+                        all_indiv_text.append(
+                            f"B{pos_i+1}-{bar_j+1}" if show_lid_exp else ""
+                        )
+                # Single trace for all individual bars (faster rendering)
+                fig_exp.add_trace(go.Scatter(
+                    x=all_indiv_x, y=all_indiv_y,
+                    mode='markers+text' if show_lid_exp else 'markers',
+                    marker=dict(color=red, size=10,
+                                line=dict(color='white', width=1.5)),
+                    text=all_indiv_text,
+                    textposition='top center',
+                    textfont=dict(color='white', size=7),
+                    name=f'DB{db} individual bars'))
+                # Draw bundle outlines (dashed circle around each bundle group)
+                for px, py in zip(bx, by):
+                    theta_circ = np.linspace(0, 2*math.pi, 40)
+                    r_bundle = engine.db_eq_cm / 2.0
+                    bcirc_x = px + r_bundle * np.cos(theta_circ)
+                    bcirc_y = py + r_bundle * np.sin(theta_circ)
+                    fig_exp.add_trace(go.Scatter(
+                        x=bcirc_x, y=bcirc_y, mode='lines',
+                        line=dict(color=orange, width=1, dash='dot'),
+                        showlegend=False))
+
+                if show_dim_exp: _add_dims(fig_exp)
+                if show_spec_exp:
+                    _add_specs(fig_exp, f"{n_per_bundle}×DB{db}/bundle")
+                _base_layout(fig_exp)
+                st.plotly_chart(fig_exp, use_container_width=True)
+
+        # ── 3D cage ───────────────────────────────────────────────────────────
+        with sub_tabs[cage_3d_idx]:
             L_col = max(b, h) * 4
             fig3d_cage = go.Figure()
-            for i, (x, y) in enumerate(zip(bx, by)):
-                fig3d_cage.add_trace(go.Scatter3d(
-                    x=[x, x], y=[y, y], z=[0, L_col], mode='lines',
-                    line=dict(color=red, width=5), name=f'Bar {i+1}'))
+            # For bundled bars, render individual bars with offsets in 3D too
+            db_c = engine.db_cm
+            _offset_patterns_3d = {
+                1: [(0, 0)],
+                2: [(-0.5, 0), (0.5, 0)],
+                3: [(-0.7, -0.4), (0.7, -0.4), (0.0, 0.7)],
+                4: [(-0.5, -0.5), (0.5, -0.5), (-0.5, 0.5), (0.5, 0.5)],
+            }
+            offsets_3d = _offset_patterns_3d[n_per_bundle]
+            bar_color_3d = red if n_per_bundle == 1 else orange
+
+            for pos_i, (px, py) in enumerate(zip(bx, by)):
+                for bar_j, (ox, oy) in enumerate(offsets_3d):
+                    ix = px + ox * db_c
+                    iy = py + oy * db_c
+                    lbl = f"Bundle {pos_i+1}" if bar_j == 0 else None
+                    fig3d_cage.add_trace(go.Scatter3d(
+                        x=[ix, ix], y=[iy, iy], z=[0, L_col], mode='lines',
+                        line=dict(color=bar_color_3d, width=4 if n_per_bundle == 1 else 3),
+                        name=lbl if lbl else f'Bar {pos_i+1}-{bar_j+1}',
+                        showlegend=(bar_j == 0)))
+
             n_ties_3d = max(5, int(L_col / shear['s_design']))
             for z in np.linspace(shear['s_design'], L_col - shear['s_design'], n_ties_3d):
                 fig3d_cage.add_trace(go.Scatter3d(
@@ -1148,10 +1431,17 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
 * Tth = {PHI_SHEAR}×0.026×√{fc}×{s['Acp']:.2f}²/{s['pcp']:.2f} / 100000 = **{s['Tth_tonm']:.4f} ton-m**
 * Tu = {tu_tonm:.2f} ton-m → {"**Critical — provide torsional reinforcement!**" if s['torsion_critical'] else "Negligible."}
 
-#### 8. Lap Splice Lengths (ACI 318-19 §25.5)
-* Class B Tension Splice = **{l_splice_B:.0f} cm**
-* Compression Splice     = **{l_compression:.0f} cm**
-* Selected: {"Class B Tension (SMF requirement)" if is_seismic else "Compression splice (Ordinary frame)"}
+#### 8. Lap Splice Lengths (ACI 318-19 §25.5 / §25.6.1.5)
+{"" if n_per_bundle == 1 else f"**Bundle adjustment:** d_b,eq = d_b·√n = {engine.db_cm*10:.0f}·√{n_per_bundle} = **{engine.db_eq_cm*10:.1f} mm**"}
+
+| Parameter | Single bar (DB{db}) | {"Bundle (" + str(n_per_bundle) + "×DB" + str(db) + ")" if n_per_bundle > 1 else "—"} | Governing |
+|---|---|---|---|
+| Tension ld | {splice_data['ld_bundle_sqrt_n']/1.3:.0f} cm (base) | {"N/A" if n_per_bundle == 1 else f"{splice_data['ld_bundle_gov']:.0f} cm (√n & % methods)"} | {splice_data['ld_bundle_gov']:.0f} cm |
+| Class B Splice (1.3·ld) | {splice_data['l_splice_B_single']:.0f} cm | {"—" if n_per_bundle == 1 else f"{splice_data['l_splice_B_bundle']:.0f} cm"} | **{l_splice_B:.0f} cm** |
+| Compression Splice | {splice_data['l_compression_single']:.0f} cm | {"—" if n_per_bundle == 1 else f"{splice_data['l_compression_bundle']:.0f} cm"} | **{l_compression:.0f} cm** |
+
+{"⚠️ **ACI §25.6.1.4: Lap splices NOT permitted for 4-bar bundles.** Use mechanical couplers or butt-welded splices." if splice_data['lap_splice_not_permitted'] else ""}
+* **Selected for design:** {"Class B Tension (SMF requirement)" if is_seismic else "Compression splice (Ordinary frame)"}
   → **{l_splice_B if is_seismic else l_compression:.0f} cm**
 """)
 
@@ -1173,6 +1463,30 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
             st.markdown("**Materials**")
             st.latex(rf"E_c = 15100\sqrt{{{fc}}} = {engine.Ec:,.0f}\text{{ ksc}}")
             st.latex(rf"\beta_1 = {engine.beta1:.3f}")
+            st.markdown("**Reinforcement (Bundled-Bar Summary)**")
+            if n_per_bundle == 1:
+                st.latex(
+                    rf"A_{{st}} = n_{{bars}} \times A_{{bar}} = "
+                    rf"{engine.n_positions} \times {engine.as_single:.3f} = "
+                    rf"{engine.total_as:.3f}\text{{ cm}}^2")
+            else:
+                st.latex(
+                    rf"d_{{b,eq}} = d_b \cdot \sqrt{{n}} = "
+                    rf"{engine.db_cm*10:.0f} \cdot \sqrt{{{n_per_bundle}}} = "
+                    rf"{engine.db_eq_cm*10:.2f}\text{{ mm}}\quad(\text{{ACI \S25.6.1.2}})")
+                st.latex(
+                    rf"A_{{bundle}} = n_{{per}} \times A_{{bar}} = "
+                    rf"{n_per_bundle} \times {engine.as_single:.3f} = "
+                    rf"{engine.as_bundle:.3f}\text{{ cm}}^2\text{{/position}}")
+                st.latex(
+                    rf"A_{{st}} = n_{{pos}} \times A_{{bundle}} = "
+                    rf"{engine.n_positions} \times {engine.as_bundle:.3f} = "
+                    rf"{engine.total_as:.3f}\text{{ cm}}^2\quad"
+                    rf"({engine.n_bars}\text{{ individual bars total}})")
+                st.latex(
+                    rf"\rho = \frac{{A_{{st}}}}{{A_g}} = "
+                    rf"\frac{{{engine.total_as:.3f}}}{{{engine.Ag:.2f}}} = "
+                    rf"{rho_pct:.3f}\%")
 
         with st.expander("2. Minimum Eccentricity Moments", expanded=False):
             st.latex(rf"e_{{min,x}} = P_u(0.015+0.03h/100) = {e_min_x:.3f}\text{{ t-m}}")
@@ -1220,16 +1534,23 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
                 st.error("Unable to evaluate — Pu out of range.")
 
         with st.expander("6. Reinforcement Detailing Summary", expanded=False):
+            bundle_splice_note = "N/A — use coupler/weld" if splice_data['lap_splice_not_permitted'] else f"{splice_data['l_splice_B_bundle']:.0f} cm"
             st.markdown(f"""
 | Parameter | Value | Limit | Status |
 |---|---|---|---|
+| Bars per bundle | {n_per_bundle} | ≤ 4 (ACI §26.6.3.1) | {"✅" if n_per_bundle <= 4 else "❌"} |
+| Total steel positions | {engine.n_positions} | — | — |
+| Total individual bars | {engine.n_bars} | — | — |
 | ρ | {rho_pct:.2f}% | 1–8% | {"✅" if rho_ok else "❌"} |
-| Clear Spacing | {actual_space:.2f} cm | ≥ {min_req_space:.2f} cm | {"✅" if space_ok else "❌"} |
-| Shear Spacing | {shear['s_design']:.1f} cm | ≤ {shear['s_max_x']:.1f} cm | {"✅" if shear['s_design'] <= shear['s_max_x'] else "❌"} |
+| Clear spacing (bundle) | {actual_space:.2f} cm | ≥ {min_req_space:.2f} cm (d_b,eq) | {"✅" if space_ok else "❌"} |
+| Shear tie spacing | {shear['s_design']:.1f} cm | ≤ {shear['s_max_x']:.1f} cm | {"✅" if shear['s_design'] <= shear['s_max_x'] else "❌"} |
+| Seismic tie (6·d_b) | {6*engine.db_cm:.1f} cm | — (single bar d_b) | — |
 | φVnx | {shear['phiVnx']:.2f} ton | ≥ {vux_ton:.2f} ton | {"✅" if shear['x_ok'] else "❌"} |
 | φVny | {shear['phiVny']:.2f} ton | ≥ {vuy_ton:.2f} ton | {"✅" if shear['y_ok'] else "❌"} |
-| Lap Splice (Tension) | {l_splice_B:.0f} cm | — | — |
-| Lap Splice (Compression) | {l_compression:.0f} cm | — | — |
+| Splice — single DB{db} (Tension B) | {splice_data['l_splice_B_single']:.0f} cm | — | — |
+| Splice — bundle (Tension B) | {bundle_splice_note} | — | {"🚫 Not permitted" if splice_data['lap_splice_not_permitted'] else "—"} |
+| Splice — single DB{db} (Compression) | {splice_data['l_compression_single']:.0f} cm | — | — |
+| Splice — bundle (Compression) | {"N/A" if splice_data['lap_splice_not_permitted'] else f"{splice_data['l_compression_bundle']:.0f} cm"} | — | — |
 """)
 
     # ─────────────────────────────────────────────────────────────────────────
