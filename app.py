@@ -1031,31 +1031,39 @@ with col_main:
 
         if show_bounds:
             def make_ref_df(target_rho):
+                """
+                Compute the P-M envelope for this SAME section geometry (b, h, fc, fy, cover)
+                but with steel ratio forced to target_rho, using the same bar diameter (db)
+                as the design. This guarantees d_prime is identical, so the design curve
+                (at the actual ρ) will always lie between the 1% and 8% reference curves.
+                n_per_bundle=1 always — these are code-limit reference curves, not design.
+                """
                 try:
-                    # Reference curves always use single bars (n_per_bundle=1)
-                    tAs   = target_rho * engine.Ag
-                    as_single_ref = math.pi * (20/10.0)**2 / 4.0  # DB20 reference
-                    ref_n = max(4, round(tAs / as_single_ref))
+                    Ag   = (math.pi * h**2 / 4) if shape == "Circular" else float(b) * float(h)
+                    tAs  = target_rho * Ag
+                    # Use the actual bar size from the design
+                    ref_n = max(4, round(tAs / engine.as_single))
                     if shape == "Rectangular":
                         ref_nx = max(2, round(math.sqrt(ref_n * b / h)))
                         ref_ny = max(2, round((ref_n - 2 * ref_nx) / 2) + 2)
                         re = RCColumn(shape, "4-Faces (Uniform)",
-                                      b, h, fc, fy, 20, 0, ref_nx, ref_ny, cover,
+                                      b, h, fc, fy, db, 0, ref_nx, ref_ny, cover,
                                       n_per_bundle=1)
                     else:
                         re = RCColumn(shape, "Circular",
-                                      b, h, fc, fy, 20, max(6, ref_n), 0, 0, cover,
+                                      b, h, fc, fy, db, max(6, ref_n), 0, 0, cover,
                                       n_per_bundle=1)
                     rd, _ = re.solve_pm(axis='X')
-                    return rd
+                    return rd, re.rho * 100
                 except Exception:
-                    return pd.DataFrame()
+                    return pd.DataFrame(), target_rho * 100
 
             with st.spinner("Computing boundary curves…"):
-                df_1 = make_ref_df(0.01)
-                df_8 = make_ref_df(0.08)
+                df_1, rho_1_actual = make_ref_df(0.01)
+                df_8, rho_8_actual = make_ref_df(0.08)
 
             if not df_1.empty and not df_8.empty:
+                # Ensure ρ=8% curve is always plotted OUTSIDE ρ=1% (sanity check)
                 xp = list(df_8['phiMn']) + list(df_1['phiMn'])[::-1]
                 yp = list(df_8['phiPn']) + list(df_1['phiPn'])[::-1]
                 xp.append(xp[0]); yp.append(yp[0])
@@ -1065,8 +1073,8 @@ with col_main:
                     line=dict(color='rgba(0,0,0,0)'),
                     name='Optimal Zone 1–8%', hoverinfo='skip'))
                 for df_lim, nm, clr in [
-                        (df_1, 'Min (ρ=1%)',  'rgba(149,165,166,0.9)'),
-                        (df_8, 'Max (ρ=8%)',  'rgba(231,76,60,0.6)')]:
+                        (df_1, f'Min (ρ={rho_1_actual:.2f}%)', 'rgba(149,165,166,0.9)'),
+                        (df_8, f'Max (ρ={rho_8_actual:.2f}%)', 'rgba(231,76,60,0.6)')]:
                     fig_pm.add_trace(go.Scatter(
                         x=df_lim['phiMn'], y=df_lim['phiPn'],
                         name=nm, mode='lines',
@@ -1125,6 +1133,16 @@ with col_main:
                         bordercolor='rgba(0,0,0,0.1)', borderwidth=1),
             margin=dict(l=40, r=40, t=60, b=40))
         st.plotly_chart(fig_pm, use_container_width=True)
+
+        if show_bounds:
+            st.info(
+                f"**ρ-limit bands explained:** Both boundary curves use the same section "
+                f"(b={b} cm, h={h} cm, f'c={fc} ksc, fy={fy} ksc, DB{db}, cover={cover} cm) "
+                f"but with steel forced to ρ = {rho_1_actual:.2f}% (grey, ACI §10.6.1.1 min) "
+                f"and ρ = {rho_8_actual:.2f}% (red, ACI §10.6.1.1 max). "
+                f"The design curve (ρ = **{rho_pct:.2f}%**) should always lie between them. "
+                f"Reference curves use n_per_bundle = 1 regardless of the bundle setting."
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
     # TAB 3 – Section detail drawing
@@ -1465,108 +1483,355 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
     # TAB 5 – Full calculation report
     # ─────────────────────────────────────────────────────────────────────────
     with tab5:
-        st.markdown("### 📝 Detailed Calculation Report")
+        st.markdown("### 📝 Detailed Calculation Report  *(ACI 318-19 / MKS)*")
+        st.caption("All values substituted numerically. Units: ton, ton-m, cm, ksc.")
 
-        with st.expander("1. Section & Material Properties", expanded=False):
-            st.markdown("**Geometry**")
+        # ── 1. Section & Material Properties ─────────────────────────────────
+        with st.expander("1. Section & Material Properties", expanded=True):
+            st.markdown("#### 1a. Gross Section Geometry")
             if shape == "Rectangular":
-                st.latex(rf"A_g = {b} \times {h} = {engine.Ag:.2f}\text{{ cm}}^2")
-                st.latex(rf"I_{{gx}} = \frac{{{b} \times {h}^3}}{{12}} = {engine.Igx:,.2f}\text{{ cm}}^4")
-                st.latex(rf"I_{{gy}} = \frac{{{h} \times {b}^3}}{{12}} = {engine.Igy:,.2f}\text{{ cm}}^4")
+                st.latex(rf"A_g = b \times h = {b} \times {h} = {engine.Ag:.2f} \text{{ cm}}^2")
+                st.latex(rf"I_{{gx}} = \frac{{b \cdot h^3}}{{12}} = \frac{{{b} \times {h}^3}}{{12}} = {engine.Igx:,.2f} \text{{ cm}}^4")
+                st.latex(rf"I_{{gy}} = \frac{{h \cdot b^3}}{{12}} = \frac{{{h} \times {b}^3}}{{12}} = {engine.Igy:,.2f} \text{{ cm}}^4")
+                st.latex(rf"r_x = 0.30 \cdot h = 0.30 \times {h} = {engine.rx:.2f} \text{{ cm}}")
+                st.latex(rf"r_y = 0.30 \cdot b = 0.30 \times {b} = {engine.ry:.2f} \text{{ cm}}")
             else:
-                st.latex(rf"A_g = \frac{{\pi {b}^2}}{{4}} = {engine.Ag:.2f}\text{{ cm}}^2")
-                st.latex(rf"I_g = \frac{{\pi {b}^4}}{{64}} = {engine.Igx:,.2f}\text{{ cm}}^4")
-            st.markdown("**Materials**")
-            st.latex(rf"E_c = 15100\sqrt{{{fc}}} = {engine.Ec:,.0f}\text{{ ksc}}")
-            st.latex(rf"\beta_1 = {engine.beta1:.3f}")
-            st.markdown("**Reinforcement (Bundled-Bar Summary)**")
-            if n_per_bundle == 1:
-                st.latex(
-                    rf"A_{{st}} = n_{{bars}} \times A_{{bar}} = "
-                    rf"{engine.n_positions} \times {engine.as_single:.3f} = "
-                    rf"{engine.total_as:.3f}\text{{ cm}}^2")
+                st.latex(rf"A_g = \frac{{\pi D^2}}{{4}} = \frac{{\pi \times {h}^2}}{{4}} = {engine.Ag:.2f} \text{{ cm}}^2")
+                st.latex(rf"I_g = \frac{{\pi D^4}}{{64}} = \frac{{\pi \times {h}^4}}{{64}} = {engine.Igx:,.2f} \text{{ cm}}^4")
+                st.latex(rf"r = 0.25 \cdot D = 0.25 \times {h} = {engine.rx:.2f} \text{{ cm}}")
+
+            st.markdown("#### 1b. Material Properties")
+            st.latex(rf"f'_c = {fc} \text{{ ksc}}, \quad f_y = {fy} \text{{ ksc}}, \quad E_s = {engine.Es:,.0f} \text{{ ksc}}")
+            st.latex(rf"E_c = 15100\sqrt{{f'_c}} = 15100 \times \sqrt{{{fc}}} = 15100 \times {math.sqrt(fc):.4f} = {engine.Ec:,.0f} \text{{ ksc}}")
+            st.latex(rf"\beta_1 = 0.85 - 0.05\,\frac{{f'_c - 280}}{{70}} = 0.85 - 0.05 \times \frac{{{fc}-280}}{{70}} = {engine.beta1:.4f}")
+            st.latex(rf"\varepsilon_{{ty,\lim}} = \frac{{f_y}}{{E_s}} + 0.003 = \frac{{{fy}}}{{{engine.Es:,.0f}}} + 0.003 = {engine.eps_ty_lim:.5f}")
+
+            st.markdown("#### 1c. Reinforcement")
+            st.latex(rf"d_b = {engine.db_cm*10:.1f} \text{{ mm}} \quad A_{{bar}} = \frac{{\pi d_b^2}}{{4}} = \frac{{\pi \times {engine.db_cm:.3f}^2}}{{4}} = {engine.as_single:.4f} \text{{ cm}}^2")
+            if n_per_bundle > 1:
+                st.latex(rf"d_{{b,eq}} = d_b \cdot \sqrt{{n}} = {engine.db_cm*10:.1f} \times \sqrt{{{n_per_bundle}}} = {engine.db_eq_cm*10:.3f} \text{{ mm}} \quad (\text{{ACI \S25.6.1.2}})")
+                st.latex(rf"A_{{bundle}} = n \times A_{{bar}} = {n_per_bundle} \times {engine.as_single:.4f} = {engine.as_bundle:.4f} \text{{ cm}}^2\text{{/position}}")
+            st.latex(rf"d' = c_{{cover}} + d_{{tie}} + \frac{{d_{{b,eq}}}}{{2}} = {cover} + 0.9 + \frac{{{engine.db_eq_cm:.4f}}}{{2}} = {engine.d_prime:.4f} \text{{ cm}}")
+            st.latex(rf"n_{{positions}} = {engine.n_positions}, \quad n_{{bars,total}} = {engine.n_bars}")
+            st.latex(rf"A_{{st}} = n_{{pos}} \times A_{{bundle}} = {engine.n_positions} \times {engine.as_bundle:.4f} = {engine.total_as:.4f} \text{{ cm}}^2")
+            st.latex(rf"\rho = \frac{{A_{{st}}}}{{A_g}} = \frac{{{engine.total_as:.4f}}}{{{engine.Ag:.2f}}} = {engine.rho:.6f} = {rho_pct:.3f}\%")
+            if rho_ok:
+                st.success(f"✅ ρ = {rho_pct:.3f}% is within ACI §10.6.1.1 limits: 1.0% ≤ ρ ≤ 8.0%")
             else:
-                st.latex(
-                    rf"d_{{b,eq}} = d_b \cdot \sqrt{{n}} = "
-                    rf"{engine.db_cm*10:.0f} \cdot \sqrt{{{n_per_bundle}}} = "
-                    rf"{engine.db_eq_cm*10:.2f}\text{{ mm}}\quad(\text{{ACI \S25.6.1.2}})")
-                st.latex(
-                    rf"A_{{bundle}} = n_{{per}} \times A_{{bar}} = "
-                    rf"{n_per_bundle} \times {engine.as_single:.3f} = "
-                    rf"{engine.as_bundle:.3f}\text{{ cm}}^2\text{{/position}}")
-                st.latex(
-                    rf"A_{{st}} = n_{{pos}} \times A_{{bundle}} = "
-                    rf"{engine.n_positions} \times {engine.as_bundle:.3f} = "
-                    rf"{engine.total_as:.3f}\text{{ cm}}^2\quad"
-                    rf"({engine.n_bars}\text{{ individual bars total}})")
-                st.latex(
-                    rf"\rho = \frac{{A_{{st}}}}{{A_g}} = "
-                    rf"\frac{{{engine.total_as:.3f}}}{{{engine.Ag:.2f}}} = "
-                    rf"{rho_pct:.3f}\%")
+                st.error(f"❌ ρ = {rho_pct:.3f}% violates ACI §10.6.1.1 limits: 1.0% ≤ ρ ≤ 8.0%")
 
-        with st.expander("2. Minimum Eccentricity Moments", expanded=False):
-            st.latex(rf"e_{{min,x}} = P_u(0.015+0.03h/100) = {e_min_x:.3f}\text{{ t-m}}")
-            st.latex(rf"M_{{ux,dsgn}} = \max({Mux:.2f},{e_min_x:.3f}) = {Mu_x_dsgn:.2f}\text{{ t-m}}")
-            st.latex(rf"e_{{min,y}} = P_u(0.015+0.03b/100) = {e_min_y:.3f}\text{{ t-m}}")
-            st.latex(rf"M_{{uy,dsgn}} = \max({Muy:.2f},{e_min_y:.3f}) = {Mu_y_dsgn:.2f}\text{{ t-m}}")
+        # ── 2. Maximum Axial Capacity ─────────────────────────────────────────
+        with st.expander("2. Maximum Axial Capacity (ACI 318-19 §22.4.2)", expanded=True):
+            is_circ2 = (shape == "Circular")
+            phi_c2   = 0.75 if is_circ2 else 0.65
+            fac_c2   = 0.85 if is_circ2 else 0.80
+            Po_val   = (0.85 * fc * (engine.Ag - engine.total_as) + fy * engine.total_as) / 1000
+            phi_Pn_max_val = phi_c2 * fac_c2 * Po_val
+            st.markdown(f"Section type: **{'Circular (spiral)' if is_circ2 else 'Rectangular (tied)'}** → φ = {phi_c2}, reduction factor = {fac_c2}")
+            st.latex(
+                rf"P_o = \frac{{0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}}}}{{1000}}"
+                rf"= \frac{{0.85 \times {fc} \times ({engine.Ag:.2f} - {engine.total_as:.4f}) + {fy} \times {engine.total_as:.4f}}}{{1000}}"
+                rf"= \frac{{{0.85*fc*(engine.Ag-engine.total_as):.2f} + {fy*engine.total_as:.2f}}}{{1000}}"
+                rf"= {Po_val:.3f} \text{{ ton}}")
+            st.latex(
+                rf"\phi P_{{n,\max}} = \phi \times {fac_c2} \times P_o"
+                rf"= {phi_c2} \times {fac_c2} \times {Po_val:.3f}"
+                rf"= {phi_Pn_max_val:.3f} \text{{ ton}}")
+            if Pu <= phi_Pn_max_val:
+                st.success(f"✅ Pu = {Pu:.2f} t ≤ φPn,max = {phi_Pn_max_val:.3f} t")
+            else:
+                st.error(f"❌ Pu = {Pu:.2f} t > φPn,max = {phi_Pn_max_val:.3f} t — section too small!")
 
-        with st.expander("3. Slenderness — X Axis", expanded=False):
-            if frame_type == "Non-Sway (Braced)":
-                st.latex(rf"kl/r_x = \frac{{{K_x}\times{Lu_x}\times100}}{{{engine.rx:.2f}}} = {kl_rx:.2f}")
-                st.latex(rf"EI_x = \frac{{0.2E_cI_{{gx}}+E_sI_{{se,x}}}}{{1+\beta_d}} = {EIx:,.0f}\text{{ ksc·cm}}^2")
-                st.latex(rf"P_{{cx}} = \frac{{\pi^2 EI_x}}{{(K_xL_u)^2}} = {Pcx:.2f}\text{{ ton}}")
-                if kl_rx > 22:
-                    st.latex(rf"\delta_x = \frac{{{Cm_x}}}{{1-P_u/(0.75P_{{cx}})}} = {del_x:.3f}")
+        # ── 3. Minimum Eccentricity ───────────────────────────────────────────
+        with st.expander("3. Minimum Eccentricity Moments (ACI 318-19 §6.6.4.5.4)", expanded=True):
+            st.markdown("ACI requires a minimum design moment regardless of analysis results:")
+            st.latex(rf"e_{{min,x}} = 0.015 + 0.03\,\frac{{h}}{{100}} = 0.015 + 0.03 \times \frac{{{h}}}{{100}} = {0.015+0.03*h/100:.5f} \text{{ m}}")
+            st.latex(rf"M_{{u,min,x}} = P_u \times e_{{min,x}} = {Pu:.2f} \times {0.015+0.03*h/100:.5f} = {e_min_x:.4f} \text{{ t-m}}")
+            st.latex(rf"M_{{ux,design}} = \max(M_{{ux}},\, M_{{u,min,x}}) = \max({Mux:.3f},\, {e_min_x:.4f}) = {Mu_x_dsgn:.4f} \text{{ t-m}}")
+            st.latex(rf"e_{{min,y}} = 0.015 + 0.03\,\frac{{b}}{{100}} = 0.015 + 0.03 \times \frac{{{b}}}{{100}} = {0.015+0.03*b/100:.5f} \text{{ m}}")
+            st.latex(rf"M_{{u,min,y}} = P_u \times e_{{min,y}} = {Pu:.2f} \times {0.015+0.03*b/100:.5f} = {e_min_y:.4f} \text{{ t-m}}")
+            st.latex(rf"M_{{uy,design}} = \max(M_{{uy}},\, M_{{u,min,y}}) = \max({Muy:.3f},\, {e_min_y:.4f}) = {Mu_y_dsgn:.4f} \text{{ t-m}}")
+
+        # ── 4. Slenderness & Moment Magnification ─────────────────────────────
+        with st.expander("4. Slenderness & Moment Magnification (ACI 318-19 §6.6.4)", expanded=True):
+            st.markdown(f"**Frame type:** {frame_type}")
+
+            for axis_lbl, K_v, Lu_v, r_v, Ig_v, Ise_v, EI_v, Pc_v, kl_r_v, Cm_v, beta_d_v, del_v, Mc_v, Mu_dsgn_v in [
+                ('X', K_x, Lu_x, engine.rx, engine.Igx, engine.Ise_x, EIx, Pcx, kl_rx, Cm_x, beta_d, del_x, Mcx, Mu_x_dsgn),
+                ('Y', K_y, Lu_y, engine.ry, engine.Igy, engine.Ise_y, EIy, Pcy, kl_ry, Cm_y, beta_d, del_y, Mcy, Mu_y_dsgn),
+            ]:
+                st.markdown(f"---\n##### Axis {axis_lbl}")
+                if frame_type == "Non-Sway (Braced)":
+                    st.latex(
+                        rf"\frac{{kl}}{{r_{axis_lbl}}} = \frac{{K \cdot L_u \cdot 100}}{{r}} = "
+                        rf"\frac{{{K_v} \times {Lu_v} \times 100}}{{{r_v:.3f}}} = {kl_r_v:.3f}")
+                    if kl_r_v <= 22:
+                        st.success(f"kl/r = {kl_r_v:.3f} ≤ 22 → Slenderness effects negligible (ACI §6.2.5). δ{axis_lbl} = 1.0, M_c{axis_lbl} = {Mu_dsgn_v:.4f} t-m")
+                    else:
+                        st.warning(f"kl/r = {kl_r_v:.3f} > 22 → Slenderness magnification required (ACI §6.6.4.5)")
+                        st.latex(
+                            rf"EI_{axis_lbl} = \frac{{0.2 E_c I_{{g{axis_lbl}}} + E_s I_{{se,{axis_lbl}}}}}{{1 + \beta_d}}"
+                            rf"= \frac{{0.2 \times {engine.Ec:,.0f} \times {Ig_v:,.2f} + {engine.Es:,.0f} \times {Ise_v:,.2f}}}{{1 + {beta_d_v}}}"
+                            rf"= \frac{{{0.2*engine.Ec*Ig_v:,.2f} + {engine.Es*Ise_v:,.2f}}}{{{1+beta_d_v}}}"
+                            rf"= {EI_v:,.0f} \text{{ ksc·cm}}^2")
+                        st.latex(
+                            rf"P_{{c{axis_lbl}}} = \frac{{\pi^2 EI_{axis_lbl}}}{{(K L_u)^2}}"
+                            rf"= \frac{{\pi^2 \times {EI_v:,.0f}}}{{({K_v} \times {Lu_v} \times 100)^2}}"
+                            rf"= \frac{{{math.pi**2*EI_v:,.2f}}}{{{(K_v*Lu_v*100)**2:,.0f}}}"
+                            rf"= {Pc_v:.3f} \text{{ ton}}")
+                        denom_val = 1.0 - Pu / (0.75 * Pc_v)
+                        st.latex(
+                            rf"\delta_{axis_lbl} = \frac{{C_m}}{{1 - P_u / (0.75\,P_{{c{axis_lbl}}})}} "
+                            rf"= \frac{{{Cm_v}}}{{1 - {Pu:.2f} / (0.75 \times {Pc_v:.3f})}}"
+                            rf"= \frac{{{Cm_v}}}{{{denom_val:.6f}}}"
+                            rf"= {del_v:.4f} \geq 1.0")
+                        st.latex(
+                            rf"M_{{c{axis_lbl}}} = \delta_{axis_lbl} \times M_{{u{axis_lbl},design}}"
+                            rf"= {del_v:.4f} \times {Mu_dsgn_v:.4f} = {Mc_v:.4f} \text{{ t-m}}")
                 else:
-                    st.write(f"kl/r = {kl_rx:.2f} ≤ 22 → slenderness ignored, δx = 1.0")
-            else:
-                st.write(f"Sway frame: Mcx = δsx × Mu,x = {delta_sx:.3f} × {Mu_x_dsgn:.2f} = {Mcx:.2f} t-m")
+                    ds_v = delta_sx if axis_lbl == 'X' else delta_sy
+                    st.latex(
+                        rf"M_{{c{axis_lbl}}} = \delta_{{s{axis_lbl}}} \times M_{{u{axis_lbl},design}}"
+                        rf"= {ds_v:.4f} \times {Mu_dsgn_v:.4f} = {Mc_v:.4f} \text{{ t-m}}")
+                    if kl_r_v > 22:
+                        st.latex(
+                            rf"\text{{Additional non-sway component: }} \delta_{{ns,{axis_lbl}}} = {del_v:.4f}"
+                            rf"\implies M_{{c{axis_lbl}}} = {del_v:.4f} \times {Mc_v/del_v:.4f} = {Mc_v:.4f} \text{{ t-m}}")
 
-        with st.expander("4. Slenderness — Y Axis", expanded=False):
-            if frame_type == "Non-Sway (Braced)":
-                st.latex(rf"kl/r_y = \frac{{{K_y}\times{Lu_y}\times100}}{{{engine.ry:.2f}}} = {kl_ry:.2f}")
-                st.latex(rf"EI_y = {EIy:,.0f}\text{{ ksc·cm}}^2")
-                st.latex(rf"P_{{cy}} = {Pcy:.2f}\text{{ ton}}")
-                if kl_ry > 22:
-                    st.latex(rf"\delta_y = {del_y:.3f}")
-                else:
-                    st.write(f"kl/r = {kl_ry:.2f} ≤ 22 → slenderness ignored, δy = 1.0")
+        # ── 5. Uniaxial Moment Capacities ─────────────────────────────────────
+        with st.expander("5. Uniaxial Moment Capacities at Pu (from P-M diagram)", expanded=True):
+            st.markdown(
+                f"Read φMnox and φMnoy from the P-M interaction curve at **Pu = {Pu:.2f} ton** "
+                f"by linear interpolation of the computed (φPn, φMn) data points."
+            )
+            if phi_Mnox > 0 and phi_Mnoy > 0:
+                st.latex(rf"\phi M_{{nox}} = {phi_Mnox:.4f} \text{{ t-m}} \quad \text{{(from X-axis P-M at Pu={Pu:.2f} t)}}")
+                st.latex(rf"\phi M_{{noy}} = {phi_Mnoy:.4f} \text{{ t-m}} \quad \text{{(from Y-axis P-M at Pu={Pu:.2f} t)}}")
             else:
-                st.write(f"Sway frame: Mcy = δsy × Mu,y = {delta_sy:.3f} × {Mu_y_dsgn:.2f} = {Mcy:.2f} t-m")
+                st.error("Cannot evaluate — Pu is outside the P-M curve range.")
 
-        with st.expander("5. Biaxial Bending Check (PCA)", expanded=True):
-            st.markdown("**PCA Load-Contour Method** (ACI 318 Commentary)")
+        # ── 6. Biaxial Bending Check ───────────────────────────────────────────
+        with st.expander("6. Biaxial Bending Check — PCA Load-Contour (ACI 318-19 Commentary)", expanded=True):
+            st.markdown("**PCA Load-Contour Method** (Bresler, 1960 / ACI 318 Commentary R6.6.5):")
             st.latex(
                 rf"\left(\frac{{M_{{cx}}}}{{\phi M_{{nox}}}}\right)^{{\alpha}} + "
-                rf"\left(\frac{{M_{{cy}}}}{{\phi M_{{noy}}}}\right)^{{\alpha}} \le 1.0")
-            if phi_Mnox > 0:
-                st.latex(rf"\phi M_{{nox}} = {phi_Mnox:.2f}\text{{ t-m}},\quad"
-                         rf"\phi M_{{noy}} = {phi_Mnoy:.2f}\text{{ t-m}},\quad\alpha = {alpha:.3f}")
-                st.latex(
-                    rf"\text{{Ratio}} = \left(\frac{{{Mcx:.2f}}}{{{phi_Mnox:.2f}}}\right)^{{{alpha:.3f}}} + "
-                    rf"\left(\frac{{{Mcy:.2f}}}{{{phi_Mnoy:.2f}}}\right)^{{{alpha:.3f}}} = {demand_ratio:.4f}")
-                st.success("✅ SAFE" if is_safe else "") if is_safe else st.error("❌ UNSAFE")
-            else:
-                st.error("Unable to evaluate — Pu out of range.")
+                rf"\left(\frac{{M_{{cy}}}}{{\phi M_{{noy}}}}\right)^{{\alpha}} \leq 1.0")
 
-        with st.expander("6. Reinforcement Detailing Summary", expanded=False):
-            bundle_splice_note = "N/A — use coupler/weld" if splice_data['lap_splice_not_permitted'] else f"{splice_data['l_splice_B_bundle']:.0f} cm"
+            # Alpha derivation
+            Po_a = (0.85*fc*(engine.Ag-engine.total_as)+fy*engine.total_as)/1000
+            phi_Po_a = (0.75 if shape=="Circular" else 0.65)*Po_a
+            ratio_a  = max(0.0, min(1.0, Pu/phi_Po_a)) if phi_Po_a > 0 else 0
+            st.markdown(f"**α exponent** (PCA interpolation, ACI Commentary):")
+            st.latex(
+                rf"\frac{{P_u}}{{\phi P_o}} = \frac{{{Pu:.3f}}}{{{phi_Po_a:.3f}}} = {ratio_a:.4f}")
+            st.latex(
+                rf"\alpha = 1.15 + (ratio - 0.10) \times \frac{{1.55 - 1.15}}{{0.90}} = "
+                rf"1.15 + ({ratio_a:.4f} - 0.10) \times 0.4\overline{{4}} = {alpha:.4f}")
+
+            if phi_Mnox > 0 and phi_Mnoy > 0:
+                term_x  = (Mcx / phi_Mnox)**alpha
+                term_y  = (Mcy / phi_Mnoy)**alpha
+                st.markdown("**Demand ratio calculation:**")
+                st.latex(
+                    rf"\left(\frac{{M_{{cx}}}}{{\phi M_{{nox}}}}\right)^{{\alpha}} = "
+                    rf"\left(\frac{{{Mcx:.4f}}}{{{phi_Mnox:.4f}}}\right)^{{{alpha:.4f}}} = "
+                    rf"{Mcx/phi_Mnox:.6f}^{{{alpha:.4f}}} = {term_x:.6f}")
+                st.latex(
+                    rf"\left(\frac{{M_{{cy}}}}{{\phi M_{{noy}}}}\right)^{{\alpha}} = "
+                    rf"\left(\frac{{{Mcy:.4f}}}{{{phi_Mnoy:.4f}}}\right)^{{{alpha:.4f}}} = "
+                    rf"{Mcy/phi_Mnoy:.6f}^{{{alpha:.4f}}} = {term_y:.6f}")
+                st.latex(
+                    rf"\text{{Demand Ratio}} = {term_x:.6f} + {term_y:.6f} = {demand_ratio:.6f}")
+                if is_safe:
+                    st.success(f"✅ {demand_ratio:.4f} ≤ 1.0 → **SAFE**")
+                else:
+                    st.error(f"❌ {demand_ratio:.4f} > 1.0 → **UNSAFE** — increase section or steel")
+            else:
+                st.error("Cannot evaluate — Pu out of range.")
+
+        # ── 7. Shear Capacity ─────────────────────────────────────────────────
+        with st.expander("7. Shear Capacity (ACI 318-19 Table 22.5.5.1)", expanded=True):
+            s = shear
+            st.markdown("**Effective depths (distance from compression face to tension steel centroid):**")
+            st.latex(rf"d_x = h - d' = {engine.h:.2f} - {engine.d_prime:.4f} = {s['dx']:.4f} \text{{ cm}}")
+            st.latex(rf"d_y = b - d' = {engine.b:.2f} - {engine.d_prime:.4f} = {s['dy']:.4f} \text{{ cm}}")
+
+            fc_mpa_val  = fc / 10.197
+            Nu_kgf_val  = Pu * 1000
+            Nu_mpa_val  = min(Nu_kgf_val / engine.Ag / 10.197, 0.05 * fc_mpa_val)
+            vc_mpa_val  = 0.17 * math.sqrt(fc_mpa_val) + Nu_mpa_val / 6.0
+            vc_ksc_val  = vc_mpa_val * 10.197
+
+            st.markdown("**Concrete shear stress (ACI Table 22.5.5.1 — converted to MKS):**")
+            st.latex(
+                rf"f'_c = {fc} \text{{ ksc}} \div 10.197 = {fc_mpa_val:.4f} \text{{ MPa}}")
+            st.latex(
+                rf"\frac{{N_u}}{{A_g}} = \frac{{{Nu_kgf_val:.0f}}}{{{engine.Ag:.2f}}} = {Nu_kgf_val/engine.Ag:.4f} \text{{ ksc}} "
+                rf"\div 10.197 = {Nu_kgf_val/engine.Ag/10.197:.4f} \text{{ MPa}} "
+                rf"\leq 0.05 f'_c = {0.05*fc_mpa_val:.4f} \text{{ MPa}}")
+            st.latex(
+                rf"v_c = 0.17\sqrt{{f'_c}} + \frac{{N_u}}{{6 A_g}} = "
+                rf"0.17 \times \sqrt{{{fc_mpa_val:.4f}}} + \frac{{{Nu_mpa_val:.6f}}}{{6}} = "
+                rf"0.17 \times {math.sqrt(fc_mpa_val):.4f} + {Nu_mpa_val/6:.6f} = "
+                rf"{vc_mpa_val:.6f} \text{{ MPa}} = {vc_ksc_val:.6f} \text{{ ksc}}")
+
+            st.markdown("**Concrete shear force:**")
+            st.latex(
+                rf"V_{{cx}} = v_c \times b_{{wx}} \times d_x = "
+                rf"{vc_ksc_val:.6f} \times {s['bwx']} \times {s['dx']:.4f} = "
+                rf"{vc_ksc_val*s['bwx']*s['dx']:.2f} \text{{ kgf}} = {s['Vcx_ton']:.4f} \text{{ ton}}")
+            st.latex(
+                rf"V_{{cy}} = v_c \times b_{{wy}} \times d_y = "
+                rf"{vc_ksc_val:.6f} \times {s['bwy']} \times {s['dy']:.4f} = "
+                rf"{vc_ksc_val*s['bwy']*s['dy']:.2f} \text{{ kgf}} = {s['Vcy_ton']:.4f} \text{{ ton}}")
+
+            d_tie_cm = tie_dia / 10
+            At_val   = math.pi * d_tie_cm**2 / 4
+            Av_val   = tie_legs * At_val
+            st.markdown("**Transverse steel:**")
+            st.latex(
+                rf"A_t = \frac{{\pi d_{{tie}}^2}}{{4}} = \frac{{\pi \times {d_tie_cm:.3f}^2}}{{4}} = {At_val:.4f} \text{{ cm}}^2")
+            st.latex(
+                rf"A_v = n_{{legs}} \times A_t = {tie_legs} \times {At_val:.4f} = {Av_val:.4f} \text{{ cm}}^2")
+
+            st.markdown("**Required spacing from shear demand:**")
+            Vsx_req = max(0.0, vux_ton / PHI_SHEAR - s['Vcx_ton'])
+            Vsy_req = max(0.0, vuy_ton / PHI_SHEAR - s['Vcy_ton'])
+            st.latex(
+                rf"V_{{s,req,x}} = \frac{{V_{{ux}}}}{{\phi}} - V_{{cx}} = "
+                rf"\frac{{{vux_ton:.3f}}}{{0.75}} - {s['Vcx_ton']:.4f} = "
+                rf"{vux_ton/PHI_SHEAR:.4f} - {s['Vcx_ton']:.4f} = {Vsx_req:.4f} \text{{ ton}}")
+            if Vsx_req > 0:
+                st.latex(
+                    rf"s_{{req,x}} = \frac{{A_v f_y d_x}}{{V_{{s,req,x}} \times 1000}} = "
+                    rf"\frac{{{Av_val:.4f} \times {fy} \times {s['dx']:.4f}}}{{{Vsx_req:.4f} \times 1000}} = "
+                    rf"\frac{{{Av_val*fy*s['dx']:.2f}}}{{{Vsx_req*1000:.2f}}} = {s['sx_shear']:.2f} \text{{ cm}}")
+            else:
+                st.latex(rf"V_{{s,req,x}} = 0 \implies s_{{req,x}} = \text{{no stirrups required beyond minimum}}")
+
+            st.markdown("**Governing design spacing:**")
+            st.latex(
+                rf"s_{{design}} = \min\!\left(s_{{req}},\, \frac{{d}}{{2}},\, 60\text{{cm}},\, s_{{seismic}}\right) = "
+                rf"\min({s['sx_shear']:.1f},\, {s['s_max_x']:.1f},\, {s['s_seismic']:.1f}\text{{ cm}}) = "
+                rf"{s['s_design']:.1f} \text{{ cm (rounded to 2.5 cm)}}")
+
+            st.markdown("**Provided capacity check:**")
+            Vsx_prov = Av_val * fy * s['dx'] / (s['s_design'] * 1000)
+            Vsy_prov = Av_val * fy * s['dy'] / (s['s_design'] * 1000)
+            st.latex(
+                rf"V_{{s,x}} = \frac{{A_v f_y d_x}}{{s \times 1000}} = "
+                rf"\frac{{{Av_val:.4f} \times {fy} \times {s['dx']:.4f}}}{{{s['s_design']:.1f} \times 1000}} = {Vsx_prov:.4f} \text{{ ton}}")
+            phi_Vnx = PHI_SHEAR * (s['Vcx_ton'] + Vsx_prov)
+            phi_Vny = PHI_SHEAR * (s['Vcy_ton'] + Vsy_prov)
+            st.latex(
+                rf"\phi V_{{nx}} = \phi (V_{{cx}} + V_{{s,x}}) = 0.75 \times ({s['Vcx_ton']:.4f} + {Vsx_prov:.4f}) = "
+                rf"0.75 \times {s['Vcx_ton']+Vsx_prov:.4f} = {phi_Vnx:.4f} \text{{ ton}}")
+            if s['x_ok']:
+                st.success(f"✅ φVnx = {phi_Vnx:.4f} t ≥ Vux = {vux_ton:.3f} t")
+            else:
+                st.error(f"❌ φVnx = {phi_Vnx:.4f} t < Vux = {vux_ton:.3f} t — increase ties or section")
+            st.latex(
+                rf"\phi V_{{ny}} = 0.75 \times ({s['Vcy_ton']:.4f} + {Vsy_prov:.4f}) = {phi_Vny:.4f} \text{{ ton}}")
+            if s['y_ok']:
+                st.success(f"✅ φVny = {phi_Vny:.4f} t ≥ Vuy = {vuy_ton:.3f} t")
+            else:
+                st.error(f"❌ φVny = {phi_Vny:.4f} t < Vuy = {vuy_ton:.3f} t")
+
+            st.markdown("**Maximum Vs check (ACI §22.5.1.2):**")
+            st.latex(
+                rf"V_{{s,\max,x}} = \frac{{0.66\sqrt{{f'_c[\text{{MPa}}]}}\,b_{{wx}}\,d_x \times 100}}{{9810}} = "
+                rf"\frac{{0.66 \times {math.sqrt(fc_mpa_val):.4f} \times {s['bwx']} \times 10 \times {s['dx']:.4f} \times 10}}{{9810}} = "
+                rf"{s['Vs_max_x_ton']:.4f} \text{{ ton}}")
+            if s['section_adequate_x']:
+                st.success(f"✅ Section adequate for X-shear (Vs,req ≤ Vs,max)")
+            else:
+                st.error("❌ Section too small for X-shear — increase dimensions")
+
+        # ── 8. Torsion Threshold ──────────────────────────────────────────────
+        with st.expander("8. Torsion Threshold (ACI 318-19 §22.7.4.1)", expanded=False):
+            s = shear
+            st.latex(
+                rf"T_{{th}} = \phi \times 0.026\sqrt{{f'_c}} \times \frac{{A_{{cp}}^2}}{{p_{{cp}}}}"
+                rf"= 0.75 \times 0.026 \times \sqrt{{{fc}}} \times \frac{{{s['Acp']:.2f}^2}}{{{s['pcp']:.2f}}}")
+            Tth_kgcm = 0.75 * 0.026 * math.sqrt(fc) * s['Acp']**2 / s['pcp']
+            st.latex(
+                rf"= 0.75 \times 0.026 \times {math.sqrt(fc):.4f} \times \frac{{{s['Acp']**2:.2f}}}{{{s['pcp']:.2f}}}"
+                rf"= {Tth_kgcm:.2f} \text{{ kgf·cm}} = {Tth_kgcm/100000:.6f} \text{{ ton-m}}")
+            st.latex(rf"T_{{th}} = {s['Tth_tonm']:.6f} \text{{ ton-m}}")
+            if s['torsion_critical']:
+                st.error(f"❌ Tu = {tu_tonm:.4f} t-m > Tth = {s['Tth_tonm']:.6f} t-m → Torsion design required!")
+            else:
+                st.success(f"✅ Tu = {tu_tonm:.4f} t-m ≤ Tth = {s['Tth_tonm']:.6f} t-m → Torsion negligible")
+
+        # ── 9. Lap Splice ─────────────────────────────────────────────────────
+        with st.expander("9. Lap Splice Lengths (ACI 318-19 §25.5 / §25.6.1.5)", expanded=False):
+            fy_mpa_s  = fy / 10.2
+            fc_mpa_s  = fc / 10.2
+            db_mm_s   = engine.db_cm * 10
+            ld_mm_s   = (3 * fy_mpa_s) / (40 * math.sqrt(fc_mpa_s)) * db_mm_s / 2.5
+            ld_cm_s   = max(ld_mm_s / 10, 30)
+            st.markdown("**Single-bar development length (ACI §25.5.2.1):**")
+            st.markdown("Assumptions: λ=1.0 (normal-weight), ψt=ψe=ψs=1.0 (uncoated, bottom cast), (cb+Ktr)/db=2.5 (confined)")
+            st.latex(
+                rf"l_d = \frac{{3 f_y[\text{{MPa}}]}}{{40\lambda\sqrt{{f'_c[\text{{MPa}}]}}}} \cdot \frac{{\psi_t\psi_e\psi_s}}{{(c_b+K_{{tr}})/d_b}} \cdot d_b")
+            st.latex(
+                rf"= \frac{{3 \times {fy_mpa_s:.3f}}}{{40 \times 1.0 \times \sqrt{{{fc_mpa_s:.3f}}}}} \times \frac{{1.0}}{{2.5}} \times {db_mm_s:.1f} \text{{ mm}}")
+            st.latex(
+                rf"= \frac{{{3*fy_mpa_s:.3f}}}{{40 \times {math.sqrt(fc_mpa_s):.4f}}} \times \frac{{1}}{{2.5}} \times {db_mm_s:.1f}")
+            st.latex(
+                rf"= {3*fy_mpa_s/(40*math.sqrt(fc_mpa_s)):.4f} \times 0.4 \times {db_mm_s:.1f} = {ld_mm_s:.2f} \text{{ mm}} = {ld_mm_s/10:.3f} \text{{ cm}}")
+            st.latex(rf"l_d = \max({ld_mm_s/10:.3f},\,30) = {ld_cm_s:.3f} \text{{ cm}}")
+            splice_B_s  = max(1.3 * ld_cm_s, 30)
+            compr_s     = max(0.00711 * fy * engine.db_cm, 30)
+            st.latex(rf"l_{{splice,B}} = 1.3 \times l_d = 1.3 \times {ld_cm_s:.3f} = {splice_B_s:.3f} \text{{ cm}}")
+            st.latex(rf"l_{{compr}} = 0.00711 \times f_y \times d_b = 0.00711 \times {fy} \times {engine.db_cm:.3f} = {compr_s:.3f} \text{{ cm}}")
+
+            if n_per_bundle > 1:
+                st.markdown(f"---\n**Bundle adjustment (ACI §25.6.1.5) — {n_per_bundle}-bar bundle:**")
+                db_eq_mm = engine.db_eq_cm * 10
+                st.latex(
+                    rf"d_{{b,eq}} = d_b \cdot \sqrt{{n}} = {db_mm_s:.1f} \times \sqrt{{{n_per_bundle}}} = {db_eq_mm:.3f} \text{{ mm}}")
+                ld_bundle = max(ld_cm_s * math.sqrt(n_per_bundle), 30)
+                pct_factors = {1:1.0, 2:1.0, 3:1.2, 4:1.33}
+                pct_f = pct_factors[n_per_bundle]
+                ld_bundle_pct = max(ld_cm_s * pct_f, 30)
+                ld_gov = max(ld_bundle, ld_bundle_pct)
+                splice_B_bundle = max(1.3 * ld_gov, 30)
+                st.latex(
+                    rf"l_{{d,bundle}} = l_d \times \sqrt{{n}} = {ld_cm_s:.3f} \times {math.sqrt(n_per_bundle):.4f} = {ld_bundle:.3f} \text{{ cm}}")
+                st.latex(
+                    rf"l_{{d,bundle,\%}} = l_d \times {pct_f} = {ld_cm_s:.3f} \times {pct_f} = {ld_bundle_pct:.3f} \text{{ cm}}")
+                st.latex(
+                    rf"l_{{d,gov}} = \max({ld_bundle:.3f},\,{ld_bundle_pct:.3f}) = {ld_gov:.3f} \text{{ cm}}")
+                st.latex(rf"l_{{splice,B,bundle}} = 1.3 \times {ld_gov:.3f} = {splice_B_bundle:.3f} \text{{ cm}}")
+                if splice_data['lap_splice_not_permitted']:
+                    st.error("🚫 ACI §25.6.1.4: Lap splices NOT permitted for 4-bar bundles. Use mechanical couplers.")
+
+            st.markdown("---\n**Summary:**")
+            col_s1, col_s2 = st.columns(2)
+            col_s1.metric("Class B Tension Splice", f"{l_splice_B:.1f} cm")
+            col_s2.metric("Compression Splice", f"{l_compression:.1f} cm")
+
+        # ── 10. Detailing Summary Table ────────────────────────────────────────
+        with st.expander("10. Detailing Summary (ACI 318-19 §10.6 / §25.7)", expanded=False):
+            bundle_splice_note = "N/A — coupler/weld" if splice_data['lap_splice_not_permitted'] else f"{splice_data['l_splice_B_bundle']:.1f} cm"
             st.markdown(f"""
-| Parameter | Value | Limit | Status |
-|---|---|---|---|
-| Bars per bundle | {n_per_bundle} | ≤ 4 (ACI §26.6.3.1) | {"✅" if n_per_bundle <= 4 else "❌"} |
-| Total steel positions | {engine.n_positions} | — | — |
-| Total individual bars | {engine.n_bars} | — | — |
-| ρ | {rho_pct:.2f}% | 1–8% | {"✅" if rho_ok else "❌"} |
-| Clear spacing (bundle) | {actual_space:.2f} cm | ≥ {min_req_space:.2f} cm (d_b,eq) | {"✅" if space_ok else "❌"} |
-| Shear tie spacing | {shear['s_design']:.1f} cm | ≤ {shear['s_max_x']:.1f} cm | {"✅" if shear['s_design'] <= shear['s_max_x'] else "❌"} |
-| Seismic tie (6·d_b) | {6*engine.db_cm:.1f} cm | — (single bar d_b) | — |
-| φVnx | {shear['phiVnx']:.2f} ton | ≥ {vux_ton:.2f} ton | {"✅" if shear['x_ok'] else "❌"} |
-| φVny | {shear['phiVny']:.2f} ton | ≥ {vuy_ton:.2f} ton | {"✅" if shear['y_ok'] else "❌"} |
-| Splice — single DB{db} (Tension B) | {splice_data['l_splice_B_single']:.0f} cm | — | — |
-| Splice — bundle (Tension B) | {bundle_splice_note} | — | {"🚫 Not permitted" if splice_data['lap_splice_not_permitted'] else "—"} |
-| Splice — single DB{db} (Compression) | {splice_data['l_compression_single']:.0f} cm | — | — |
-| Splice — bundle (Compression) | {"N/A" if splice_data['lap_splice_not_permitted'] else f"{splice_data['l_compression_bundle']:.0f} cm"} | — | — |
+| Item | Computed | Limit | Code Ref. | Status |
+|---|---|---|---|---|
+| Steel ratio ρ | {rho_pct:.3f}% | 1.0% – 8.0% | ACI §10.6.1.1 | {"✅" if rho_ok else "❌"} |
+| Bars per bundle | {n_per_bundle} | ≤ 4 | ACI §26.6.3.1 | ✅ |
+| Bundle positions | {engine.n_positions} | — | — | — |
+| Individual bars | {engine.n_bars} | — | — | — |
+| Clear spacing (bundles) | {actual_space:.3f} cm | ≥ {min_req_space:.3f} cm | ACI §25.2.3/§25.6.1.2 | {"✅" if space_ok else "❌"} |
+| Effective depth d' | {engine.d_prime:.3f} cm | — | — | — |
+| Design tie spacing | {shear['s_design']:.1f} cm | ≤ {shear['s_max_x']:.1f} cm (d/2) | ACI §25.7.2.1 | {"✅" if shear['s_design'] <= shear['s_max_x'] else "❌"} |
+| Seismic tie (6·d_b) | {6*engine.db_cm:.2f} cm | ≤ 15 cm | ACI §18.4.2.4 | {"✅" if 6*engine.db_cm <= 15 else "❌"} |
+| φVnx | {shear['phiVnx']:.3f} ton | ≥ {vux_ton:.3f} ton | ACI §22.5 | {"✅" if shear['x_ok'] else "❌"} |
+| φVny | {shear['phiVny']:.3f} ton | ≥ {vuy_ton:.3f} ton | ACI §22.5 | {"✅" if shear['y_ok'] else "❌"} |
+| Single-bar tension splice | {splice_data['l_splice_B_single']:.1f} cm | ≥ 30 cm | ACI §25.5.2.1 | ✅ |
+| Bundle tension splice | {bundle_splice_note} | — | ACI §25.6.1.5 | {"🚫" if splice_data['lap_splice_not_permitted'] else "—"} |
+| Single-bar compression splice | {splice_data['l_compression_single']:.1f} cm | ≥ 30 cm | ACI §25.5.5.1 | ✅ |
+| Torsion critical? | {"Yes" if shear['torsion_critical'] else "No"} | Tu ≤ Tth | ACI §22.7.4.1 | {"❌" if shear['torsion_critical'] else "✅"} |
 """)
 
     # ─────────────────────────────────────────────────────────────────────────
