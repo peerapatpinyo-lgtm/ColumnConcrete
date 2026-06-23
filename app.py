@@ -56,6 +56,9 @@ class RCColumn:
         # β₁  ACI 318-19 Table 22.2.2.4.3  (fc in ksc; threshold 280 ksc ≈ 28 MPa)
         self.beta1 = max(0.65, min(0.85, 0.85 - 0.05 * (self.fc - 280.0) / 70.0))
 
+        # Tension-controlled strain limit (ACI 318-19)
+        self.eps_ty_lim = (self.fy / self.Es) + 0.003
+
         # Section geometry
         if shape == "Rectangular":
             self.Ag  = self.b * self.h
@@ -315,38 +318,34 @@ class RCColumn:
     def generate_3d_surface(self, df_x, df_y, alpha, n_p=30, n_t=25):
         """
         Builds the biaxial failure surface using the PCA load-contour method.
-        Returns (X, Y, Z) arrays for a Plotly Surface trace.
+        Vectorized with NumPy for fast Plotly rendering.
         """
         p_lo = max(df_x['phiPn'].min(), df_y['phiPn'].min()) + 0.01
         p_hi = min(df_x['phiPn'].max(), df_y['phiPn'].max()) - 0.01
+        
         if p_lo >= p_hi:
             return np.array([]), np.array([]), np.array([])
 
         p_steps = np.linspace(p_lo, p_hi, n_p)
-        fx_interp = interp1d(df_x['phiPn'], df_x['phiMn'],
-                             kind='linear', bounds_error=False, fill_value=0.0)
-        fy_interp = interp1d(df_y['phiPn'], df_y['phiMn'],
-                             kind='linear', bounds_error=False, fill_value=0.0)
         theta = np.linspace(0, math.pi / 2.0, n_t)
-
-        X, Y, Z = [], [], []
-        for p in p_steps:
-            mx_cap = float(fx_interp(p))
-            my_cap = float(fy_interp(p))
-            xr, yr, zr = [], [], []
-            for t in theta:
-                if mx_cap > 0 and my_cap > 0:
-                    denom = ((math.cos(t) / mx_cap)**alpha +
-                             (math.sin(t) / my_cap)**alpha) ** (1.0 / alpha)
-                    r = 1.0 / denom if denom > 0 else 0.0
-                else:
-                    r = 0.0
-                xr.append(r * math.cos(t))
-                yr.append(r * math.sin(t))
-                zr.append(p)
-            X.append(xr); Y.append(yr); Z.append(zr)
-
-        return np.array(X), np.array(Y), np.array(Z)
+        
+        # Create 2D arrays for vectorization
+        T, P = np.meshgrid(theta, p_steps)
+        
+        # NumPy interpolation requires strictly ascending x-coordinates
+        mx_cap = np.interp(P, df_x['phiPn'], df_x['phiMn'])
+        my_cap = np.interp(P, df_y['phiPn'], df_y['phiMn'])
+        
+        # Suppress warnings for division by zero inside the contour boundary
+        with np.errstate(divide='ignore', invalid='ignore'):
+            denom = ((np.cos(T) / mx_cap)**alpha + (np.sin(T) / my_cap)**alpha) ** (1.0 / alpha)
+            R = np.where(denom > 0, 1.0 / denom, 0.0)
+            
+        X = R * np.cos(T)
+        Y = R * np.sin(T)
+        Z = P
+        
+        return X, Y, Z
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -355,9 +354,7 @@ class RCColumn:
 def shear_torsion_check(engine, Pu_ton, Vux_ton, Vuy_ton, Tu_tonm,
                         tie_dia_mm, tie_legs, is_seismic, Lu_x_m):
     """
-    ACI 318-19 shear check in MKS units (ksc, ton, cm).
-    MKS Vc formula: Vc = 0.53·√f'c·bw·d  (kgf)
-    Note: 0.53 [MKS] ↔ 0.17 [SI/MPa] since √(1 MPa/1 ksc) ≈ √10.2 ≈ 3.19 → 0.53/3.19≈0.17
+    ACI 318-19 shear check with exact Table 22.5.5.1 equation via MPa conversion.
     """
     fc   = engine.fc
     fy   = engine.fy
@@ -369,75 +366,72 @@ def shear_torsion_check(engine, Pu_ton, Vux_ton, Vuy_ton, Tu_tonm,
     Av     = tie_legs * At              # cm² per stirrup set
 
     if engine.shape == "Rectangular":
-        # Effective depth for X-shear (Vux acts perpendicular to h-direction)
-        dx = engine.h - engine.d_prime    # depth in h-direction
-        # Effective depth for Y-shear
+        dx = engine.h - engine.d_prime
         dy = engine.b - engine.d_prime
-        bwx = engine.b    # web width when resisting Vux
-        bwy = engine.h    # web width when resisting Vuy
+        bwx = engine.b
+        bwy = engine.h
         Acp = engine.b * engine.h
         pcp = 2.0 * (engine.b + engine.h)
         min_dim = min(engine.b, engine.h)
     else:
-        dx = dy = 0.8 * engine.D         # ACI 318-19 §11.5.1 for circular
+        dx = dy = 0.8 * engine.D
         bwx = bwy = engine.D
         Acp = engine.Ag
         pcp = math.pi * engine.D
         min_dim = engine.D
 
-    # ── Concrete shear capacity (ACI 318-19 Table 22.5.5.1, MKS) ────────────
-    # With axial compression benefit: Vc = 0.53·√f'c·bw·d·(1 + Pu/(140·Ag))
-    axial_factor_x = 1.0 + Pu_kgf / (140.0 * engine.Ag)
-    axial_factor_y = axial_factor_x
-    Vcx_kgf = 0.53 * math.sqrt(fc) * bwx * dx * axial_factor_x
-    Vcy_kgf = 0.53 * math.sqrt(fc) * bwy * dy * axial_factor_y
-    Vcx_ton  = Vcx_kgf / 1_000.0
-    Vcy_ton  = Vcy_kgf / 1_000.0
+    # ── Concrete shear capacity (ACI 318-19 Table 22.5.5.1) ────────────
+    # Convert parameters to MPa for the standard ACI formula
+    fc_mpa = fc / 10.197
+    stress_pu_mpa = (Pu_kgf / engine.Ag) / 10.197
+    
+    # ACI limit: Nu/(6*Ag) cannot exceed 0.05*f'c (in MPa) [ACI 22.5.5.1.1]
+    stress_pu_mpa = min(stress_pu_mpa, 0.05 * fc_mpa)
 
-    # ── Torsion threshold  ACI 318-19 §22.7.4.1 (MKS: kgf, cm) ─────────────
-    # Tth = φ·0.026·√f'c·(Acp²/pcp)  [kgf·cm]
-    # 0.026 MKS ↔ 0.083 SI (√10.2 factor)
+    # Vc stress in MPa: 0.17·√f'c + Nu/(6·Ag)
+    vc_stress_mpa = 0.17 * math.sqrt(fc_mpa) + (stress_pu_mpa / 6.0)
+    
+    # Convert back to MKS stress (ksc) and calculate capacity
+    vc_stress_ksc = vc_stress_mpa * 10.197
+    
+    Vcx_kgf = vc_stress_ksc * bwx * dx
+    Vcy_kgf = vc_stress_ksc * bwy * dy
+    Vcx_ton = Vcx_kgf / 1_000.0
+    Vcy_ton = Vcy_kgf / 1_000.0
+
+    # ── Torsion threshold  ACI 318-19 §22.7.4.1 (MKS) ─────────────
     Tth_kgcm = phi * 0.026 * math.sqrt(fc) * (Acp**2 / pcp)
     Tth_tonm = Tth_kgcm / 100_000.0
     torsion_critical = Tu_tonm > Tth_tonm
 
-    # ── Maximum stirrup spacing limits ──────────────────────────────────────
-    # ACI 318-19 §9.7.6.2.2: s_max = min(d/2, 60 cm) for non-seismic
+    # ── Spacing limits ──────────────────────────────────────
     s_max_x = min(dx / 2.0, 60.0)
     s_max_y = min(dy / 2.0, 60.0)
 
-    # ── Seismic confinement spacing (SMF) ACI 318-19 §18.7.5.3 ────────────
     s_seismic = 999.0
     if is_seismic:
         s_seismic = min(min_dim / 4.0, 6.0 * engine.db_cm, 15.0)
 
-    # ── Required stirrup spacing from shear demand ──────────────────────────
-    # Vu ≤ φ(Vc + Vs)  →  Vs_req = (Vu/φ) − Vc  [ton]
+    # ── Required stirrup spacing ──────────────────────────
     Vsx_req_ton = max(0.0, Vux_ton / phi - Vcx_ton)
     Vsy_req_ton = max(0.0, Vuy_ton / phi - Vcy_ton)
 
-    # s = Av·fy·d / Vs_req   (all in kgf, cm)
     def req_spacing(Vs_ton, Av_cm2, d_cm):
         Vs_kgf = Vs_ton * 1_000.0
-        if Vs_kgf < 1.0:
-            return 999.0
+        if Vs_kgf < 1.0: return 999.0
         return (Av_cm2 * fy * d_cm) / Vs_kgf
 
     sx_shear = req_spacing(Vsx_req_ton, Av, dx)
     sy_shear = req_spacing(Vsy_req_ton, Av, dy)
 
-    # Governing spacing (most restrictive)
     s_gov = min(sx_shear, sy_shear, s_max_x, s_max_y, s_seismic)
-    s_design = max(5.0, math.floor(s_gov / 2.5) * 2.5)  # round down to nearest 2.5 cm
+    s_design = max(5.0, math.floor(s_gov / 2.5) * 2.5)
 
-    # ── Provided capacity at s_design ──────────────────────────────────────
-    Vsx_prov_ton = (Av * fy * dx) / (s_design * 1_000.0)  # ton
+    Vsx_prov_ton = (Av * fy * dx) / (s_design * 1_000.0)
     Vsy_prov_ton = (Av * fy * dy) / (s_design * 1_000.0)
     phiVnx = phi * (Vcx_ton + Vsx_prov_ton)
     phiVny = phi * (Vcy_ton + Vsy_prov_ton)
 
-    # ── Maximum shear check  ACI 318-19 §22.5.1.2 ──────────────────────────
-    # Vn ≤ (Vc + 2.12·√f'c·bw·d) → i.e. Vs ≤ 2.12·√f'c·bw·d  [MKS: 2.12→ equiv 0.66 MPa]
     Vs_max_x_ton = 2.12 * math.sqrt(fc) * bwx * dx / 1_000.0
     Vs_max_y_ton = 2.12 * math.sqrt(fc) * bwy * dy / 1_000.0
     section_adequate_x = Vsx_req_ton <= Vs_max_x_ton
