@@ -638,13 +638,13 @@ if Pu > phi_pn_max:
     error_status = (f"Axial load Pu = {Pu:.1f} t exceeds section capacity "
                     f"φPn,max = {phi_pn_max:.1f} t")
 else:
+
+
     try:
-        fx_i = interp1d(df_x['phiPn'], df_x['phiMn'],
-                        kind='linear', bounds_error=False, fill_value=0.0)
-        fy_i = interp1d(df_y['phiPn'], df_y['phiMn'],
-                        kind='linear', bounds_error=False, fill_value=0.0)
-        phi_Mnox = float(fx_i(Pu))
-        phi_Mnoy = float(fy_i(Pu))
+        # np.interp clamps values outside the bounds to the boundary values
+        phi_Mnox = float(np.interp(Pu, df_x['phiPn'], df_x['phiMn']))
+        phi_Mnoy = float(np.interp(Pu, df_y['phiPn'], df_y['phiMn']))
+    
 
         if phi_Mnox <= 0 or phi_Mnoy <= 0:
             error_status = "Pu is outside the valid range of the P-M interaction curve."
