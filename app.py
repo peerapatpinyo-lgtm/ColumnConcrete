@@ -2076,6 +2076,7 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
+
     st.header("📈 P-M Interaction Diagram (Advanced Biaxial & Capacity)")
     st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity และรายการคำนวณแบบละเอียด (MKS Unit)")
 
@@ -2125,7 +2126,7 @@ with tab8:
         # ฟังก์ชันคำนวณรายการอย่างละเอียด
         def calc_pm_detailed(c):
             if c <= 0.001: 
-                return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.90
+                return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.90
             
             a = min(beta1 * c, h)
             Cc = 0.85 * fc * a * b
@@ -2152,7 +2153,7 @@ with tab8:
                 
             return a, eps_s_prime, eps_t, fs_prime, fs, Cc, Cs, T, Pn, Mn, phi
 
-        # --- คำนวณกราฟ P-M 1000 จุด ---
+        # --- คำนวณกราฟ P-M 500 จุด ---
         c_vals = np.linspace(0.01*d, h*1.5, 500)[::-1] # ไล่จาก c มาก (แรงอัด) ไป c น้อย (แรงดึง)
         
         P_nom, M_nom, P_des, M_des = [], [], [], []
@@ -2174,7 +2175,7 @@ with tab8:
         P_des.append(-(fy * ast) / 1000.0 * 0.90)
         M_des.append(0.0)
 
-        # --- Plotly Graph ระดับ Pro ---
+        # --- Plotly Graph ---
         fig = go.Figure()
         
         # 1. Area ใต้กราฟ Design Capacity (Safe Zone)
@@ -2197,7 +2198,6 @@ with tab8:
 
         # 4. จุด Demand Check (Pu, Mu)
         if pu_check != 0 or mu_check != 0:
-            # เช็กสถานะว่าปลอดภัยหรือไม่ (อย่างง่ายจากกราฟ)
             status_color = 'darkorange'
             fig.add_trace(go.Scatter(
                 x=[mu_check], y=[pu_check], mode='markers+text', 
@@ -2237,12 +2237,12 @@ with tab8:
     labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
     
     for i, c_val in enumerate(c_pts):
-        if i == 0: # Pure Comp แท้จริง
+        if i == 0: # Pure Comp แท้จริง (แก้ไขเอาเครื่องหมาย "-" ออก 1 ตัว เพื่อให้เหลือ 7 ตัว รวมข้อมูลเป็น 13 คอลัมน์พอดิบพอดี)
             P1 = Po_kg / 1000.0
-            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
-        elif i == 4: # Pure Tension แท้จริง
+            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
+        elif i == 4: # Pure Tension แท้จริง (แก้ไขเอาเครื่องหมาย "-" ออก 1 ตัว ให้ข้อมูลครบ 13 ตัวเท่ากัน)
             P5 = -(fy * ast) / 1000.0
-            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
+            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
         else:
             a, e_s, e_t, fs_p, fs, Cc, Cs, T, Pn, Mn, phi = calc_pm_detailed(c_val)
             report_data.append([
@@ -2253,7 +2253,7 @@ with tab8:
                 round(phi,3), round(Pn*phi,1), round(Mn*phi,2)
             ])
 
-    # สร้าง DataFrame เพื่อแสดงผลตารางที่สวยงาม
+    # สร้าง DataFrame เพื่อแสดงผลตาราง (ตอนนี้ข้อมูลทุกแถวมีความยาว 13 ตัวเท่ากับจำนวนหัวข้อแล้ว)
     df_report = pd.DataFrame(report_data, columns=[
         "สภาวะ (Condition)", "c (cm)", "a (cm)", 
         "ε'_s (อัด)", "ε_t (ดึง)", 
