@@ -2076,6 +2076,7 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
+
     st.header("📈 Advanced P-M Interaction & φ-Factor Dashboard")
     st.markdown("วิเคราะห์กำลังหน้าตัดเสาและตัวคูณลดกำลัง (ACI 318-19) พร้อมแสดงรายการคำนวณและแผนภาพหน้าตัดสมจริง")
 
@@ -2170,7 +2171,6 @@ with tab8:
     a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, P4, M4, phi4 = calc_pm_detailed(c_m0)
     P5, M5 = -(fy * ast) / 1000.0, 0.0
 
-    # แมพจุด Demand Point เข้าสู่เส้นกราฟด้วยวิธี Eccentricity (e = Mu/Pu)
     if pu_check != 0 or mu_check != 0:
         if pu_check == 0:
             idx_chk = idx_m0
@@ -2190,7 +2190,6 @@ with tab8:
         st.subheader("📊 2. แผนภูมิคู่ขนาน P-M Interaction และ ตัวคูณลดกำลัง (φ)")
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 9.5))
         
-        # P-M Plot
         ax1.plot(M_nom, P_nom, color='#3b82f6', linestyle='--', linewidth=1.5, label='Nominal Capacity')
         ax1.plot(M_des, P_des, color='#10b981', linewidth=2.5, label='Design Capacity')
         ax1.fill_between(M_des, 0, P_des, color='#10b981', alpha=0.1)
@@ -2207,7 +2206,6 @@ with tab8:
         ax1.grid(True, linestyle=':', alpha=0.6)
         ax1.legend(loc='upper right', fontsize=8)
 
-        # Phi Plot (Dynamic X-Axis Limit)
         x_max_lim = 0.012
         if (pu_check != 0 or mu_check != 0) and eps_t_chk > 0.010:
             x_max_lim = eps_t_chk + 0.003
@@ -2242,16 +2240,17 @@ with tab8:
     ])
     st.dataframe(summary_df, use_container_width=True)
 
-    # ─── 5. DETAILED PROFILES & CALCULATIONS (PROFESSIONAL ENGINEERING FORMAT) ───
+    # ─── 5. DETAILED PROFILES & CALCULATIONS (RESTRUCTURED DESIGN) ───
     st.markdown("---")
     st.subheader("📐 4. รายการคำนวณแบบจำลองหน้าตัด (Detailed Section Analysis)")
     
-    # แสดงข้อสมมติฐานหลักเพื่อให้ทราบค่า e_cu ชัดเจน
     st.markdown(fr"""
-    **📝 ข้อสมมติฐานที่ใช้ในการออกแบบ (Design Assumptions):**
-    $$ \text{{ความเครียดอัดสูงสุดของคอนกรีต, }} \epsilon_{{cu}} = {ecu:.3f} $$
-    $$ \text{{โมดูลัสยืดหยุ่นของเหล็กเสริม, }} E_s = {Es:,.0f} \text{{ ksc}} $$
-    """)
+    <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; border-left: 5px solid #64748b; margin-bottom: 20px;">
+        <span style="font-weight: bold; color: #334155;">📝 ข้อสมมติฐานหลักในการคำนวณ (Design Assumptions):</span><br>
+        • ความเครียดอัดสูงสุดของคอนกรีต: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>&epsilon;<sub>cu</sub> = {ecu:.3f}</b><br>
+        • โมดูลัสยืดหยุ่นของเหล็กเสริม: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>E<sub>s</sub> = {Es:,.0f} ksc</b>
+    </div>
+    """, unsafe_allow_html=True)
 
     def draw_compact_profile(b_w, h_d, cov, c_in, a_in, e_cu, e_t, fs_prime, fs, Cc, Cs, T, title_name):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 4), gridspec_kw={'width_ratios': [1, 1.2, 1.5]})
@@ -2333,91 +2332,108 @@ with tab8:
 
     with t1:
         st.pyplot(draw_compact_profile(b, h, cover, h*5, h, ecu, 0, fy, 0, P1*1000, 0, 0, "Pure Compression"), bbox_inches='tight')
-        st.markdown(fr"""
-        ### 1. ข้อมูลรูปทรงเรขาคณิต (Geometry Data)
-        $$ A_g = b \times h $$
-        $$ A_g = {b} \times {h} = {Ag:,.2f} \text{{ cm}}^2 $$
-
-        ### 2. กำลังรับแรงระบุ (Nominal Capacity)
-        $$ P_o = 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}} $$
-        $$ P_o = 0.85 \times {fc} \times ({Ag:,.2f} - {ast:.2f}) + {fy} \times {ast:.2f} = {P1*1000:,.0f} \text{{ kgf}} $$
-        $$ P_o = \mathbf{{{P1:,.2f} \text{{ ton}}}} $$
-        $$ M_n = \mathbf{{0.00 \text{{ ton-m}}}} $$
-
-        ### 3. กำลังรับแรงออกแบบ (Design Capacity)
-        $$ \phi P_{{n,\max}} = \phi \cdot \alpha \cdot P_o $$
-        $$ \phi P_{{n,\max}} = {phi_c} \times {alpha_max} \times {P1:,.2f} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}} $$
-        """)
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("##### 📝 สมการคำนวณและขั้นตอน")
+            st.latex(r"A_g = b \times h")
+            st.latex(r"P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}")
+            st.latex(r"\phi P_{n,\max} = \phi \cdot \alpha \cdot P_o")
+        with col_f2:
+            st.markdown("##### 🔢 ผลลัพธ์จากการแทนค่า")
+            st.markdown(f"""
+            <table style="width:100%; border:none;">
+                <tr><td>• พื้นที่หน้าตัดทั้งหมด (A<sub>g</sub>)</td><td style="text-align:right;"><b>{Ag:,.2f}</b></td><td>cm²</td></tr>
+                <tr><td>• กำลังรับแรงกดสูงสุดระบุ (P<sub>o</sub>)</td><td style="text-align:right; color:#1e3a8a;"><b>{P1:,.2f}</b></td><td>ton</td></tr>
+                <tr style="border-top:1px solid #cbd5e1;"><td>• <b>กำลังออกแบบสูงสุด (&phi;P<sub>n,max</sub>)</b></td><td style="text-align:right; color:#b91c1c;"><b>{phi_Pn_max:,.2f}</b></td><td><b>ton</b></td></tr>
+                <tr><td>• โมเมนต์ดัดร่วมกัน (M<sub>n</sub>)</td><td style="text-align:right;"><b>0.00</b></td><td>ton-m</td></tr>
+            </table>
+            """, unsafe_allow_html=True)
 
     with t2:
         st.pyplot(draw_compact_profile(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension"), bbox_inches='tight')
-        st.markdown(fr"""
-        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        $$ c = h - d' = {h} - {cover} = {d:.2f} \text{{ cm}} $$
-        $$ a = \beta_1 \cdot c = {beta1} \times {d:.2f} = {a2:.2f} \text{{ cm}} $$
-        $$ \epsilon'_s = \epsilon_{{cu}} \left( \frac{{c - d'}}{{c}} \right) = {ecu:.3f} \times \left( \frac{{{d:.2f} - {cover}}}{{{d:.2f}}} \right) = {eps_s_prime2:.5f} $$
-
-        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        $$ C_c = 0.85 f'_c a b = 0.85 \times {fc} \times {a2:.2f} \times {b} = {Cc2:,.0f} \text{{ kgf}} $$
-        $$ f'_s = \min(E_s \epsilon'_s, f_y) = \min(2040000 \times {eps_s_prime2:.5f}, {fy}) = {fs_prime2:,.0f} \text{{ ksc}} $$
-        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc}) = {Cs2:,.0f} \text{{ kgf}} $$
-        $$ T = A_s f_s = {As_half:.2f} \times {fs2:,.0f} = {T2:,.0f} \text{{ kgf}} $$
-
-        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        $$ P_n = C_c + C_s - T = {Cc2:,.0f} + {Cs2:,.0f} - {T2:,.0f} = \mathbf{{{P2:,.2f} \text{{ ton}}}} $$
-        $$ M_n = \left[ C_c \left(\frac{{h}}{{2}} - \frac{{a}}{{2}}\right) + C_s \left(\frac{{h}}{{2}} - d'\right) + T \left(d - \frac{{h}}{{2}}\right) \right] \times 10^{{-5}} $$
-        $$ M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}} $$
-        """)
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("##### 📝 สมการคำนวณและขั้นตอน")
+            st.latex(r"c = h - d', \quad a = \beta_1 \cdot c")
+            st.latex(r"\epsilon'_s = \epsilon_{cu} \left( \frac{c - d'}{c} \right)")
+            st.latex(r"C_c = 0.85 f'_c a b")
+            st.latex(r"C_s = A'_s (f'_s - 0.85 f'_c)")
+            st.latex(r"P_n = C_c + C_s - T")
+        with col_f2:
+            st.markdown("##### 🔢 ผลลัพธ์จากการแทนค่า")
+            st.markdown(f"""
+            <table style="width:100%; border:none;">
+                <tr><td>• แกนสะเทิน (c) / บล็อกหน่วยแรง (a)</td><td style="text-align:right;"><b>{d:.2f} / {a2:.2f}</b></td><td>cm</td></tr>
+                <tr><td>• ความเครียดเหล็กรับแรงอัด (&epsilon;'<sub>s</sub>)</td><td style="text-align:right;"><b>{eps_s_prime2:.5f}</b></td><td>-</td></tr>
+                <tr><td>• หน่วยแรงเหล็กเสริมรับแรงอัด (f'<sub>s</sub>)</td><td style="text-align:right;"><b>{fs_prime2:,.0f}</b></td><td>ksc</td></tr>
+                <tr><td>• แรงลัพธ์คอนกรีต (C<sub>c</sub>) / เหล็กอัด (C<sub>s</sub>)</td><td style="text-align:right;"><b>{Cc2/1000:.1f} / {Cs2/1000:.1f}</b></td><td>ton</td></tr>
+                <tr style="border-top:1px solid #cbd5e1; background-color:#f8fafc;"><td>• <b>กำลังรับแรงอัดระบุ (P<sub>n</sub>)</b></td><td style="text-align:right; color:#0f766e;"><b>{P2:,.2f}</b></td><td><b>ton</b></td></tr>
+                <tr style="background-color:#f8fafc;"><td>• <b>กำลังโมเมนต์ระบุ (M<sub>n</sub>)</b></td><td style="text-align:right; color:#0f766e;"><b>{M2:,.2f}</b></td><td><b>ton-m</b></td></tr>
+            </table>
+            """, unsafe_allow_html=True)
 
     with t3:
         st.pyplot(draw_compact_profile(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced"), bbox_inches='tight')
-        st.markdown(fr"""
-        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        $$ \epsilon_y = \frac{{f_y}}{{E_s}} = \frac{{{fy}}}{{2040000}} = {ety:.5f} $$
-        $$ c_b = d \left( \frac{{\epsilon_{{cu}}}}{{\epsilon_{{cu}} + \epsilon_y}} \right) = {d:.2f} \times \left( \frac{{{ecu:.3f}}}{{{ecu:.3f} + {ety:.5f}}} \right) = {cb:.2f} \text{{ cm}} $$
-        $$ a_b = \beta_1 c_b = {beta1} \times {cb:.2f} = {a3:.2f} \text{{ cm}} $$
-        $$ \epsilon'_s = \epsilon_{{cu}} \left( \frac{{c_b - d'}}{{c_b}} \right) = {ecu:.3f} \times \left( \frac{{{cb:.2f} - {cover}}}{{{cb:.2f}}} \right) = {eps_s_prime3:.5f} $$
-
-        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        $$ C_c = 0.85 f'_c a_b b = 0.85 \times {fc} \times {a3:.2f} \times {b} = {Cc3:,.0f} \text{{ kgf}} $$
-        $$ f'_s = \min(E_s \epsilon'_s, f_y) = {fs_prime3:,.0f} \text{{ ksc}} $$
-        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {Cs3:,.0f} \text{{ kgf}} $$
-        $$ T = A_s f_y = {As_half:.2f} \times {fy} = {T3:,.0f} \text{{ kgf}} $$
-
-        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        $$ P_n = C_c + C_s - T = \mathbf{{{P3:,.2f} \text{{ ton}}}} $$
-        $$ M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}} $$
-        """)
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("##### 📝 สมการคำนวณและขั้นตอน")
+            st.latex(r"\epsilon_y = \frac{f_y}{E_s}")
+            st.latex(r"c_b = d \left( \frac{\epsilon_{cu}}{\epsilon_{cu} + \epsilon_y} \right), \quad a_b = \beta_1 c_b")
+            st.latex(r"C_c = 0.85 f'_c a_b b")
+            st.latex(r"T = A_s f_y")
+        with col_f2:
+            st.markdown("##### 🔢 ผลลัพธ์จากการแทนค่า")
+            st.markdown(f"""
+            <table style="width:100%; border:none;">
+                <tr><td>• ความเครียดจุดครากของเหล็ก (&epsilon;<sub>y</sub>)</td><td style="text-align:right;"><b>{ety:.5f}</b></td><td>-</td></tr>
+                <tr><td>• ระยะแกนสะเทินสมดุล (c<sub>b</sub> / a<sub>b</sub>)</td><td style="text-align:right;"><b>{cb:.2f} / {a3:.2f}</b></td><td>cm</td></tr>
+                <tr><td>• แรงลัพธ์คอนกรีต (C<sub>c</sub>) / แรงดึงเหล็ก (T)</td><td style="text-align:right;"><b>{Cc3/1000:.1f} / {T3/1000:.1f}</b></td><td>ton</td></tr>
+                <tr style="border-top:1px solid #cbd5e1; background-color:#f0fdf4;"><td>• <b>กำลังอัดระบุที่จุดสมดุล (P<sub>n,b</sub>)</b></td><td style="text-align:right; color:#166534;"><b>{P3:,.2f}</b></td><td><b>ton</b></td></tr>
+                <tr style="background-color:#f0fdf4;"><td>• <b>กำลังโมเมนต์ระบุที่จุดสมดุล (M<sub>n,b</sub>)</b></td><td style="text-align:right; color:#166534;"><b>{M3:,.2f}</b></td><td><b>ton-m</b></td></tr>
+            </table>
+            """, unsafe_allow_html=True)
 
     with t4:
         st.pyplot(draw_compact_profile(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending"), bbox_inches='tight')
-        st.markdown(fr"""
-        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        *(วิเคราะห์จุดสมดุลแรง $C_c + C_s = T$ หรือ $P_n \approx 0$)*
-        $$ c = {c_m0:.2f} \text{{ cm}}, \quad a = {beta1} \times {c_m0:.2f} = {a4:.2f} \text{{ cm}} $$
-        $$ \epsilon_t = \epsilon_{{cu}} \left( \frac{{d - c}}{{c}} \right) = {ecu:.3f} \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right) = {eps_t4:.5f} $$
-        *(เนื่องจาก $\epsilon_t \ge 0.005$ หน้าตัดรับแรงดึงสมบูรณ์ ส่งผลให้ $\phi = 0.90$)*
-
-        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        $$ C_c = 0.85 f'_c a b = {Cc4:,.0f} \text{{ kgf}} $$
-        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {Cs4:,.0f} \text{{ kgf}} $$
-        $$ T = A_s f_y = {T4:,.0f} \text{{ kgf}} $$
-
-        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        $$ P_n = \mathbf{{0.00 \text{{ ton}}}} $$
-        $$ M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} $$
-        """)
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("##### 📝 สมการคำนวณและขั้นตอน")
+            st.markdown("*(ลูปสมดุลแรงภายใน: $C_c + C_s = T \Rightarrow P_n \approx 0$)*")
+            st.latex(r"\epsilon_t = \epsilon_{cu} \left( \frac{d - c}{c} \right)")
+            st.latex(r"\text{If } \epsilon_t \ge 0.005 \Rightarrow \phi = 0.90")
+            st.latex(r"M_n = \sum \text{Force} \times \text{lever arm}")
+        with col_f2:
+            st.markdown("##### 🔢 ผลลัพธ์จากการแทนค่า")
+            st.markdown(f"""
+            <table style="width:100%; border:none;">
+                <tr><td>• ระยะแกนสะเทินอิสระ (c / a)</td><td style="text-align:right;"><b>{c_m0:.2f} / {a4:.2f}</b></td><td>cm</td></tr>
+                <tr><td>• ความเครียดดึงที่ผิวนอกสุด (&epsilon;<sub>t</sub>)</td><td style="text-align:right; color:#2563eb;"><b>{eps_t4:.5f}</b></td><td>-</td></tr>
+                <tr><td>• ตัวคูณลดกำลังแรงดึง (&phi;)</td><td style="text-align:right;"><b>{phi4:.2f} (Tension-Ctrl)</b></td><td>-</td></tr>
+                <tr style="border-top:1px solid #cbd5e1; background-color:#fffbeb;"><td>• <b>แรงอัดลัพธ์สุทธิ (P<sub>n</sub>)</b></td><td style="text-align:right;"><b>0.00</b></td><td><b>ton</b></td></tr>
+                <tr style="background-color:#fffbeb;"><td>• <b>กำลังดัดบริสุทธิ์ระบุ (M<sub>n</sub>)</b></td><td style="text-align:right; color:#9a3412;"><b>{M4:,.2f}</b></td><td><b>ton-m</b></td></tr>
+            </table>
+            """, unsafe_allow_html=True)
 
     with t5:
         st.pyplot(draw_compact_profile(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension"), bbox_inches='tight')
-        st.markdown(fr"""
-        ### 1. สภาพของหน้าตัด (Section Behavior)
-        *คอนกรีตแตกร้าวเต็มหน้าตัด ไม่สามารถต้านทานแรงดึงได้*
-        $$ C_c = 0 \text{{ kgf}}, \quad C_s = 0 \text{{ kgf}} $$
-
-        ### 2. กำลังรับแรงระบุและออกแบบ (Nominal & Design Capacity)
-        $$ P_n = -A_{{st}} f_y = -{ast:.2f} \times {fy} = {P5*1000:,.0f} \text{{ kgf}} $$
-        $$ P_n = \mathbf{{{P5:,.2f} \text{{ ton}}}} $$
-        $$ M_n = \mathbf{{0.00 \text{{ ton-m}}}} $$
-        $$ \phi P_n = 0.90 \times P_n = 0.90 \times ({P5:,.2f}) = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}} $$
-        """)
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("##### 📝 สมการคำนวณและขั้นตอน")
+            st.markdown("*(คอนกรีตแตกร้าวสมบูรณ์ ไม่คิดกำลังรับแรงดึง)*")
+            st.latex(r"P_n = -A_{st} \times f_y")
+            st.latex(r"\phi P_n = 0.90 \times P_n")
+        with col_f2:
+            st.markdown("##### 🔢 ผลลัพธ์จากการแทนค่า")
+            st.markdown(f"""
+            <table style="width:100%; border:none;">
+                <tr><td>• แรงอัดคอนกรีต (C<sub>c</sub>)</td><td style="text-align:right;"><b>0.0</b></td><td>ton</td></tr>
+                <tr><td>• แรงอัดเหล็กบน (C<sub>s</sub>)</td><td style="text-align:right;"><b>0.0</b></td><td>ton</td></tr>
+                <tr style="border-top:1px solid #cbd5e1; background-color:#fef2f2;"><td>• <b>กำลังรับแรงดึงระบุ (P<sub>n</sub>)</b></td><td style="text-align:right; color:#991b1b;"><b>{P5:,.2f}</b></td><td><b>ton</b></td></tr>
+                <tr style="background-color:#fef2f2;"><td>• <b>กำลังดึงออกแบบ (&phi;P<sub>n</sub>)</b></td><td style="text-align:right; color:#991b1b;"><b>{P5*0.90:,.2f}</b></td><td><b>ton</b></td></tr>
+            </table>
+            """, unsafe_allow_html=True)
