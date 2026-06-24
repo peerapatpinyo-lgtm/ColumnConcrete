@@ -2076,13 +2076,13 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
-
     st.header("📈 P-M Interaction Diagram (Advanced Biaxial & Capacity)")
-    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity และรายการคำนวณแบบละเอียด (MKS Unit)")
+    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity, รูปวาดแผนภาพความเครียด และรายการคำนวณแบบละเอียด (MKS Unit)")
 
     import numpy as np
     import pandas as pd
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
     col1, col2 = st.columns([1, 2])
 
@@ -2113,7 +2113,6 @@ with tab8:
         Ag = b * h
         As_half = ast / 2.0 
         
-        # ตัวคูณลดกำลังพื้นฐาน
         phi_c = 0.65 if "Tied" in col_type else 0.75
         alpha_max = 0.80 if "Tied" in col_type else 0.85
         
@@ -2132,7 +2131,7 @@ with tab8:
             Cc = 0.85 * fc * a * b
             
             eps_s_prime = ecu * (c - cover) / c
-            eps_t = ecu * (d - c) / c  # ความเครียดเหล็กรับดึง
+            eps_t = ecu * (d - c) / c
             
             fs_prime = min(Es * eps_s_prime, fy) if eps_s_prime >= 0 else max(Es * eps_s_prime, -fy)
             fs = min(Es * eps_t, fy) if eps_t >= 0 else max(Es * eps_t, -fy)
@@ -2143,7 +2142,6 @@ with tab8:
             Pn = (Cc + Cs - T) / 1000.0
             Mn = (Cc * (h/2 - a/2) + Cs * (h/2 - cover) + T * (d - h/2)) / 100000.0
             
-            # คำนวณ Phi ตาม Strain (ACI)
             if eps_t <= 0.002:
                 phi = phi_c
             elif eps_t >= 0.005:
@@ -2154,8 +2152,7 @@ with tab8:
             return a, eps_s_prime, eps_t, fs_prime, fs, Cc, Cs, T, Pn, Mn, phi
 
         # --- คำนวณกราฟ P-M 500 จุด ---
-        c_vals = np.linspace(0.01*d, h*1.5, 500)[::-1] # ไล่จาก c มาก (แรงอัด) ไป c น้อย (แรงดึง)
-        
+        c_vals = np.linspace(0.01*d, h*1.5, 500)[::-1]
         P_nom, M_nom, P_des, M_des = [], [], [], []
         
         Po_kg = 0.85 * fc * (Ag - ast) + fy * ast
@@ -2166,122 +2163,126 @@ with tab8:
             _, _, _, _, _, _, _, _, pn, mn, phi = calc_pm_detailed(c_val)
             P_nom.append(pn)
             M_nom.append(mn)
-            P_des.append(min(pn * phi, phi_Pn_max)) # ตัดยอดที่ Pn,max
+            P_des.append(min(pn * phi, phi_Pn_max))
             M_des.append(mn * phi)
 
-        # เติมจุด Pure Tension
         P_nom.append(-(fy * ast) / 1000.0)
         M_nom.append(0.0)
         P_des.append(-(fy * ast) / 1000.0 * 0.90)
         M_des.append(0.0)
 
-        # --- Plotly Graph ---
+        # --- วาดกราฟ P-M ---
         fig = go.Figure()
-        
-        # 1. Area ใต้กราฟ Design Capacity (Safe Zone)
-        fig.add_trace(go.Scatter(
-            x=M_des, y=P_des, mode='lines', fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.2)',
-            name='Design Capacity (φPn, φMn)', line=dict(color='green', width=3)
-        ))
-        
-        # 2. เส้น Nominal Capacity
-        fig.add_trace(go.Scatter(
-            x=M_nom, y=P_nom, mode='lines', 
-            name='Nominal Capacity (Pn, Mn)', line=dict(color='royalblue', width=2, dash='dash')
-        ))
-        
-        # 3. เส้นขีดจำกัด Pn,max
-        fig.add_trace(go.Scatter(
-            x=[0, max(M_nom)*1.1], y=[Pn_max, Pn_max], mode='lines',
-            name=f'Pn,max limit ({alpha_max}Po)', line=dict(color='red', width=1, dash='dot')
-        ))
+        fig.add_trace(go.Scatter(x=M_des, y=P_des, mode='lines', fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.2)', name='Design Capacity (φPn, φMn)', line=dict(color='green', width=3)))
+        fig.add_trace(go.Scatter(x=M_nom, y=P_nom, mode='lines', name='Nominal Capacity (Pn, Mn)', line=dict(color='royalblue', width=2, dash='dash')))
+        fig.add_trace(go.Scatter(x=[0, max(M_nom)*1.1], y=[Pn_max, Pn_max], mode='lines', name=f'Pn,max limit ({alpha_max}Po)', line=dict(color='red', width=1, dash='dot')))
 
-        # 4. จุด Demand Check (Pu, Mu)
         if pu_check != 0 or mu_check != 0:
-            status_color = 'darkorange'
-            fig.add_trace(go.Scatter(
-                x=[mu_check], y=[pu_check], mode='markers+text', 
-                name='Demand (Pu, Mu)', text=["จุดใช้งาน"], textposition="top right",
-                marker=dict(color=status_color, size=12, symbol='star', line=dict(color='black', width=1))
-            ))
+            fig.add_trace(go.Scatter(x=[mu_check], y=[pu_check], mode='markers+text', name='Demand (Pu, Mu)', text=["จุดใช้งาน"], textposition="top right", marker=dict(color='darkorange', size=12, symbol='star', line=dict(color='black', width=1))))
 
-        fig.update_layout(
-            xaxis_title="Bending Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)",
-            showlegend=True, legend=dict(x=0.6, y=0.95),
-            margin=dict(l=20, r=20, t=20, b=20), hovermode="x unified"
-        )
+        fig.update_layout(xaxis_title="Bending Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)", legend=dict(x=0.6, y=0.95), margin=dict(l=20, r=20, t=20, b=20), hovermode="x unified")
         fig.add_hline(y=0, line_width=1, line_color="black")
         fig.add_vline(x=0, line_width=1, line_color="black")
-
         st.plotly_chart(fig, use_container_width=True)
 
     # === ส่วนรายการคำนวณแบบละเอียดสุดๆ (Detailed Calculation Report) ===
     st.markdown("---")
-    st.subheader("📋 รายการคำนวณโดยละเอียด (Detailed Calculation Report)")
-    st.markdown("แสดงพารามิเตอร์ของ Strain, Stress และแรงภายใน ($C_c, C_s, T$) ที่จุดควบคุมทั้ง 5 จุด เพื่อใช้ประกอบรายการคำนวณ")
+    st.subheader("📋 รายการคำนวณโดยละเอียด (Calculation Report)")
 
-    # คำนวณ 5 จุดสำคัญเพื่อแสดงในตาราง
-    c_pts = [
-        h * 1.5,                      # 1. Pure Comp (Approx)
-        d,                            # 2. Zero Tension
-        d * (ecu / (ecu + (fy/Es))),  # 3. Balanced
-        d * 0.15,                     # 4. Pure Bending (Approximate c_m0 for display)
-        0.0001                        # 5. Pure Tension
-    ]
-    
-    # วนลูปหา Pure Bending ที่แท้จริง
-    idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
-    c_pts[3] = c_vals[idx_m0]
-
-    report_data = []
-    labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
-    
-    for i, c_val in enumerate(c_pts):
-        if i == 0: # Pure Comp แท้จริง (แก้ไขเอาเครื่องหมาย "-" ออก 1 ตัว เพื่อให้เหลือ 7 ตัว รวมข้อมูลเป็น 13 คอลัมน์พอดิบพอดี)
-            P1 = Po_kg / 1000.0
-            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
-        elif i == 4: # Pure Tension แท้จริง (แก้ไขเอาเครื่องหมาย "-" ออก 1 ตัว ให้ข้อมูลครบ 13 ตัวเท่ากัน)
-            P5 = -(fy * ast) / 1000.0
-            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
-        else:
-            a, e_s, e_t, fs_p, fs, Cc, Cs, T, Pn, Mn, phi = calc_pm_detailed(c_val)
-            report_data.append([
-                labels[i], round(c_val,2), round(a,2), 
-                f"{e_s:.4f}", f"{e_t:.4f}", 
-                round(Cc/1000,1), round(Cs/1000,1), round(T/1000,1),
-                round(Pn,1), round(Mn,2), 
-                round(phi,3), round(Pn*phi,1), round(Mn*phi,2)
-            ])
-
-    # สร้าง DataFrame เพื่อแสดงผลตาราง (ตอนนี้ข้อมูลทุกแถวมีความยาว 13 ตัวเท่ากับจำนวนหัวข้อแล้ว)
-    df_report = pd.DataFrame(report_data, columns=[
-        "สภาวะ (Condition)", "c (cm)", "a (cm)", 
-        "ε'_s (อัด)", "ε_t (ดึง)", 
-        "Cc (ton)", "Cs (ton)", "T (ton)", 
-        "Pn (ton)", "Mn (t-m)", 
-        "φ", "φPn (ton)", "φMn (t-m)"
-    ])
-    st.dataframe(df_report, use_container_width=True)
-
-    with st.expander("📌 ดูสมการและวิธีคิดแรงภายใน (Internal Forces Formula)"):
-        st.markdown(f"**พารามิเตอร์พื้นฐาน:** $E_s = 2.04 \\times 10^6$ ksc, $\\epsilon_{{cu}} = 0.003$, $\\beta_1 = {beta1:.2f}$")
-        st.markdown("""
-        **1. ระยะบล็อกแรงอัดคอนกรีต:** $a = \\beta_1 c$
-        **2. ความเครียดในเหล็กเสริม (Strain):**
-        - เหล็กรับอัด: $\\epsilon'_s = 0.003 \\times \\frac{c - d'}{c}$
-        - เหล็กรับดึง: $\\epsilon_t = 0.003 \\times \\frac{d - c}{c}$
+    with st.expander("📝 1. ตารางสรุปพฤติกรรมหน้าตัด (Summary Table of 5 Key Points)", expanded=False):
+        c_pts = [h * 1.5, d, d * (ecu / (ecu + (fy/Es))), d * 0.15, 0.0001]
+        idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
+        c_pts[3] = c_vals[idx_m0]
+        report_data = []
+        labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
         
-        **3. แรงภายในหน้าตัด (Internal Forces):**
-        - แรงอัดคอนกรีต: $C_c = 0.85 f'_c a b$
-        - แรงอัดเหล็กเสริม: $C_s = A'_s (f'_s - 0.85 f'_c)$ *(หักพื้นที่คอนกรีต)*
-        - แรงดึงเหล็กเสริม: $T = A_s f_s$
+        for i, c_val in enumerate(c_pts):
+            if i == 0:
+                P1 = Po_kg / 1000.0
+                report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
+            elif i == 4:
+                P5 = -(fy * ast) / 1000.0
+                report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
+            else:
+                a, e_s, e_t, fs_p, fs, Cc, Cs, T, Pn, Mn, phi = calc_pm_detailed(c_val)
+                report_data.append([labels[i], round(c_val,2), round(a,2), f"{e_s:.4f}", f"{e_t:.4f}", round(Cc/1000,1), round(Cs/1000,1), round(T/1000,1), round(Pn,1), round(Mn,2), round(phi,3), round(Pn*phi,1), round(Mn*phi,2)])
+
+        df_report = pd.DataFrame(report_data, columns=["Condition", "c (cm)", "a (cm)", "ε'_s", "ε_t", "Cc (t)", "Cs (t)", "T (t)", "Pn (t)", "Mn (t-m)", "φ", "φPn", "φMn"])
+        st.dataframe(df_report, use_container_width=True)
+
+    with st.expander("📐 2. แผนภาพหน้าตัด ความเครียด และหน่วยแรง (Section, Strain & Stress Diagrams)", expanded=True):
+        st.markdown("ภาพจำลองพฤติกรรมของหน้าตัดที่ **สภาวะสมดุล (Balanced Point)** ซึ่งเป็นจุดสำคัญที่สุดในการออกแบบเสา (จุดที่เหล็กดึงครากพร้อมกับคอนกรีตอัดแตก)")
         
-        **4. กำลังรับแรงระบุ (Nominal Capacity):**
-        - $P_n = C_c + C_s - T$
-        - $M_n = C_c(h/2 - a/2) + C_s(h/2 - d') + T(d - h/2)$
+        eps_y = fy / Es
+        cb = d * (ecu / (ecu + eps_y))
+        ab = beta1 * cb
         
-        **5. ตัวคูณลดกำลัง (Strength Reduction Factor, $\\phi$):**
-        - Compression Controlled ($\\epsilon_t \\le 0.002$): $\\phi = 0.65$ (Tied) หรือ $0.75$ (Spiral)
-        - Tension Controlled ($\\epsilon_t \\ge 0.005$): $\\phi = 0.90$
-        - Transition Zone: Interpolate เชิงเส้น
-        """)
+        fig_diag = make_subplots(rows=1, cols=3, subplot_titles=("1. Cross Section", "2. Strain Profile", "3. Stress & Forces"), shared_yaxes=True)
+        
+        # 1. Cross Section
+        fig_diag.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h, line=dict(color="black", width=2), col=1, row=1)
+        fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[h-cover, h-cover], mode='markers', marker=dict(color='blue', size=12), name='As (Comp)'), row=1, col=1)
+        fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[cover, cover], mode='markers', marker=dict(color='red', size=12), name='As (Tens)'), row=1, col=1)
+        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", annotation_text=" N.A.", row=1, col=1)
+
+        # 2. Strain Profile
+        fig_diag.add_trace(go.Scatter(x=[0, 0.003], y=[h, h], mode='lines', line=dict(color='black')), row=1, col=2)
+        fig_diag.add_trace(go.Scatter(x=[0, -eps_y], y=[cover, cover], mode='lines', line=dict(color='black')), row=1, col=2)
+        fig_diag.add_trace(go.Scatter(x=[0.003, -eps_y], y=[h, cover], mode='lines+markers', line=dict(color='green', width=2), name='Strain'), row=1, col=2)
+        fig_diag.add_vline(x=0, line_color="black", line_width=1, row=1, col=2)
+        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", row=1, col=2)
+
+        # 3. Stress Block & Forces
+        fig_diag.add_shape(type="rect", x0=0, y0=h-ab, x1=0.85*fc, y1=h, fillcolor="rgba(52, 152, 219, 0.3)", line=dict(color="blue", width=1), col=3, row=1)
+        fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-ab/2], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='blue'), text=[" Cc"], textposition="middle right", name='Cc'), row=1, col=3)
+        fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-cover], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='darkblue'), text=[" Cs"], textposition="middle right", name='Cs'), row=1, col=3)
+        fig_diag.add_trace(go.Scatter(x=[-fy], y=[cover], mode='markers+text', marker=dict(symbol="triangle-right", size=10, color='red'), text=[" T"], textposition="middle left", name='T'), row=1, col=3)
+        fig_diag.add_vline(x=0, line_color="black", line_width=1, row=1, col=3)
+        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", row=1, col=3)
+
+        fig_diag.update_layout(height=400, showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_diag, use_container_width=True)
+
+    with st.expander("🧮 3. แสดงวิธีทำและแทนค่าโดยละเอียด (Step-by-Step Calculation for Balanced Point)", expanded=True):
+        st.markdown("แสดงวิธีการคำนวณที่สภาวะสมดุล (Balanced Point) ทีละขั้นตอน พร้อมแทนค่าตัวเลขจริง:")
+        
+        # คำนวณสดสำหรับแสดงใน Report
+        eps_y_val = fy / Es
+        cb_val = d * (ecu / (ecu + eps_y_val))
+        ab_val = beta1 * cb_val
+        eps_s_prime_val = ecu * (cb_val - cover) / cb_val
+        fs_prime_val = min(Es * eps_s_prime_val, fy)
+        Cc_val = 0.85 * fc * ab_val * b
+        Cs_val = As_half * (fs_prime_val - 0.85 * fc)
+        T_val = As_half * fy
+        Pn_val = (Cc_val + Cs_val - T_val) / 1000
+        Mn_val = (Cc_val * (h/2 - ab_val/2) + Cs_val * (h/2 - cover) + T_val * (d - h/2)) / 100000
+
+        col_calc1, col_calc2 = st.columns(2)
+        with col_calc1:
+            st.markdown("**1. หาระยะแกนสะเทิน (c) และบล็อกแรงอัด (a)**")
+            st.markdown(f"เหล็กครากพอดี $\\epsilon_s = f_y / E_s = {fy:,.0f} / {Es:,.0f} = {eps_y_val:.4f}$")
+            st.markdown(r"$c_b = d \times \frac{0.003}{0.003 + \epsilon_y}$")
+            st.markdown(f"$c_b = {d} \\times \\frac{{0.003}}{{0.003 + {eps_y_val:.4f}}} = \mathbf{{{cb_val:.2f} \text{{ cm}}}}$")
+            st.markdown(f"$a_b = \\beta_1 c_b = {beta1:.2f} \\times {cb_val:.2f} = \mathbf{{{ab_val:.2f} \text{{ cm}}}}$")
+            
+            st.markdown("<br>**2. หาความเครียดและหน่วยแรงในเหล็กรับอัด**", unsafe_allow_html=True)
+            st.markdown(r"$\epsilon'_s = 0.003 \times \frac{c - d'}{c}$")
+            st.markdown(f"$\epsilon'_s = 0.003 \\times \\frac{{{cb_val:.2f} - {cover}}}{{{cb_val:.2f}}} = {eps_s_prime_val:.5f}$")
+            st.markdown(f"$f'_s = E_s \epsilon'_s = 2.04\\times10^6 \\times {eps_s_prime_val:.5f} = {fs_prime_val:,.0f} \text{{ ksc}}$")
+
+        with col_calc2:
+            st.markdown("**3. คำนวณแรงภายใน (Internal Forces)**")
+            st.markdown(r"$C_c = 0.85 f'_c a b$")
+            st.markdown(f"$C_c = 0.85({fc})({ab_val:.2f})({b}) = \mathbf{{{Cc_val:,.0f} \text{{ kgf}}}}$")
+            st.markdown(r"$C_s = A'_s (f'_s - 0.85f'_c)$")
+            st.markdown(f"$C_s = {As_half}({fs_prime_val:,.0f} - 0.85({fc})) = \mathbf{{{Cs_val:,.0f} \text{{ kgf}}}}$")
+            st.markdown(r"$T = A_s f_y$")
+            st.markdown(f"$T = {As_half}({fy:,.0f}) = \mathbf{{{T_val:,.0f} \text{{ kgf}}}}$")
+
+            st.markdown("<br>**4. คำนวณกำลังรับแรง (Nominal Capacity)**", unsafe_allow_html=True)
+            st.markdown(r"$P_n = C_c + C_s - T$")
+            st.markdown(f"$P_n = {Cc_val:,.0f} + {Cs_val:,.0f} - {T_val:,.0f} = \mathbf{{{Pn_val:,.2f} \text{{ ton}}}}$")
+            st.markdown(r"$M_n = C_c(h/2 - a/2) + C_s(h/2 - d') + T(d - h/2)$")
+            st.markdown(f"$M_n = {Cc_val:,.0f}({h/2 - ab_val/2:.2f}) + {Cs_val:,.0f}({h/2 - cover}) + {T_val:,.0f}({d - h/2})$")
+            st.markdown(f"$M_n = \mathbf{{{Mn_val:,.2f} \text{{ ton-m}}}}$")
