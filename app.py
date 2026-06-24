@@ -2102,7 +2102,7 @@ with tab8:
             
         fy = st.number_input("กำลังครากเหล็กแกน, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_v7_fy")
         
-        st.markdown("🔩 **การจัดเรียงเหล็กเสริม**")
+        st.markdown("🔩 **การจัดเรียงเหล็กเสริมแกนหลัก**")
         rebar_dict = {"DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB25": 2.5, "DB28": 2.8, "DB32": 3.2}
         rebar_choice = st.selectbox("ขนาดเหล็กแกนหลัก", list(rebar_dict.keys()), index=2, key="pm_v7_rb")
         n_bars = st.number_input("จำนวนเส้นรวม (เลขคู่ ≥ 4)", min_value=4, value=8, step=2, key="pm_v7_n")
@@ -2111,6 +2111,43 @@ with tab8:
         ast = n_bars * (np.pi * db_dia**2) / 4.0
         rho_pct = (ast / (b * h)) * 100
         st.info(f"พื้นที่เหล็กเสริมรวม: **{ast:.2f} cm²** (ρ = {rho_pct:.2f}%)")
+
+        # ─── ADDED: STIRRUP & SPIRAL INPUTS & VALIDATION ───
+        st.markdown("🔗 **การจัดเหล็กปลอก (Transverse Reinforcement)**")
+        tie_dict = {"RB6": 0.6, "RB9": 0.9, "DB10": 1.0, "DB12": 1.2}
+        tie_choice = st.selectbox("ขนาดเหล็กปลอก", list(tie_dict.keys()), index=1, key="pm_v7_tie_rb")
+        dv_dia = tie_dict[tie_choice]
+        
+        fyt = st.number_input("กำลังครากเหล็กปลอก, fyt (ksc)", min_value=2400.0, value=2400.0 if "RB" in tie_choice else 4000.0, step=100.0, key="pm_v7_fyt")
+        tie_s = st.number_input("ระยะห่างเหล็กปลอก, s (cm)", min_value=2.0, value=15.0, step=0.5, key="pm_v7_s")
+        
+        # ส่วนตรวจสอบมาตรฐานเหล็กปลอก (Stirrup Check)
+        if "Tied" in col_type:
+            s_max1 = 16 * db_dia
+            s_max2 = 48 * dv_dia
+            s_max3 = min(b, h)
+            s_max = min(s_max1, s_max2, s_max3)
+            
+            if tie_s <= s_max:
+                st.success(f"✅ ระยะปลอกเดี่ยวผ่านตามเกณฑ์ (s = {tie_s:.1f} cm ≤ s_max = {s_max:.1f} cm)")
+            else:
+                st.error(f"❌ ระยะปลอกเกินมาตรฐาน! (ต้อง ≤ {s_max:.1f} cm)\n- 16 เท่าเหล็กแกน: {s_max1:.1f} cm\n- 48 เท่าเหล็กปลอก: {s_max2:.1f} cm\n- ด้านแคบสุดของเสา: {s_max3:.1f} cm")
+        else:
+            # คำนวณแกนคอนกรีตสำหรับปลอกเกลียว (Core Concrete)
+            D_c = min(b, h) - 2.0 * (cover - db_dia/2.0)
+            if D_c <= 0: D_c = min(b, h) * 0.8
+            A_c = (np.pi * D_c**2) / 4.0
+            Ag_temp = b * h
+            rho_s_req = 0.45 * ((Ag_temp / A_c) - 1.0) * (fc / fyt)
+            A_sp = (np.pi * dv_dia**2) / 4.0
+            rho_s_provided = (4.0 * A_sp) / (D_c * tie_s)
+            
+            if tie_s < 2.5 or tie_s > 7.5:
+                st.error(f"❌ ระยะพิชต์ปลอกเกลียวผิดข้อกำหนดมาตรฐาน! ต้องอยู่ระหว่าง 2.5 ถึง 7.5 cm (ปัจจุบัน: {tie_s:.1f} cm)")
+            elif rho_s_provided < rho_s_req:
+                st.error(f"❌ ปริมาณเหล็กปลอกเกลียวไม่เพียงพอ!\n- ต้องการ ρs: {rho_s_req:.4f}\n- ใส่จริง ρs: {rho_s_provided:.4f}")
+            else:
+                st.success(f"✅ ปลอกเกลียวผ่านตามเกณฑ์มาตรฐาน (ρs = {rho_s_provided:.4f} ≥ {rho_s_req:.4f})")
 
         st.markdown("🎯 **จุดแรงใช้งานตรวจสอบ (Demand)**")
         pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v7_pu")
@@ -2240,9 +2277,7 @@ with tab8:
     ])
     st.dataframe(summary_df, use_container_width=True)
 
-
-    # ─── 5. DETAILED PROFILES & CALCULATIONS (CLEAN DESIGN WITH EXACT SUBSTITUTION) ───
-    # ─── 5. DETAILED PROFILES & CALCULATIONS (CLEAN DESIGN WITH EXACT SUBSTITUTION) ───
+    # ─── 5. DETAILED PROFILES & CALCULATIONS ───
     st.markdown("---")
     st.subheader("📐 4. รายการคำนวณแบบจำลองหน้าตัด (Detailed Section Analysis)")
     
@@ -2271,6 +2306,17 @@ with tab8:
         # 1. CROSS SECTION
         ax1.plot([0, b_w, b_w, 0, 0], [0, 0, h_d, h_d, 0], color='#1e293b', lw=2)
         ax1.fill([0, b_w, b_w, 0, 0], [0, 0, h_d, h_d, 0], color='#f8fafc')
+        
+        # ─── UPDATED: DRAW TIE OR SPIRAL GRAPHIC IN PROFILE ───
+        if "Tied" in col_type:
+            tie_offset = cov * 0.7
+            rect_tie = patches.Rectangle((tie_offset, tie_offset), b_w - 2*tie_offset, h_d - 2*tie_offset, fill=False, edgecolor='#64748b', linewidth=1.5, linestyle='-', zorder=2)
+            ax1.add_patch(rect_tie)
+        else:
+            r_core = min(b_w, h_d)/2 - cov * 0.7
+            circle_tie = patches.Circle((b_w/2, h_d/2), r_core, fill=False, edgecolor='#64748b', linewidth=1.5, linestyle='-', zorder=2)
+            ax1.add_patch(circle_tie)
+
         ax1.scatter([b_w/4, 3*b_w/4], [h_d-cov, h_d-cov], color='#b91c1c', s=80, zorder=3)
         ax1.scatter([b_w/4, 3*b_w/4], [cov, cov], color='#1d4ed8', s=80, zorder=3)
         
