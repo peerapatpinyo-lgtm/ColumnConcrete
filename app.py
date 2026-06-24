@@ -2076,13 +2076,13 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
-    st.header("📈 P-M Interaction Diagram (Advanced Biaxial & Capacity)")
-    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity และรายการคำนวณแบบละเอียด (MKS Unit)")
+    st.header("📈 P-M Interaction Diagram (Professional Biaxial & Capacity)")
+    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมกราฟ Matplotlib และแผนภาพหน่วยแรงทั้ง 5 สภาวะ")
 
     import numpy as np
     import pandas as pd
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
 
     col1, col2 = st.columns([1, 2])
 
@@ -2103,18 +2103,18 @@ with tab8:
         rebar_choice = st.selectbox("ขนาดเหล็กแกน", list(rebar_dict.keys()), index=2, key="pm_rb")
         n_bars = st.number_input("จำนวนเส้น (รวมทั้งหน้าตัด)", min_value=4, value=8, step=2, key="pm_n")
         
-        # คำนวณ Ast อัตโนมัติ
         db_dia = rebar_dict[rebar_choice]
         ast = n_bars * (np.pi * db_dia**2) / 4.0
-        st.info(f"พื้นที่เหล็กเสริมรวม, Ast = **{ast:.2f} cm²** (ρ = {(ast/(b*h))*100:.2f}%)")
+        rho_pct = (ast / (b * h)) * 100
+        st.success(f"พื้นที่เหล็กเสริมรวม, Ast = **{ast:.2f} cm²** (ρ = {rho_pct:.2f}%)")
 
         st.markdown("---")
-        st.markdown("⭐ **จุดตรวจสอบแรงใช้งาน (Demand Check)**")
+        st.markdown("⭐ **จุดตรวจสอบแรงใช้งาน (Demand)**")
         pu_check = st.number_input("แรงอัดใช้งานประลัย, Pu (ton)", value=50.0, key="pm_pu_chk")
         mu_check = st.number_input("โมเมนต์ใช้งานประลัย, Mu (ton-m)", value=5.0, key="pm_mu_chk")
 
     with col2:
-        st.subheader("📊 2. กราฟ P-M Interaction Diagram")
+        st.subheader("📊 2. กราฟ P-M Interaction Diagram (Matplotlib)")
         
         # --- ตัวแปรพื้นฐาน ---
         Es = 2040000.0 
@@ -2129,17 +2129,13 @@ with tab8:
         if fc <= 280:
             beta1 = 0.85
         else:
-            beta1 = 0.85 - 0.05 * ((fc - 280) / 70.0)
-            beta1 = max(beta1, 0.65)
+            beta1 = max(0.85 - 0.05 * ((fc - 280) / 70.0), 0.65)
 
-        # ฟังก์ชันคำนวณรายการอย่างละเอียด
         def calc_pm_detailed(c):
-            if c <= 0.001: 
-                return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.90
+            if c <= 0.001: return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.90
             
             a = min(beta1 * c, h)
             Cc = 0.85 * fc * a * b
-            
             eps_s_prime = ecu * (c - cover) / c
             eps_t = ecu * (d - c) / c
             
@@ -2152,17 +2148,11 @@ with tab8:
             Pn = (Cc + Cs - T) / 1000.0
             Mn = (Cc * (h/2 - a/2) + Cs * (h/2 - cover) + T * (d - h/2)) / 100000.0
             
-            if eps_t <= 0.002:
-                phi = phi_c
-            elif eps_t >= 0.005:
-                phi = 0.90
-            else:
-                phi = phi_c + (0.90 - phi_c) * (eps_t - 0.002) / 0.003
-                
+            phi = 0.90 if eps_t >= 0.005 else (phi_c if eps_t <= 0.002 else phi_c + (0.90 - phi_c) * (eps_t - 0.002) / 0.003)
             return a, eps_s_prime, eps_t, fs_prime, fs, Cc, Cs, T, Pn, Mn, phi
 
-        # --- คำนวณกราฟ P-M 500 จุด ---
-        c_vals = np.linspace(0.01*d, h*1.5, 500)[::-1]
+        # --- คำนวณเส้นกราฟ 500 จุด ---
+        c_vals = np.linspace(0.01*d, h*2.0, 500)[::-1]
         P_nom, M_nom, P_des, M_des = [], [], [], []
         
         Po_kg = 0.85 * fc * (Ag - ast) + fy * ast
@@ -2176,154 +2166,197 @@ with tab8:
             P_des.append(min(pn * phi, phi_Pn_max))
             M_des.append(mn * phi)
 
-        P_nom.append(-(fy * ast) / 1000.0)
-        M_nom.append(0.0)
-        P_des.append(-(fy * ast) / 1000.0 * 0.90)
-        M_des.append(0.0)
+        P_nom.append(-(fy * ast) / 1000.0); M_nom.append(0.0)
+        P_des.append(-(fy * ast) / 1000.0 * 0.90); M_des.append(0.0)
 
-        # --- วาดกราฟ P-M ---
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=M_des, y=P_des, mode='lines', fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.2)', name='Design Capacity (φPn, φMn)', line=dict(color='green', width=3)))
-        fig.add_trace(go.Scatter(x=M_nom, y=P_nom, mode='lines', name='Nominal Capacity (Pn, Mn)', line=dict(color='royalblue', width=2, dash='dash')))
-        fig.add_trace(go.Scatter(x=[0, max(M_nom)*1.1], y=[Pn_max, Pn_max], mode='lines', name=f'Pn,max limit ({alpha_max}Po)', line=dict(color='red', width=1, dash='dot')))
+        # หา 5 จุดสำคัญ
+        P1, M1 = Po_kg/1000.0, 0.0
+        _,_,_,_,_, Cc2, Cs2, T2, P2, M2, phi2 = calc_pm_detailed(d)
+        cb = d * (0.003 / (0.003 + fy/Es))
+        _,_,_,_,_, Cc3, Cs3, T3, P3, M3, phi3 = calc_pm_detailed(cb)
+        idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
+        c_m0 = c_vals[idx_m0]
+        _,_,_,_,_, Cc4, Cs4, T4, P4, M4, phi4 = calc_pm_detailed(c_m0)
+        P5, M5 = -(fy * ast)/1000.0, 0.0
 
+        pts_M = [M1, M2, M3, M4, M5]
+        pts_P = [P1, P2, P3, P4, P5]
+        labels = ['1. Pure Comp', '2. Zero Tension', '3. Balanced', '4. Pure Bending', '5. Pure Tension']
+
+        # --- วาดกราฟหลักด้วย Matplotlib ---
+        fig_main, ax = plt.subplots(figsize=(8, 7))
+        ax.plot(M_nom, P_nom, color='#3b82f6', linestyle='--', linewidth=2, label='Nominal Capacity ($P_n, M_n$)')
+        ax.plot(M_des, P_des, color='#16a34a', linewidth=2.5, label='Design Capacity ($\phi P_n, \phi M_n$)')
+        ax.fill_between(M_des, 0, P_des, color='#22c55e', alpha=0.15)
+        
+        # ลากเส้นต่อให้กราฟปิด
+        ax.plot([0, M_nom[0]], [P5, P_nom[0]], color='#3b82f6', linestyle='--', linewidth=2, alpha=0.5)
+        ax.plot([0, M_des[0]], [P_des[-1], P_des[0]], color='#16a34a', linewidth=2.5, alpha=0.5)
+        
+        # เส้นขีดจำกัด Pn,max
+        ax.axhline(Pn_max, color='#ef4444', linestyle=':', label=f'$P_{{n,max}}$ ({alpha_max}Po)')
+        ax.axhline(phi_Pn_max, color='#b91c1c', linestyle='-.', label=f'$\phi P_{{n,max}}$')
+
+        # พล็อต 5 จุด
+        ax.scatter(pts_M, pts_P, color='#dc2626', s=80, zorder=5, edgecolors='white', linewidth=1.5)
+        for i, txt in enumerate(labels):
+            ax.annotate(f" {txt}", (pts_M[i], pts_P[i]), fontsize=10, color='#991b1b', 
+                        xytext=(5, 0), textcoords='offset points', ha='left', va='center')
+
+        # พล็อต Demand (Pu, Mu)
         if pu_check != 0 or mu_check != 0:
-            fig.add_trace(go.Scatter(x=[mu_check], y=[pu_check], mode='markers+text', name='Demand (Pu, Mu)', text=["จุดใช้งาน"], textposition="top right", marker=dict(color='darkorange', size=12, symbol='star', line=dict(color='black', width=1))))
+            ax.scatter([mu_check], [pu_check], color='#f59e0b', s=150, marker='*', zorder=6, edgecolors='black', label='Demand ($P_u, M_u$)')
 
-        fig.update_layout(xaxis_title="Bending Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)", legend=dict(x=0.6, y=0.95), margin=dict(l=20, r=20, t=20, b=20), hovermode="x unified")
-        fig.add_hline(y=0, line_width=1, line_color="black")
-        fig.add_vline(x=0, line_width=1, line_color="black")
-        st.plotly_chart(fig, use_container_width=True)
+        ax.axhline(0, color='black', linewidth=1)
+        ax.axvline(0, color='black', linewidth=1)
+        ax.set_xlabel('Bending Moment, M (ton-m)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Axial Load, P (ton)', fontsize=12, fontweight='bold')
+        ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+        ax.legend(loc='upper right', fontsize=9)
+        
+        st.pyplot(fig_main)
 
-    # === ส่วนรายการคำนวณแบบละเอียดสุดๆ (Detailed Calculation Report) ===
+    # === ฟังก์ชันวาดแผนภาพหน้าตัด 3 ส่วน ด้วย Matplotlib ===
+    def plot_state(c_val, state_name):
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4), gridspec_kw={'width_ratios': [1, 1.2, 1.8]})
+        
+        # 1. Cross Section
+        ax1.add_patch(patches.Rectangle((0, 0), b, h, fill=False, edgecolor='black', lw=2))
+        ax1.plot([b/4, 3*b/4], [h-cover, h-cover], 'bo', ms=8, label="As'")
+        ax1.plot([b/4, 3*b/4], [cover, cover], 'ro', ms=8, label="As")
+        
+        # 2. Strain & 3. Stress
+        ax2.axvline(0, color='black', lw=1)
+        ax3.axvline(0, color='black', lw=1)
+        
+        if state_name == "Pure Compression":
+            ax1.axhspan(0, h, color='blue', alpha=0.1)
+            ax2.plot([0.003, 0.003], [0, h], 'g-', lw=2)
+            ax3.add_patch(patches.Rectangle((0, 0), 0.85*fc, h, fill=True, color='blue', alpha=0.2))
+            ax3.annotate(f"Cc", (0.85*fc, h/2), xytext=(10, 0), textcoords='offset points', color='blue', va='center')
+        
+        elif state_name == "Pure Tension":
+            ax2.plot([0.005, 0.005], [0, h], 'r-', lw=2)
+            ax3.annotate("T", (fy, cover), xytext=(10, 0), textcoords='offset points', color='red', va='center')
+            ax3.plot([0, fy], [cover, cover], 'r->', lw=2)
+        
+        else:
+            a_val = min(beta1 * c_val, h)
+            ax1.axhline(h - c_val, color='gray', linestyle='--')
+            ax1.annotate("N.A.", (b, h - c_val), xytext=(5, 0), textcoords='offset points', color='gray')
+            
+            eps_t_val = 0.003 * (d - c_val) / c_val
+            ax2.plot([0, 0.003], [h, h], 'k-', lw=1)
+            ax2.plot([0, -eps_t_val], [cover, cover], 'k-', lw=1)
+            ax2.plot([0.003, -eps_t_val], [h, cover], 'g-', lw=2, marker='o', markersize=4)
+            ax2.axhline(h - c_val, color='gray', linestyle='--')
+            
+            ax3.add_patch(patches.Rectangle((0, h-a_val), 0.85*fc, a_val, fill=True, color='blue', alpha=0.2))
+            ax3.plot([0, 0.85*fc], [h-a_val/2, h-a_val/2], 'b<-', lw=2)
+            ax3.annotate("Cc", (0.85*fc, h-a_val/2), xytext=(5, 0), textcoords='offset points', color='blue', va='center')
+            
+            ax3.plot([0, fy], [cover, cover], 'r->', lw=2) if eps_t_val > 0 else ax3.plot([0, 0.85*fc], [cover, cover], 'b<-', lw=2)
+            lbl = "T" if eps_t_val > 0 else "Cs (tens)"
+            c_color = 'red' if eps_t_val > 0 else 'blue'
+            ax3.annotate(lbl, (fy if eps_t_val > 0 else 0.85*fc, cover), xytext=(5, 0), textcoords='offset points', color=c_color, va='center')
+            ax3.axhline(h - c_val, color='gray', linestyle='--')
+
+        ax1.set_title("1. Cross Section", fontsize=10); ax1.axis('off')
+        ax2.set_title("2. Strain Profile", fontsize=10); ax2.axis('off')
+        ax3.set_title("3. Stress & Forces", fontsize=10); ax3.axis('off')
+        plt.tight_layout()
+        return fig
+
+    # === ส่วนรายการคำนวณแบบละเอียดทั้ง 5 จุด ===
     st.markdown("---")
-    st.subheader("📋 รายการคำนวณโดยละเอียด (Calculation Report)")
+    st.subheader("📋 3. รายการคำนวณและแผนภาพแรงโดยละเอียด (Detailed 5 Points)")
+    st.markdown("แสดงวิธีการคำนวณ การแทนค่า และ **แผนภาพสมดุลแรงที่เปลี่ยนไปในแต่ละจุด** (สังเกตทิศทางลูกศรและพื้นที่แรงอัด)")
 
-    # หาจุด Pure Bending จริงๆ
-    idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
-    c_m0 = c_vals[idx_m0]
+    tab_p1, tab_p2, tab_p3, tab_p4, tab_p5 = st.tabs([
+        "1. Pure Compression", "2. Zero Tension", "3. Balanced Point", "4. Pure Bending", "5. Pure Tension"
+    ])
 
-    with st.expander("📝 1. ตารางสรุปพฤติกรรมหน้าตัด 5 จุดสำคัญ (Summary Table)", expanded=False):
-        c_pts = [h * 1.5, d, d * (ecu / (ecu + (fy/Es))), c_m0, 0.0001]
-        report_data = []
-        labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
+    with tab_p1:
+        st.markdown("#### 🟢 จุดที่ 1: รับแรงอัดแกนล้วน (Pure Compression)")
+        st.markdown("หน้าตัดรับแรงอัดเต็มพื้นที่ ไม่มีโมเมนต์ดัดเข้ามาเกี่ยวข้อง คอนกรีตและเหล็กรับแรงอัดสูงสุด")
+        fig1 = plot_state(h, "Pure Compression")
+        st.pyplot(fig1)
         
-        for i, c_val in enumerate(c_pts):
-            if i == 0:
-                P1 = Po_kg / 1000.0
-                report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
-            elif i == 4:
-                P5 = -(fy * ast) / 1000.0
-                report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
-            else:
-                a, e_s, e_t, fs_p, fs, Cc, Cs, T, Pn, Mn, phi = calc_pm_detailed(c_val)
-                report_data.append([labels[i], round(c_val,2), round(a,2), f"{e_s:.4f}", f"{e_t:.4f}", round(Cc/1000,1), round(Cs/1000,1), round(T/1000,1), round(Pn,1), round(Mn,2), round(phi,3), round(Pn*phi,1), round(Mn*phi,2)])
+        P1_kg = 0.85*fc*(Ag - ast) + fy*ast
+        st.markdown(r"**สมการ:** $P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}$")
+        st.markdown(f"$P_o = 0.85({fc})({Ag} - {ast:.2f}) + {fy}({ast:.2f})$")
+        st.markdown(f"$P_o =$ **{P1_kg:,.0f}** kgf $= $ **{P1_kg/1000:,.2f}** ton")
+        st.info(f"**กำลังรับแรงระบุ:** $P_n =$ **{P1_kg/1000:,.2f}** ton, $M_n = 0.00$ ton-m")
 
-        df_report = pd.DataFrame(report_data, columns=["Condition", "c (cm)", "a (cm)", "ε'_s", "ε_t", "Cc (t)", "Cs (t)", "T (t)", "Pn (t)", "Mn (t-m)", "φ", "φPn", "φMn"])
-        st.dataframe(df_report, use_container_width=True)
-
-    with st.expander("📐 2. แผนภาพหน้าตัด ความเครียด และหน่วยแรง (Diagrams at Balanced Point)", expanded=False):
-        eps_y = fy / Es
-        cb = d * (ecu / (ecu + eps_y))
-        ab = beta1 * cb
+    with tab_p2:
+        st.markdown("#### 🟡 จุดที่ 2: เริ่มเกิดแรงดึง (Zero Tension)")
+        st.markdown(f"ความเครียดของเหล็กดึงเป็นศูนย์พอดี ทำให้ระยะแกนสะเทิน $c = d = {d}$ cm")
+        fig2 = plot_state(d, "Zero Tension")
+        st.pyplot(fig2)
         
-        fig_diag = make_subplots(rows=1, cols=3, subplot_titles=("1. Cross Section", "2. Strain Profile", "3. Stress & Forces"), shared_yaxes=True)
+        a2, eps_s_prime2, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, Pn2, Mn2, phi2 = calc_pm_detailed(d)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**ระยะและหน่วยแรง:**")
+            st.markdown(f"$c = {d}$ cm  $\\rightarrow a = {a2:.2f}$ cm")
+            st.markdown(f"$f'_s =$ **{fs_prime2:,.0f}** ksc (อัด)")
+            st.markdown(f"$f_s =$ **0** ksc (ไม่มีแรงดึง)")
+        with c2:
+            st.markdown(f"**แรงภายในหน้าตัด:**")
+            st.markdown(f"$C_c = 0.85({fc})({a2:.2f})({b}) =$ **{Cc2:,.0f}** kgf")
+            st.markdown(f"$C_s = {As_half:.2f}({fs_prime2:,.0f} - 0.85({fc})) =$ **{Cs2:,.0f}** kgf")
+            st.markdown(f"$T =$ **0** kgf")
+        st.info(f"**กำลังรับแรงระบุ:** $P_n =$ **{Pn2:,.2f}** ton, $M_n =$ **{Mn2:,.2f}** ton-m")
+
+    with tab_p3:
+        st.markdown("#### 🟠 จุดที่ 3: สภาวะสมดุล (Balanced Point)")
+        st.markdown("คอนกรีตอัดแตก ($\epsilon_c=0.003$) พร้อมกับเหล็กดึงครากพอดี ($\epsilon_s=\epsilon_y$)")
+        fig3 = plot_state(cb, "Balanced")
+        st.pyplot(fig3)
         
-        fig_diag.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h, line=dict(color="black", width=2), col=1, row=1)
-        fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[h-cover, h-cover], mode='markers', marker=dict(color='blue', size=12), name='As (Comp)'), row=1, col=1)
-        fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[cover, cover], mode='markers', marker=dict(color='red', size=12), name='As (Tens)'), row=1, col=1)
-        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", annotation_text=" N.A.", row=1, col=1)
+        a3, eps_s_prime3, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, Pn3, Mn3, phi3 = calc_pm_detailed(cb)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**ระยะและหน่วยแรง:**")
+            st.markdown(f"$c_b =$ **{cb:.2f}** cm $\\rightarrow a_b = {a3:.2f}$ cm")
+            st.markdown(f"$f'_s =$ **{fs_prime3:,.0f}** ksc (อัด)")
+            st.markdown(f"$f_s =$ **{fs3:,.0f}** ksc (ดึง)")
+        with c2:
+            st.markdown(f"**แรงภายในหน้าตัด:**")
+            st.markdown(f"$C_c = 0.85({fc})({a3:.2f})({b}) =$ **{Cc3:,.0f}** kgf")
+            st.markdown(f"$C_s = {As_half:.2f}({fs_prime3:,.0f} - 0.85({fc})) =$ **{Cs3:,.0f}** kgf")
+            st.markdown(f"$T = {As_half:.2f}({fs3:,.0f}) =$ **{T3:,.0f}** kgf")
+        st.info(f"**กำลังรับแรงระบุ:** $P_n =$ **{Pn3:,.2f}** ton, $M_n =$ **{Mn3:,.2f}** ton-m")
 
-        fig_diag.add_trace(go.Scatter(x=[0, 0.003], y=[h, h], mode='lines', line=dict(color='black')), row=1, col=2)
-        fig_diag.add_trace(go.Scatter(x=[0, -eps_y], y=[cover, cover], mode='lines', line=dict(color='black')), row=1, col=2)
-        fig_diag.add_trace(go.Scatter(x=[0.003, -eps_y], y=[h, cover], mode='lines+markers', line=dict(color='green', width=2), name='Strain'), row=1, col=2)
-        fig_diag.add_vline(x=0, line_color="black", line_width=1, row=1, col=2)
-        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", row=1, col=2)
+    with tab_p4:
+        st.markdown("#### 🔵 จุดที่ 4: รับโมเมนต์ดัดล้วน (Pure Bending)")
+        st.markdown("หน้าตัดพฤติกรรมเสมือนคาน ไม่มีแรงแกน ($P_n = 0$) สมดุลแรง $C_c + C_s = T$")
+        fig4 = plot_state(c_m0, "Pure Bending")
+        st.pyplot(fig4)
+        
+        a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, Pn4, Mn4, phi4 = calc_pm_detailed(c_m0)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**ระยะและหน่วยแรง (Iteration):**")
+            st.markdown(f"$c \\approx$ **{c_m0:.2f}** cm $\\rightarrow a \\approx {a4:.2f}$ cm")
+            st.markdown(f"$f'_s =$ **{fs_prime4:,.0f}** ksc")
+            st.markdown(f"$f_s =$ **{fs4:,.0f}** ksc")
+        with c2:
+            st.markdown(f"**แรงภายในหน้าตัด:**")
+            st.markdown(f"$C_c =$ **{Cc4:,.0f}** kgf")
+            st.markdown(f"$C_s =$ **{Cs4:,.0f}** kgf")
+            st.markdown(f"$T =$ **{T4:,.0f}** kgf")
+            st.markdown(f"*(เช็กสมดุลแรง: $C_c + C_s \\approx T$)*")
+        st.info(f"**กำลังรับแรงระบุ:** $P_n \approx 0.00$ ton, $M_n =$ **{Mn4:,.2f}** ton-m")
 
-        fig_diag.add_shape(type="rect", x0=0, y0=h-ab, x1=0.85*fc, y1=h, fillcolor="rgba(52, 152, 219, 0.3)", line=dict(color="blue", width=1), col=3, row=1)
-        fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-ab/2], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='blue'), text=[" Cc"], textposition="middle right", name='Cc'), row=1, col=3)
-        fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-cover], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='darkblue'), text=[" Cs"], textposition="middle right", name='Cs'), row=1, col=3)
-        fig_diag.add_trace(go.Scatter(x=[-fy], y=[cover], mode='markers+text', marker=dict(symbol="triangle-right", size=10, color='red'), text=[" T"], textposition="middle left", name='T'), row=1, col=3)
-        fig_diag.add_vline(x=0, line_color="black", line_width=1, row=1, col=3)
-        fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", row=1, col=3)
-
-        fig_diag.update_layout(height=400, showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_diag, use_container_width=True)
-
-    with st.expander("🧮 3. แสดงวิธีทำและแทนค่าโดยละเอียด ทั้ง 5 จุด (Step-by-Step 5 Points)", expanded=True):
-        st.markdown("คลิกที่ Tab ด้านล่างเพื่อดูรายการคำนวณและสมการแทนค่าของแต่ละสภาวะ:")
-        tab_p1, tab_p2, tab_p3, tab_p4, tab_p5 = st.tabs([
-            "1. Pure Compression", "2. Zero Tension", "3. Balanced Point", "4. Pure Bending", "5. Pure Tension"
-        ])
-
-        with tab_p1:
-            st.markdown("#### จุดที่ 1: รับแรงอัดแกนล้วน (Pure Compression)")
-            st.markdown("สภาวะที่หน้าตัดรับแรงอัดเต็มพื้นที่ ไม่มีโมเมนต์ดัดเข้ามาเกี่ยวข้อง")
-            st.markdown(r"**สมการ:** $P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}$")
-            st.markdown(f"$P_o = 0.85({fc})({Ag} - {ast:.2f}) + {fy}({ast:.2f})$")
-            P1_kg = 0.85*fc*(Ag - ast) + fy*ast
-            st.markdown(f"$P_o = \mathbf{{{P1_kg:,.0f} \text{{ kgf}}}} = \mathbf{{{P1_kg/1000:,.2f} \text{{ ton}}}}$")
-            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = {P1_kg/1000:,.2f}$ ton, $M_n = 0.00$ ton-m")
-
-        with tab_p2:
-            st.markdown("#### จุดที่ 2: เริ่มเกิดแรงดึง (Zero Tension)")
-            st.markdown("สภาวะที่ความเครียดของเหล็กดึงเป็นศูนย์พอดี ($c = d$)")
-            a2, eps_s_prime2, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, Pn2, Mn2, phi2 = calc_pm_detailed(d)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**ระยะและหน่วยแรง:**")
-                st.markdown(f"$c = d = {d}$ cm")
-                st.markdown(f"$a = \\beta_1 c = {beta1:.2f}({d}) = {a2:.2f}$ cm")
-                st.markdown(f"$f'_s = \mathbf{{{fs_prime2:,.0f}}}$ ksc, $f_s = 0$ ksc")
-            with col_b:
-                st.markdown(f"**แรงภายในหน้าตัด:**")
-                st.markdown(f"$C_c = 0.85({fc})({a2:.2f})({b}) = \mathbf{{{Cc2:,.0f}}}$ kgf")
-                st.markdown(f"$C_s = {As_half:.2f}({fs_prime2:,.0f} - 0.85({fc})) = \mathbf{{{Cs2:,.0f}}}$ kgf")
-                st.markdown(f"$T = 0$ kgf")
-            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = \mathbf{{{Pn2:,.2f}}}$ ton, $M_n = \mathbf{{{Mn2:,.2f}}}$ ton-m")
-
-        with tab_p3:
-            st.markdown("#### จุดที่ 3: สภาวะสมดุล (Balanced Point)")
-            st.markdown("คอนกรีตอัดแตก ($\epsilon_c=0.003$) พร้อมกับเหล็กดึงครากพอดี ($\epsilon_s=\epsilon_y$)")
-            eps_y = fy / Es
-            cb = d * (0.003 / (0.003 + eps_y))
-            a3, eps_s_prime3, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, Pn3, Mn3, phi3 = calc_pm_detailed(cb)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**ระยะและหน่วยแรง:**")
-                st.markdown(f"$c_b = {d} [ 0.003 / (0.003 + {eps_y:.4f}) ] = {cb:.2f}$ cm")
-                st.markdown(f"$a_b = \\beta_1 c_b = {beta1:.2f}({cb:.2f}) = {a3:.2f}$ cm")
-                st.markdown(f"$f'_s = \mathbf{{{fs_prime3:,.0f}}}$ ksc, $f_s = \mathbf{{{fs3:,.0f}}}$ ksc")
-            with col_b:
-                st.markdown(f"**แรงภายในหน้าตัด:**")
-                st.markdown(f"$C_c = 0.85({fc})({a3:.2f})({b}) = \mathbf{{{Cc3:,.0f}}}$ kgf")
-                st.markdown(f"$C_s = {As_half:.2f}({fs_prime3:,.0f} - 0.85({fc})) = \mathbf{{{Cs3:,.0f}}}$ kgf")
-                st.markdown(f"$T = {As_half:.2f}({fs3:,.0f}) = \mathbf{{{T3:,.0f}}}$ kgf")
-            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = \mathbf{{{Pn3:,.2f}}}$ ton, $M_n = \mathbf{{{Mn3:,.2f}}}$ ton-m")
-
-        with tab_p4:
-            st.markdown("#### จุดที่ 4: รับโมเมนต์ดัดล้วน (Pure Bending)")
-            st.markdown("พฤติกรรมเสมือนคาน ไม่มีแรงแกน ($P_n = 0$) ต้อง Iteration หาระยะ $c$ ที่ $C_c + C_s = T$")
-            a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, Pn4, Mn4, phi4 = calc_pm_detailed(c_m0)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**ระยะและหน่วยแรง (จากการ Iteration):**")
-                st.markdown(f"$c \\approx \mathbf{{{c_m0:.2f}}}$ cm")
-                st.markdown(f"$a \\approx {a4:.2f}$ cm")
-                st.markdown(f"$f'_s = \mathbf{{{fs_prime4:,.0f}}}$ ksc, $f_s = \mathbf{{{fs4:,.0f}}}$ ksc")
-            with col_b:
-                st.markdown(f"**แรงภายในหน้าตัด:**")
-                st.markdown(f"$C_c = \mathbf{{{Cc4:,.0f}}}$ kgf")
-                st.markdown(f"$C_s = \mathbf{{{Cs4:,.0f}}}$ kgf")
-                st.markdown(f"$T = \mathbf{{{T4:,.0f}}}$ kgf")
-                st.markdown(f"*(เช็กสมดุล: $C_c + C_s \\approx T$)*")
-            st.markdown(f"**กำลังรับแรงระบุ:** $P_n \approx 0.00$ ton, $M_n = \mathbf{{{Mn4:,.2f}}}$ ton-m")
-
-        with tab_p5:
-            st.markdown("#### จุดที่ 5: รับแรงดึงล้วน (Pure Tension)")
-            st.markdown("คอนกรีตแตกร้าวไม่รับแรง หน้าตัดต้านทานด้วยแรงดึงของเหล็กเสริมทั้งหมด")
-            st.markdown(r"**สมการ:** $P_{nt} = -A_{st} f_y$")
-            st.markdown(f"$P_{{nt}} = -({ast:.2f})({fy})$")
-            P5_kg = -ast * fy
-            st.markdown(f"$P_{{nt}} = \mathbf{{{P5_kg:,.0f} \text{{ kgf}}}} = \mathbf{{{P5_kg/1000:,.2f} \text{{ ton}}}}$")
-            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = {P5_kg/1000:,.2f}$ ton, $M_n = 0.00$ ton-m")
+    with tab_p5:
+        st.markdown("#### 🔴 จุดที่ 5: รับแรงดึงล้วน (Pure Tension)")
+        st.markdown("คอนกรีตแตกร้าวไม่สามารถรับแรงได้ หน้าตัดต้านทานด้วยแรงดึงของเหล็กเสริมทั้งหมด")
+        fig5 = plot_state(0.001, "Pure Tension")
+        st.pyplot(fig5)
+        
+        P5_kg = -ast * fy
+        st.markdown(r"**สมการ:** $P_{nt} = -A_{st} f_y$")
+        st.markdown(f"$P_{{nt}} = -({ast:.2f})({fy})$")
+        st.markdown(f"$P_{{nt}} =$ **{P5_kg:,.0f}** kgf $= $ **{P5_kg/1000:,.2f}** ton")
+        st.info(f"**กำลังรับแรงระบุ:** $P_n =$ **{P5_kg/1000:,.2f}** ton, $M_n = 0.00$ ton-m")
