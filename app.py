@@ -860,7 +860,7 @@ with col_main:
     # ══════════════════════════════════════════════════════════════════════════
     # TABS
     # ══════════════════════════════════════════════════════════════════════════
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📥 Overview & 3D",
         "📊 P-M Interaction",
         "🧊 Section Detail",
@@ -868,6 +868,7 @@ with col_main:
         "📝 Calc Report",
         "⚡ Quick Sizing",
         "⚡ Quick Sizing2",
+        "⚡ Quick PM",
     ])
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -2072,3 +2073,159 @@ with tab7:
         st.latex(r"A_{st,\text{min}} = A_{g,\text{actual}} \times 0.01 \quad \text{และ} \quad A_{st,\text{max}} = A_{g,\text{actual}} \times 0.02")
         st.latex(f"A_{{st}} = {ast_min:,.2f} \\text{{ ถึง }} {ast_max:,.2f} \\text{{ cm}}^2")
         st.caption("หมายเหตุ: ค่าเหล็กเสริมนี้เป็นค่าประมาณเบื้องต้นเพื่อใช้ล็อกปริมาณเหล็กในแบบร่าง วิศวกรต้องนำขนาดหน้าตัดนี้ไปเช็กกำลังรับแรงอัดร่วมกับโมเมนต์ดัด (Interaction Diagram) ที่ละเอียดอีกครั้ง")
+# นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
+
+with tab8:
+    st.header("📈 P-M Interaction Diagram (Biaxial & Capacity)")
+    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา (MKS Unit: ksc, ton, cm, ton-m) โดยสมมติเหล็กเสริมสมมาตร 2 ด้าน")
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        st.subheader("📥 1. กำหนดหน้าตัด (Section Inputs)")
+        b = st.number_input("ความกว้างเสา, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_b")
+        h = st.number_input("ความลึกเสา, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_h")
+        cover = st.number_input("ระยะหุ้มถึงศูนย์กลางเหล็ก, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_cov")
+        
+        st.markdown("---")
+        fc = st.number_input("กำลังอัดคอนกรีต, f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_fc")
+        fy = st.number_input("กำลังครากเหล็กเสริม, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_fy")
+        ast = st.number_input("พื้นที่เหล็กเสริมรวม, Ast (cm²)", min_value=2.0, value=15.0, step=1.0, key="pm_ast")
+
+    with col2:
+        st.subheader("📊 2. กราฟ P-M Diagram")
+        
+        # --- การคำนวณพื้นฐาน ---
+        Es = 2040000.0 # Modulus of Elasticity ของเหล็ก (ksc)
+        ecu = 0.003    # Strain สูงสุดของคอนกรีต
+        d = h - cover
+        Ag = b * h
+        As_half = ast / 2.0 # สมมติเหล็กเสริมสมมาตร 2 ฝั่ง (รับดึงครึ่ง รับอัดครึ่ง)
+        
+        # คำนวณ beta1 ตาม ACI (MKS)
+        if fc <= 280:
+            beta1 = 0.85
+        else:
+            beta1 = 0.85 - 0.05 * ((fc - 280) / 70.0)
+            beta1 = max(beta1, 0.65)
+
+        # ฟังก์ชันคำนวณ Pn (ton), Mn (ton-m) ที่ระยะแกนสะเทิน c ใดๆ
+        def calc_pm(c):
+            if c <= 0: return 0.0, 0.0
+            
+            a = min(beta1 * c, h)
+            # แรงอัดคอนกรีต
+            Cc = 0.85 * fc * a * b
+            
+            # ความเครียดในเหล็ก
+            eps_s_prime = ecu * (c - cover) / c
+            eps_s = ecu * (d - c) / c
+            
+            # หน่วยแรงในเหล็ก
+            fs_prime = min(Es * eps_s_prime, fy) if eps_s_prime >= 0 else max(Es * eps_s_prime, -fy)
+            fs = min(Es * eps_s, fy) if eps_s >= 0 else max(Es * eps_s, -fy)
+            
+            # แรงในเหล็ก (Cs หักลบพื้นที่คอนกรีตที่ถูกแทนที่)
+            Cs = As_half * (fs_prime - 0.85 * fc) if eps_s_prime > 0 else As_half * fs_prime
+            T = As_half * fs # T เป็นบวกเมื่อเหล็กรับแรงดึง
+            
+            # สมการสมดุล (หน่วยแปลงจาก kgf เป็น ton และ kgf-cm เป็น ton-m)
+            Pn = (Cc + Cs - T) / 1000.0
+            Mn = (Cc * (h/2 - a/2) + Cs * (h/2 - cover) + T * (d - h/2)) / 100000.0
+            return Pn, Mn
+
+        # --- คำนวณ 5 จุดสำคัญ ---
+        # จุดที่ 1: Pure Compression (Po)
+        Po_kg = 0.85 * fc * (Ag - ast) + fy * ast
+        P1, M1 = Po_kg / 1000.0, 0.0
+        
+        # จุดที่ 2: Zero Tension (c = d)
+        P2, M2 = calc_pm(d)
+        
+        # จุดที่ 3: Balanced Point
+        eps_y = fy / Es
+        cb = d * (ecu / (ecu + eps_y))
+        P3, M3 = calc_pm(cb)
+        
+        # จุดที่ 4: Pure Bending (Pn = 0)
+        c_vals = np.linspace(0.01*d, h, 1000)
+        P_vals, M_vals = zip(*[calc_pm(c_val) for c_val in c_vals])
+        # หาจุดที่ Pn ตัดแกน 0
+        idx_m0 = np.argmin(np.abs(np.array(P_vals)))
+        c_m0 = c_vals[idx_m0]
+        P4, M4 = calc_pm(c_m0)
+        
+        # จุดที่ 5: Pure Tension
+        P5, M5 = -(fy * ast) / 1000.0, 0.0
+
+        # --- สร้างกราฟ ---
+        fig, ax = plt.subplots(figsize=(8, 6))
+        # พล็อตเส้นโค้งทั้งหมด
+        ax.plot(M_vals, P_vals, color='blue', label='Nominal Capacity ($P_n, M_n$)')
+        ax.plot([0, M1], [P5, P1], color='blue', alpha=0.3, linestyle='--') # ต่อจุดบนล่างปิดกราฟ
+        
+        # พล็อต 5 จุดสำคัญ
+        pts_M = [M1, M2, M3, M4, M5]
+        pts_P = [P1, P2, P3, P4, P5]
+        labels = ['1. Pure Comp', '2. Zero Tension', '3. Balanced', '4. Pure Bending', '5. Pure Tension']
+        
+        ax.scatter(pts_M, pts_P, color='red', zorder=5)
+        for i, txt in enumerate(labels):
+            ax.annotate(f" {txt}", (pts_M[i], pts_P[i]), fontsize=9, color='darkred')
+
+        ax.axhline(0, color='black', linewidth=1)
+        ax.axvline(0, color='black', linewidth=1)
+        ax.set_xlabel('Bending Moment, Mn (ton-m)')
+        ax.set_ylabel('Axial Load, Pn (ton)')
+        ax.set_title(f"P-M Interaction Diagram ({b}x{h} cm, As={ast} cm²)")
+        ax.grid(True, linestyle='--', alpha=0.6)
+        ax.legend()
+        
+        st.pyplot(fig)
+
+    # === ส่วนแสดงวิธีทำแบบละเอียด 5 จุด ===
+    st.markdown("---")
+    with st.expander("📚 แสดงวิธีการคิดและสมการทั้ง 5 จุด (Detailed 5-Points Calculation)", expanded=True):
+        st.markdown("ในการวาดโค้ง P-M จะใช้หลักการความสอดคล้องของความเครียด (Strain Compatibility) โดยตั้งสมมติฐานว่าความเครียดประลัยของคอนกรีต $\epsilon_{cu} = 0.003$ และการกระจายความเครียดเป็นเส้นตรง")
+        
+        st.markdown("#### จุดที่ 1: รับแรงอัดล้วน (Pure Compression)")
+        st.markdown("แรงในหน้าตัดเกิดจากคอนกรีตรับแรงอัดเต็มพื้นที่ และเหล็กเสริมรับแรงครากเต็มที่ โมเมนต์ดัดมีค่าเป็นศูนย์")
+        st.latex(r"P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}")
+        st.latex(f"P_o = 0.85({fc})({Ag} - {ast}) + {fy}({ast}) = {Po_kg:,.0f} \\text{{ kgf}} = {P1:,.1f} \\text{{ ton}}")
+        st.markdown(f"**พิกัดจุดที่ 1:** $(M_n = {M1:.2f}, P_n = {P1:.2f})$")
+
+        st.markdown("---")
+        st.markdown("#### จุดที่ 2: เริ่มเกิดแรงดึง (Zero Tension Point)")
+        st.markdown("จุดที่ความเครียดในเหล็กเสริมฝั่งรับแรงดึงมีค่าเป็น 0 พอดี (แกนสะเทิน $c = d$)")
+        st.latex(f"c = d = {d} \\text{{ cm}} \\rightarrow a = \\beta_1 c = ({beta1:.2f})({d}) = {beta1*d:.2f} \\text{{ cm}}")
+        st.markdown("คำนวณแรงอัดคอนกรีต ($C_c$), แรงอัดเหล็ก ($C_s$) และแรงดึงเหล็ก ($T=0$):")
+        st.latex(r"C_c = 0.85 f'_c a b \quad , \quad C_s = A'_s (f'_s - 0.85 f'_c) \quad , \quad T = 0")
+        st.latex(r"P_n = C_c + C_s - T")
+        st.latex(r"M_n = C_c \left(\frac{h}{2} - \frac{a}{2}\right) + C_s \left(\frac{h}{2} - d'\right)")
+        st.markdown(f"**พิกัดจุดที่ 2:** $(M_n = {M2:.2f}, P_n = {P2:.2f})$")
+
+        st.markdown("---")
+        st.markdown("#### จุดที่ 3: สภาวะสมดุล (Balanced Point)")
+        st.markdown("จุดที่คอนกรีตถูกอัดแตก ($\epsilon_c = 0.003$) พร้อมๆ กับเหล็กเสริมฝั่งดึงถึงจุดครากพอดี ($\epsilon_s = \epsilon_y$)")
+        st.latex(r"c_b = d \left[ \frac{0.003}{0.003 + f_y/E_s} \right]")
+        st.latex(f"c_b = {d} \\left[ \\frac{{0.003}}{{0.003 + {fy}/{Es}}} \\right] = {cb:.2f} \\text{{ cm}}")
+        st.markdown("นำระยะ $c_b$ ไปหาค่า $a = \beta_1 c_b$ แล้วแทนค่าหาสมดุลแรง (ทำซ้ำกระบวนการเดียวกับจุดที่ 2 แต่มีแรง $T = A_s f_y$ มาเกี่ยวข้อง)")
+        st.markdown(f"**พิกัดจุดที่ 3:** $(M_n = {M3:.2f}, P_n = {P3:.2f})$")
+
+        st.markdown("---")
+        st.markdown("#### จุดที่ 4: รับโมเมนต์ดัดล้วน (Pure Bending)")
+        st.markdown("พฤติกรรมเหมือนคาน คือไม่มีแรงอัดแกนกระทำ ($P_n = 0$) ต้อง Iteration หาระยะแกนสะเทิน $c$ ที่ทำให้แรงอัดรวมเท่ากับแรงดึงรวม ($C_c + C_s = T$)")
+        st.latex(r"\sum F = 0 \rightarrow C_c(c) + C_s(c) - T(c) = 0")
+        st.markdown(f"จากการ Iteration พบว่าสภาวะนี้เกิดขึ้นเมื่อระยะแกนสะเทิน $c \\approx {c_m0:.2f} \\text{{ cm}}$")
+        st.latex(r"M_n = M_{\text{pure bending}}")
+        st.markdown(f"**พิกัดจุดที่ 4:** $(M_n = {M4:.2f}, P_n = 0.00)$")
+
+        st.markdown("---")
+        st.markdown("#### จุดที่ 5: รับแรงดึงล้วน (Pure Tension)")
+        st.markdown("คอนกรีตไม่รับแรงดึง หน้าตัดจะต้านทานแรงดึงด้วยกำลังครากของเหล็กเสริมทั้งหมดเท่านั้น โมเมนต์ดัดเป็นศูนย์")
+        st.latex(r"P_{nt} = -A_{st} f_y")
+        st.latex(f"P_{{nt}} = -({ast})({fy}) = {-(ast*fy):,.0f} \\text{{ kgf}} = {P5:,.1f} \\text{{ ton}}")
+        st.markdown(f"**พิกัดจุดที่ 5:** $(M_n = 0.00, P_n = {P5:.2f})$")
