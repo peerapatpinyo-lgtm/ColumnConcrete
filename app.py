@@ -2246,7 +2246,8 @@ with tab8:
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 9.5))
         
         ax1.plot(M_nom, P_nom, color='#3b82f6', linestyle='--', linewidth=1.5, label='Nominal Capacity')
-        ax1.plot(M_des, P_des, color='#10b981', linewidth=2.5, label='Design Capacity')
+        ax1.plot(M_des, M_des, color='#10b981', linewidth=2.5, label='Design Capacity') # Fix plot bug for M_des, P_des
+        ax1.lines[-1].set_xdata(M_des); ax1.lines[-1].set_ydata(P_des) 
         ax1.fill_between(M_des, 0, P_des, color='#10b981', alpha=0.1)
         ax1.axhline(phi_Pn_max, color='#b91c1c', linestyle='-.', label=f'$\\phi P_{{n,\\max}}$ = {phi_Pn_max:.1f} t')
         pts_M = [M1, M2, M3, M4, M5]
@@ -2306,6 +2307,11 @@ with tab8:
         • โมดูลัสยืดหยุ่นของเหล็กเสริม (Modulus of Elasticity): <b>E<sub>s</sub> = {Es:,.0f} ksc</b>
     </div>
     """, unsafe_allow_html=True)
+
+    # คำนวณระยะแขนของแรงลัพธ์จากจุด Plastic Centroid (h/2) ไว้ล่วงหน้าเพื่อใช้ในการแทนค่าทางคณิตศาสตร์
+    arm_Cc2, arm_Cs2, arm_T2 = (h/2.0 - a2/2.0)/100.0, (h/2.0 - cover)/100.0, (d - h/2.0)/100.0
+    arm_Cc3, arm_Cs3, arm_T3 = (h/2.0 - a3/2.0)/100.0, (h/2.0 - cover)/100.0, (d - h/2.0)/100.0
+    arm_Cc4, arm_Cs4, arm_T4 = (h/2.0 - a4/2.0)/100.0, (h/2.0 - cover)/100.0, (d - h/2.0)/100.0
 
     def draw_compact_profile(b_w, h_d, cov, c_in, a_in, e_cu, e_t, fs_prime, fs, Cc, Cs, T, title_name):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 4), gridspec_kw={'width_ratios': [1, 1.2, 1.5]})
@@ -2437,13 +2443,16 @@ with tab8:
             st.latex(fr"C_c = 0.85 \times {fc:.0f} \times {a2:.2f} \times {b:.1f} = \mathbf{{{Cc2/1000:,.2f} \text{{ ton}}}}")
             st.latex(r"C_s = A'_s (f'_s - 0.85 f'_c)")
             st.latex(fr"C_s = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc:.0f}) = \mathbf{{{Cs2/1000:,.2f} \text{{ ton}}}}")
-            st.latex(r"T = A_s \cdot f_s \quad (\text{strain } \epsilon_t = 0)")
-            st.latex(fr"T = {As_half:.2f} \times {fs2:,.0f} = \mathbf{{{T2/1000:,.2f} \text{{ ton}}}}")
+            st.latex(r"T = A_s \cdot f_s \quad (\epsilon_t = 0)")
+            st.latex(fr"T = {As_half:.2f} \times {fs2:,.1f} = \mathbf{{{T2/1000:,.2f} \text{{ ton}}}}")
             
             st.markdown("**4. กำลังรับแรงรวมของหน้าตัด ($P_n, M_n$)**")
             st.latex(r"P_n = C_c + C_s - T")
-            st.latex(fr"P_n = {Cc2/1000:,.1f} + {Cs2/1000:,.1f} - {T2/1000:,.1f} = \mathbf{{{P2:,.2f} \text{{ ton}}}}")
-            st.latex(fr"M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}")
+            st.latex(fr"P_n = {Cc2/1000:,.2f} + {Cs2/1000:,.2f} - {T2/1000:,.2f} = \mathbf{{{P2:,.2f} \text{{ ton}}}}")
+            
+            st.latex(r"M_n = C_c\left(\frac{h}{2} - \frac{a}{2}\right) + C_s\left(\frac{h}{2} - d'\right) + T\left(d - \frac{h}{2}\right)")
+            st.latex(fr"M_n = {Cc2/1000:,.2f}({arm_Cc2:.3f}) + {Cs2/1000:,.2f}({arm_Cs2:.3f}) + {T2/1000:,.2f}({arm_T2:.3f})")
+            st.latex(fr"M_n = {Cc2/1000*arm_Cc2:,.2f} + {Cs2/1000*arm_Cs2:,.2f} + {T2/1000*arm_T2:,.2f} = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}")
 
     with t3:
         st.pyplot(draw_compact_profile(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced"), bbox_inches='tight')
@@ -2460,14 +2469,20 @@ with tab8:
             st.latex(fr"a_b = {beta1:.2f} \times {cb:.2f} = \mathbf{{{a3:.2f} \text{{ cm}}}}")
 
         with col_f2:
-            st.markdown("**2. แรงลัพธ์และกำลังต้านทานระบุ ณ จุดสมดุล**")
+            st.markdown("**2. แรงลัพธ์ภายใน ณ จุดสมดุล (Internal Forces)**")
             st.latex(r"C_c = 0.85 f'_c \cdot a_b \cdot b")
             st.latex(fr"C_c = 0.85 \times {fc:.0f} \times {a3:.2f} \times {b:.1f} = \mathbf{{{Cc3/1000:,.2f} \text{{ ton}}}}")
+            st.latex(r"C_s = A'_s (f'_s - 0.85 f'_c)")
+            st.latex(fr"C_s = {As_half:.2f} \times ({fs_prime3:,.0f} - 0.85 \times {fc:.0f}) = \mathbf{{{Cs3/1000:,.2f} \text{{ ton}}}}")
             st.latex(r"T = A_s \cdot f_y")
             st.latex(fr"T = {As_half:.2f} \times {fy:.0f} = \mathbf{{{T3/1000:,.2f} \text{{ ton}}}}")
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.latex(fr"P_n = \mathbf{{{P3:,.2f} \text{{ ton}}}}")
-            st.latex(fr"M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}")
+            
+            st.markdown("**3. กำลังรับแรงรวมระบุระนาบสมดุล ($P_n, M_n$)**")
+            st.latex(r"P_n = C_c + C_s - T")
+            st.latex(fr"P_n = {Cc3/1000:,.2f} + {Cs3/1000:,.2f} - {T3/1000:,.2f} = \mathbf{{{P3:,.2f} \text{{ ton}}}}")
+            st.latex(r"M_n = C_c\left(\frac{h}{2} - \frac{a}{2}\right) + C_s\left(\frac{h}{2} - d'\right) + T\left(d - \frac{h}{2}\right)")
+            st.latex(fr"M_n = {Cc3/1000:,.2f}({arm_Cc3:.3f}) + {Cs3/1000:,.2f}({arm_Cs3:.3f}) + {T3/1000:,.2f}({arm_T3:.3f})")
+            st.latex(fr"M_n = {Cc3/1000*arm_Cc3:,.2f} + {Cs3/1000*arm_Cs3:,.2f} + {T3/1000*arm_T3:,.2f} = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}")
 
     with t4:
         st.pyplot(draw_compact_profile(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending"), bbox_inches='tight')
@@ -2484,11 +2499,20 @@ with tab8:
             st.markdown(fr"*(เนื่องจาก $\epsilon_t = {eps_t4:.5f} \ge 0.005$ หน้าตัดจึงเป็น Tension-Controlled $\Rightarrow \phi = \mathbf{{0.90}}$)*")
 
         with col_f2:
-            st.markdown("**3. สรุปแรงลัพธ์และโมเมนต์ดัดบริสุทธิ์ระบุ ($M_n$)**")
-            st.latex(fr"C_c = {Cc4/1000:,.2f} \text{{ t}}, \quad C_s = {Cs4/1000:,.2f} \text{{ t}}, \quad T = {T4/1000:,.2f} \text{{ t}}")
-            st.latex(r"P_n = C_c + C_s - T \approx \mathbf{0.00 \text{ ton}}")
-            st.latex(r"M_n = \sum (\text{Force} \times \text{Lever Arm})")
-            st.latex(fr"M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} \Rightarrow \phi M_n = \mathbf{{{M4*phi4:,.2f} \text{{ ton-m}}}}")
+            st.markdown("**3. แรงลัพธ์และโมเมนต์ดัดบริสุทธิ์ระบุ ($M_n$)**")
+            st.latex(r"C_c = 0.85 f'_c \cdot a \cdot b")
+            st.latex(fr"C_c = 0.85 \times {fc:.0f} \times {a4:.2f} \times {b:.1f} = \mathbf{{{Cc4/1000:,.2f} \text{{ ton}}}}")
+            st.latex(r"C_s = A'_s (f'_s - 0.85 f'_c)")
+            st.latex(fr"C_s = {As_half:.2f} \times ({fs_prime4:,.0f} - 0.85 \times {fc:.0f}) = \mathbf{{{Cs4/1000:,.2f} \text{{ ton}}}}")
+            st.latex(r"T = A_s \cdot f_s")
+            st.latex(fr"T = {As_half:.2f} \times {fs4:,.0f} = \mathbf{{{T4/1000:,.2f} \text{{ ton}}}}")
+            
+            st.latex(r"P_n = C_c + C_s - T")
+            st.latex(fr"P_n = {Cc4/1000:,.2f} + {Cs4/1000:,.2f} - {T4/1000:,.2f} = \mathbf{{{P4:,.2f} \text{{ ton}}}} \approx \mathbf{{0.00 \text{{ ton}}}}")
+            st.latex(r"M_n = C_c\left(\frac{h}{2} - \frac{a}{2}\right) + C_s\left(\frac{h}{2} - d'\right) + T\left(d - \frac{h}{2}\right)")
+            st.latex(fr"M_n = {Cc4/1000:,.2f}({arm_Cc4:.3f}) + {Cs4/1000:,.2f}({arm_Cs4:.3f}) + {T4/1000:,.2f}({arm_T4:.3f})")
+            st.latex(fr"M_n = {Cc4/1000*arm_Cc4:,.2f} + {Cs4/1000*arm_Cs4:,.2f} + {T4/1000*arm_T4:,.2f} = \mathbf{{{M4:,.2f} \text{{ ton-m}}}}")
+            st.latex(fr"\Rightarrow \phi M_n = {phi4:.2f} \times {M4:,.2f} = \mathbf{{{M4*phi4:,.2f} \text{{ ton-m}}}}")
 
     with t5:
         st.pyplot(draw_compact_profile(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension"), bbox_inches='tight')
