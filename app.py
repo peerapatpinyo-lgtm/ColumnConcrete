@@ -2170,9 +2170,19 @@ with tab8:
     a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, P4, M4, phi4 = calc_pm_detailed(c_m0)
     P5, M5 = -(fy * ast) / 1000.0, 0.0
 
-    # Map demand point to closest P-M behavior
+    # แมพจุด Demand Point เข้าสู่เส้นกราฟด้วยวิธี Eccentricity (e = Mu/Pu)
     if pu_check != 0 or mu_check != 0:
-        idx_chk = np.argmin((np.array(M_des) - mu_check)**2 + (np.array(P_des) - pu_check)**2)
+        if pu_check == 0:
+            idx_chk = idx_m0
+        else:
+            e_demand = mu_check / pu_check
+            e_des = np.zeros_like(P_des)
+            for i, p in enumerate(P_des):
+                if p != 0:
+                    e_des[i] = M_des[i] / p
+                else:
+                    e_des[i] = float('inf')
+            idx_chk = np.argmin(np.abs(e_des - e_demand))
         eps_t_chk, phi_chk = eps_t_arr[idx_chk], phi_arr[idx_chk]
 
     # ─── 3. DRAWING DASHBOARD ───
@@ -2197,19 +2207,23 @@ with tab8:
         ax1.grid(True, linestyle=':', alpha=0.6)
         ax1.legend(loc='upper right', fontsize=8)
 
-        # Phi Plot
-        et_plot = np.linspace(-0.001, 0.012, 500)
+        # Phi Plot (Dynamic X-Axis Limit)
+        x_max_lim = 0.012
+        if (pu_check != 0 or mu_check != 0) and eps_t_chk > 0.010:
+            x_max_lim = eps_t_chk + 0.003
+            
+        et_plot = np.linspace(-0.001, x_max_lim, 500)
         phi_plot = np.where(et_plot <= ety, phi_c, np.where(et_plot >= 0.005, 0.90, phi_c + (0.90 - phi_c)*(et_plot - ety)/(0.005 - ety)))
         ax2.plot(et_plot, phi_plot, color='#475569', linewidth=2)
         ax2.axvspan(-0.001, ety, color='#fee2e2', alpha=0.4, label='Compression-Controlled')
         ax2.axvspan(ety, 0.005, color='#fef3c7', alpha=0.4, label='Transition Zone')
-        ax2.axvspan(0.005, 0.012, color='#dcfce7', alpha=0.4, label='Tension-Controlled')
+        ax2.axvspan(0.005, x_max_lim, color='#dcfce7', alpha=0.4, label='Tension-Controlled')
         if pu_check != 0 or mu_check != 0:
             ax2.scatter([eps_t_chk], [phi_chk], color='#f59e0b', s=150, marker='*', edgecolors='black', zorder=6, label=f'Mapped Demand ($\\phi$={phi_chk:.3f})')
         ax2.set_xlabel('Net Tensile Strain, $\\epsilon_t$', weight='bold')
         ax2.set_ylabel('Strength Reduction Factor, $\\phi$', weight='bold')
         ax2.set_ylim(phi_c - 0.05, 0.95)
-        ax2.set_xlim(-0.001, 0.012)
+        ax2.set_xlim(-0.001, x_max_lim)
         ax2.grid(True, linestyle=':', alpha=0.6)
         ax2.legend(loc='lower right', fontsize=8)
         
@@ -2231,6 +2245,13 @@ with tab8:
     # ─── 5. DETAILED PROFILES & CALCULATIONS (PROFESSIONAL ENGINEERING FORMAT) ───
     st.markdown("---")
     st.subheader("📐 4. รายการคำนวณแบบจำลองหน้าตัด (Detailed Section Analysis)")
+    
+    # แสดงข้อสมมติฐานหลักเพื่อให้ทราบค่า e_cu ชัดเจน
+    st.markdown(fr"""
+    **📝 ข้อสมมติฐานที่ใช้ในการออกแบบ (Design Assumptions):**
+    $$ \text{{ความเครียดอัดสูงสุดของคอนกรีต, }} \epsilon_{{cu}} = {ecu:.3f} $$
+    $$ \text{{โมดูลัสยืดหยุ่นของเหล็กเสริม, }} E_s = {Es:,.0f} \text{{ ksc}} $$
+    """)
 
     def draw_compact_profile(b_w, h_d, cov, c_in, a_in, e_cu, e_t, fs_prime, fs, Cc, Cs, T, title_name):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 4), gridspec_kw={'width_ratios': [1, 1.2, 1.5]})
@@ -2314,145 +2335,89 @@ with tab8:
         st.pyplot(draw_compact_profile(b, h, cover, h*5, h, ecu, 0, fy, 0, P1*1000, 0, 0, "Pure Compression"), bbox_inches='tight')
         st.markdown(fr"""
         ### 1. ข้อมูลรูปทรงเรขาคณิต (Geometry Data)
-        * **[สูตร]** $A_g = b \times h$
-        * **[แทนค่า]** $A_g = {b} \times {h}$
-        * **[ตอบ]** $A_g = {Ag:,.2f} \text{{ cm}}^2$
+        $$ A_g = b \times h $$
+        $$ A_g = {b} \times {h} = {Ag:,.2f} \text{{ cm}}^2 $$
 
         ### 2. กำลังรับแรงระบุ (Nominal Capacity)
-        * **[สูตร]** $P_o = 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}}$
-        * **[แทนค่า]** $P_o = 0.85 \times {fc} \times ({Ag:,.2f} - {ast:.2f}) + {fy} \times {ast:.2f}$
-        * **[ตอบ]** $P_o = {P1*1000:,.0f} \text{{ kgf}} = \mathbf{{{P1:,.2f} \text{{ ton}}}}$
-        * **[สูตร]** $M_n = 0.00$
-        * **[ตอบ]** $M_n = \mathbf{{0.00 \text{{ ton-m}}}}$
+        $$ P_o = 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}} $$
+        $$ P_o = 0.85 \times {fc} \times ({Ag:,.2f} - {ast:.2f}) + {fy} \times {ast:.2f} = {P1*1000:,.0f} \text{{ kgf}} $$
+        $$ P_o = \mathbf{{{P1:,.2f} \text{{ ton}}}} $$
+        $$ M_n = \mathbf{{0.00 \text{{ ton-m}}}} $$
 
         ### 3. กำลังรับแรงออกแบบ (Design Capacity)
-        * **[สูตร]** $\phi P_{{n,\max}} = \phi \cdot \alpha \cdot P_o$
-        * **[แทนค่า]** $\phi P_{{n,\max}} = {phi_c} \times {alpha_max} \times {P1:,.2f}$
-        * **[ตอบ]** $\phi P_{{n,\max}} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}$
+        $$ \phi P_{{n,\max}} = \phi \cdot \alpha \cdot P_o $$
+        $$ \phi P_{{n,\max}} = {phi_c} \times {alpha_max} \times {P1:,.2f} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}} $$
         """)
 
     with t2:
         st.pyplot(draw_compact_profile(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension"), bbox_inches='tight')
         st.markdown(fr"""
         ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        * **[สูตร]** $c = h - d'$
-        * **[แทนค่า]** $c = {h} - {cover}$
-        * **[ตอบ]** $c = {d:.2f} \text{{ cm}}$
-        * **[สูตร]** $a = \beta_1 \cdot c$
-        * **[แทนค่า]** $a = {beta1} \times {d:.2f}$
-        * **[ตอบ]** $a = {a2:.2f} \text{{ cm}}$
-        * **[สูตร]** $\epsilon'_s = 0.003 \left( \frac{{c - d'}}{{c}} \right)$
-        * **[แทนค่า]** $\epsilon'_s = 0.003 \times \left( \frac{{{d:.2f} - {cover}}}{{{d:.2f}}} \right)$
-        * **[ตอบ]** $\epsilon'_s = {eps_s_prime2:.5f}$
+        $$ c = h - d' = {h} - {cover} = {d:.2f} \text{{ cm}} $$
+        $$ a = \beta_1 \cdot c = {beta1} \times {d:.2f} = {a2:.2f} \text{{ cm}} $$
+        $$ \epsilon'_s = \epsilon_{{cu}} \left( \frac{{c - d'}}{{c}} \right) = {ecu:.3f} \times \left( \frac{{{d:.2f} - {cover}}}{{{d:.2f}}} \right) = {eps_s_prime2:.5f} $$
 
         ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        * **[สูตร]** $C_c = 0.85 f'_c a b$
-        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a2:.2f} \times {b}$
-        * **[ตอบ]** $C_c = {Cc2:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $f'_s = \min(E_s \epsilon'_s, f_y)$
-        * **[แทนค่า]** $f'_s = \min(2040000 \times {eps_s_prime2:.5f}, {fy})$
-        * **[ตอบ]** $f'_s = {fs_prime2:,.0f} \text{{ ksc}}$
-        * **[สูตร]** $C_s = A'_s (f'_s - 0.85 f'_c)$
-        * **[แทนค่า]** $C_s = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc})$
-        * **[ตอบ]** $C_s = {Cs2:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $T = A_s f_s$
-        * **[แทนค่า]** $T = {As_half:.2f} \times {fs2:,.0f}$
-        * **[ตอบ]** $T = {T2:,.0f} \text{{ kgf}}$
+        $$ C_c = 0.85 f'_c a b = 0.85 \times {fc} \times {a2:.2f} \times {b} = {Cc2:,.0f} \text{{ kgf}} $$
+        $$ f'_s = \min(E_s \epsilon'_s, f_y) = \min(2040000 \times {eps_s_prime2:.5f}, {fy}) = {fs_prime2:,.0f} \text{{ ksc}} $$
+        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc}) = {Cs2:,.0f} \text{{ kgf}} $$
+        $$ T = A_s f_s = {As_half:.2f} \times {fs2:,.0f} = {T2:,.0f} \text{{ kgf}} $$
 
         ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        * **[สูตร]** $P_n = C_c + C_s - T$
-        * **[แทนค่า]** $P_n = {Cc2:,.0f} + {Cs2:,.0f} - {T2:,.0f}$
-        * **[ตอบ]** $P_n = {P2*1000:,.0f} \text{{ kgf}} = \mathbf{{{P2:,.2f} \text{{ ton}}}}$
-        * **[สูตร]** $M_n = C_c (h/2 - a/2) + C_s (h/2 - d') + T (d - h/2)$
-        * **[แทนค่า]** $M_n = \left[ {Cc2:,.0f} \times ({h}/2 - {a2:.2f}/2) + {Cs2:,.0f} \times ({h}/2 - {cover}) + {T2:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
-        * **[ตอบ]** $M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}$
+        $$ P_n = C_c + C_s - T = {Cc2:,.0f} + {Cs2:,.0f} - {T2:,.0f} = \mathbf{{{P2:,.2f} \text{{ ton}}}} $$
+        $$ M_n = \left[ C_c \left(\frac{{h}}{{2}} - \frac{{a}}{{2}}\right) + C_s \left(\frac{{h}}{{2}} - d'\right) + T \left(d - \frac{{h}}{{2}}\right) \right] \times 10^{{-5}} $$
+        $$ M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}} $$
         """)
 
     with t3:
         st.pyplot(draw_compact_profile(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced"), bbox_inches='tight')
         st.markdown(fr"""
         ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        * **[สูตร]** $\epsilon_y = \frac{{f_y}}{{E_s}}$
-        * **[แทนค่า]** $\epsilon_y = \frac{{{fy}}}{{2040000}}$
-        * **[ตอบ]** $\epsilon_y = {ety:.5f}$
-        * **[สูตร]** $c_b = d \left( \frac{{0.003}}{{0.003 + \epsilon_y}} \right)$
-        * **[แทนค่า]** $c_b = {d:.2f} \times \left( \frac{{0.003}}{{0.003 + {ety:.5f}}} \right)$
-        * **[ตอบ]** $c_b = {cb:.2f} \text{{ cm}}$
-        * **[สูตร]** $a_b = \beta_1 c_b$
-        * **[แทนค่า]** $a_b = {beta1} \times {cb:.2f}$
-        * **[ตอบ]** $a_b = {a3:.2f} \text{{ cm}}$
-        * **[สูตร]** $\epsilon'_s = 0.003 \left( \frac{{c_b - d'}}{{c_b}} \right)$
-        * **[แทนค่า]** $\epsilon'_s = 0.003 \times \left( \frac{{{cb:.2f} - {cover}}}{{{cb:.2f}}} \right)$
-        * **[ตอบ]** $\epsilon'_s = {eps_s_prime3:.5f}$
+        $$ \epsilon_y = \frac{{f_y}}{{E_s}} = \frac{{{fy}}}{{2040000}} = {ety:.5f} $$
+        $$ c_b = d \left( \frac{{\epsilon_{{cu}}}}{{\epsilon_{{cu}} + \epsilon_y}} \right) = {d:.2f} \times \left( \frac{{{ecu:.3f}}}{{{ecu:.3f} + {ety:.5f}}} \right) = {cb:.2f} \text{{ cm}} $$
+        $$ a_b = \beta_1 c_b = {beta1} \times {cb:.2f} = {a3:.2f} \text{{ cm}} $$
+        $$ \epsilon'_s = \epsilon_{{cu}} \left( \frac{{c_b - d'}}{{c_b}} \right) = {ecu:.3f} \times \left( \frac{{{cb:.2f} - {cover}}}{{{cb:.2f}}} \right) = {eps_s_prime3:.5f} $$
 
         ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        * **[สูตร]** $C_c = 0.85 f'_c a_b b$
-        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a3:.2f} \times {b}$
-        * **[ตอบ]** $C_c = {Cc3:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $f'_s = \min(E_s \epsilon'_s, f_y)$
-        * **[แทนค่า]** $f'_s = \min(2040000 \times {eps_s_prime3:.5f}, {fy})$
-        * **[ตอบ]** $f'_s = {fs_prime3:,.0f} \text{{ ksc}}$
-        * **[สูตร]** $C_s = A'_s (f'_s - 0.85 f'_c)$
-        * **[แทนค่า]** $C_s = {As_half:.2f} \times ({fs_prime3:,.0f} - 0.85 \times {fc})$
-        * **[ตอบ]** $C_s = {Cs3:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $T = A_s f_y$
-        * **[แทนค่า]** $T = {As_half:.2f} \times {fy}$
-        * **[ตอบ]** $T = {T3:,.0f} \text{{ kgf}}$
+        $$ C_c = 0.85 f'_c a_b b = 0.85 \times {fc} \times {a3:.2f} \times {b} = {Cc3:,.0f} \text{{ kgf}} $$
+        $$ f'_s = \min(E_s \epsilon'_s, f_y) = {fs_prime3:,.0f} \text{{ ksc}} $$
+        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {Cs3:,.0f} \text{{ kgf}} $$
+        $$ T = A_s f_y = {As_half:.2f} \times {fy} = {T3:,.0f} \text{{ kgf}} $$
 
         ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        * **[สูตร]** $P_n = C_c + C_s - T$
-        * **[แทนค่า]** $P_n = {Cc3:,.0f} + {Cs3:,.0f} - {T3:,.0f}$
-        * **[ตอบ]** $P_n = {P3*1000:,.0f} \text{{ kgf}} = \mathbf{{{P3:,.2f} \text{{ ton}}}}$
-        * **[สูตร]** $M_n = C_c (h/2 - a_b/2) + C_s (h/2 - d') + T (d - h/2)$
-        * **[แทนค่า]** $M_n = \left[ {Cc3:,.0f} \times ({h}/2 - {a3:.2f}/2) + {Cs3:,.0f} \times ({h}/2 - {cover}) + {T3:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
-        * **[ตอบ]** $M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}$
+        $$ P_n = C_c + C_s - T = \mathbf{{{P3:,.2f} \text{{ ton}}}} $$
+        $$ M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}} $$
         """)
 
     with t4:
         st.pyplot(draw_compact_profile(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending"), bbox_inches='tight')
         st.markdown(fr"""
         ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
-        * **[สูตร]** วนลูปหาค่า $c$ ที่ทำให้ $C_c + C_s = T$ (หรือ $P_n = 0$)
-        * **[แทนค่า]** $c \approx {c_m0:.2f} \text{{ cm}}, \quad a = {beta1} \times {c_m0:.2f}$
-        * **[ตอบ]** $c = {c_m0:.2f} \text{{ cm}}, \quad a = {a4:.2f} \text{{ cm}}$
-        * **[สูตร]** $\epsilon_t = 0.003 \left( \frac{{d - c}}{{c}} \right)$
-        * **[แทนค่า]** $\epsilon_t = 0.003 \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right)$
-        * **[ตอบ]** $\epsilon_t = {eps_t4:.5f}$ *(วิเคราะห์: เนื่องจาก $\epsilon_t > 0.005 \rightarrow$ รับแรงดึงสมบูรณ์ $\phi = 0.90$)*
+        *(วิเคราะห์จุดสมดุลแรง $C_c + C_s = T$ หรือ $P_n \approx 0$)*
+        $$ c = {c_m0:.2f} \text{{ cm}}, \quad a = {beta1} \times {c_m0:.2f} = {a4:.2f} \text{{ cm}} $$
+        $$ \epsilon_t = \epsilon_{{cu}} \left( \frac{{d - c}}{{c}} \right) = {ecu:.3f} \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right) = {eps_t4:.5f} $$
+        *(เนื่องจาก $\epsilon_t \ge 0.005$ หน้าตัดรับแรงดึงสมบูรณ์ ส่งผลให้ $\phi = 0.90$)*
 
         ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
-        * **[สูตร]** $C_c = 0.85 f'_c a b$
-        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a4:.2f} \times {b}$
-        * **[ตอบ]** $C_c = {Cc4:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $f'_s = E_s \epsilon'_s, \quad C_s = A'_s (f'_s - 0.85 f'_c)$
-        * **[แทนค่า]** $f'_s = {fs_prime4:,.0f} \text{{ ksc}}$
-        * **[ตอบ]** $C_s = {Cs4:,.0f} \text{{ kgf}}$
-        * **[สูตร]** $T = A_s f_y$
-        * **[แทนค่า]** $T = {As_half:.2f} \times {fy}$
-        * **[ตอบ]** $T = {T4:,.0f} \text{{ kgf}}$
-        * **[ตรวจสอบสมดุล]** $C_c + C_s \approx T \rightarrow {Cc4+Cs4:,.0f} \text{{ kgf}} \approx {T4:,.0f} \text{{ kgf}}$
+        $$ C_c = 0.85 f'_c a b = {Cc4:,.0f} \text{{ kgf}} $$
+        $$ C_s = A'_s (f'_s - 0.85 f'_c) = {Cs4:,.0f} \text{{ kgf}} $$
+        $$ T = A_s f_y = {T4:,.0f} \text{{ kgf}} $$
 
         ### 3. กำลังรับแรงระบุ (Nominal Capacity)
-        * **[สูตร]** $P_n = 0.00 \text{{ ton}}$
-        * **[ตอบ]** $P_n = \mathbf{{0.00 \text{{ ton}}}}$
-        * **[สูตร]** $M_n = C_c (h/2 - a/2) + C_s (h/2 - d') + T (d - h/2)$
-        * **[แทนค่า]** $M_n = \left[ {Cc4:,.0f} \times ({h}/2 - {a4:.2f}/2) + {Cs4:,.0f} \times ({h}/2 - {cover}) + {T4:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
-        * **[ตอบ]** $M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}}$
+        $$ P_n = \mathbf{{0.00 \text{{ ton}}}} $$
+        $$ M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} $$
         """)
 
     with t5:
         st.pyplot(draw_compact_profile(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension"), bbox_inches='tight')
         st.markdown(fr"""
         ### 1. สภาพของหน้าตัด (Section Behavior)
-        * **[สูตร]** คอนกรีตแตกร้าวเต็มหน้าตัด ไม่สามารถต้านทานแรงดึงได้
-        * **[ตอบ]** $C_c = 0 \text{{ kgf}}, \quad C_s = 0 \text{{ kgf}}$
+        *คอนกรีตแตกร้าวเต็มหน้าตัด ไม่สามารถต้านทานแรงดึงได้*
+        $$ C_c = 0 \text{{ kgf}}, \quad C_s = 0 \text{{ kgf}} $$
 
         ### 2. กำลังรับแรงระบุและออกแบบ (Nominal & Design Capacity)
-        * **[สูตร]** $P_n = -A_{{st}} f_y$
-        * **[แทนค่า]** $P_n = -{ast:.2f} \times {fy}$
-        * **[ตอบ]** $P_n = {P5*1000:,.0f} \text{{ kgf}} = \mathbf{{{P5:,.2f} \text{{ ton}}}}$
-        * **[สูตร]** $M_n = 0.00$
-        * **[ตอบ]** $M_n = \mathbf{{0.00 \text{{ ton-m}}}}$
-        * **[สูตร]** $\phi P_n = 0.90 \times P_n$
-        * **[แทนค่า]** $\phi P_n = 0.90 \times ({P5:,.2f})$
-        * **[ตอบ]** $\phi P_n = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}}$
+        $$ P_n = -A_{{st}} f_y = -{ast:.2f} \times {fy} = {P5*1000:,.0f} \text{{ kgf}} $$
+        $$ P_n = \mathbf{{{P5:,.2f} \text{{ ton}}}} $$
+        $$ M_n = \mathbf{{0.00 \text{{ ton-m}}}} $$
+        $$ \phi P_n = 0.90 \times P_n = 0.90 \times ({P5:,.2f}) = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}} $$
         """)
