@@ -1975,10 +1975,13 @@ with tab7:
         # คัดเลือกตัวหาร (Factor) และจัดรูปแบบสูตรแสดงบนหน้าจอตามประเภทอาคาร
         if "Ordinary" in structure_type:
             factor = 0.4
-            st.markdown(r"**สูตรตามคู่มือ:** $A_g = \frac{P_u}{0.4 f'_c}$")
+            formula_text = r"A_g = \frac{P_u}{0.4 f'_c}"
         else:
             factor = 0.3
-            st.markdown(r"**สูตรตามคู่มือ:** $A_g = \frac{P_u}{0.3 f'_c}$")
+            formula_text = r"A_g = \frac{P_u}{0.3 f'_c}"
+            
+        st.markdown(f"**สูตรตามคู่มือ ACI SP-17M(14):**")
+        st.latex(formula_text)
             
         # คำนวณ Ag ที่ต้องการ (แปลง Pu จาก ton เป็น kgf โดยคูณ 1000 เพื่อตัดหน่วยกับ ksc)
         p_u_kg = p_u * 1000.0
@@ -2022,7 +2025,50 @@ with tab7:
         # ส่วนประเมินเหล็กเสริมเบื้องต้น (Rule of thumb 1% - 2%)
         st.markdown("---")
         st.markdown("### 🔩 ประมาณการปริมาณเหล็กเสริมรวมเบื้องต้น (As,est)")
-        st.markdown("แนะนำให้ใส่เหล็กเสริมในช่วง **1% ถึง 2%** ของพื้นที่เสาจริง เพื่อความประหยัดและลดความแออัดของเหล็ก")
         ast_min = ag_actual * 0.01
         ast_max = ag_actual * 0.02
         st.info(f"💡 ควรเลือกจัดกลุ่มเหล็กเสริมให้มีพื้นที่รวมอยู่ระหว่าง: **{ast_min:,.2f} ถึง {ast_max:,.2f} cm²**")
+
+    # === ส่วนแสดงวิธีทำแบบละเอียดแยกออกมาด้านล่าง เพื่อความสวยงามกว้างขวาง ===
+    st.markdown("---")
+    with st.expander("📝 แสดงวิธีทำแบบละเอียด (Show Calculation Steps)", expanded=False):
+        st.subheader("📋 ขั้นตอนการคำนวณหาขนาดเสาขั้นต้น")
+        
+        st.markdown("##### **ขั้นตอนที่ 1: แปลงหน่วยแรงและเลือกสมการ**")
+        st.markdown(f"- แปลงแรงอัดปรับกำลังจากตันเป็นกิโลกรัม: $P_u = {p_u:,.2f} \\text{{ ton}} \\times 1000 = {p_u_kg:,.2f} \\text{{ kgf}}$")
+        st.markdown(f"- กำลังอัดประลัยของคอนกรีต: $f'_c = {f_c:,.2f} \\text{{ ksc}}$")
+        st.markdown(f"- เนื่องจากเป็นโครงสร้างแบบ **{structure_type.split(' ')[0]}** จึงเลือกใช้ตัวหารหารเท่ากับ **{factor}**")
+        
+        st.markdown("##### **ขั้นตอนที่ 2: คำนวณหาพื้นที่หน้าตัดคอนกรีตขั้นต่ำ ($A_g$)**")
+        if factor == 0.4:
+            st.latex(r"A_g = \frac{P_u}{0.4 \cdot f'_c}")
+            st.latex(f"A_g = \\frac{{{p_u_kg:,.2f}}}{{0.4 \\times {f_c:,.2f}}} = {ag_required:,.2f} \\text{{ cm}}^2")
+        else:
+            st.latex(r"A_g = \frac{P_u}{0.3 \cdot f'_c}")
+            st.latex(f"A_g = \\frac{{{p_u_kg:,.2f}}}{{0.3 \\times {f_c:,.2f}}} = {ag_required:,.2f} \\text{{ cm}}^2")
+            
+        st.markdown("##### **ขั้นตอนที่ 3: ถอดสัดส่วนตามรูปทรงและปัดเศษขึ้นทีละ 5 cm**")
+        
+        if column_shape == "สี่เหลี่ยมจัตุรัส (Square)":
+            st.latex(r"\text{ความยาวด้านเสาที่ต้องการ} = \sqrt{A_g}")
+            st.latex(f"\\text{{Side Required}} = \\sqrt{{{ag_required:,.2f}}} = {side_req:.2f} \\text{{ cm}}")
+            st.markdown(f"- ปัดเศษขึ้นให้ลงตัวที่ 5 cm ได้ความยาวด้านละ: **{side_rec} cm**")
+            st.markdown(f"- พื้นที่หน้าตัดเสาจริงหน้างาน: $A_{{g,\\text{{actual}}}} = {side_rec} \\times {side_rec} = {ag_actual:,.2f} \\text{{ cm}}^2$")
+            
+        elif column_shape == "สี่เหลี่ยมผืนผ้า (Rectangular)":
+            st.latex(r"\text{ความลึกด้านที่เหลือ } (h) = \frac{A_g}{b}")
+            st.latex(f"h_{{\\text{{Required}}}} = \\frac{{{ag_required:,.2f}}}{{{b_input:,.2f}}} = {h_req:.2f} \\text{{ cm}}")
+            st.markdown(f"- คงค่าความกว้างหน้าตัดด้าน $b = {b_input} \\text{{ cm}}$")
+            st.markdown(f"- ปัดเศษด้าน $h$ ขึ้นให้ลงตัวที่ 5 cm ได้ความลึกเสา: **{h_rec} cm**")
+            st.markdown(f"- พื้นที่หน้าตัดเสาจริงหน้างาน: $A_{{g,\\text{{actual}}}} = {b_input} \\times {h_rec} = {ag_actual:,.2f} \\text{{ cm}}^2$")
+            
+        elif column_shape == "กลม (Circular)":
+            st.latex(r"\text{เส้นผ่านศูนย์กลาง } (D) = \sqrt{\frac{4 \cdot A_g}{\pi}}")
+            st.latex(f"D_{{\\text{{Required}}}} = \\sqrt{{\\frac{{4 \\times {ag_required:,.2f}}}{{\\pi}}}} = {diameter_req:.2f} \\text{{ cm}}")
+            st.markdown(f"- ปัดเศษเส้นผ่านศูนย์กลางขึ้นให้ลงตัวที่ 5 cm ได้: **{diameter_rec} cm**")
+            st.markdown(f"- พื้นที่หน้าตัดเสาจริงหน้างาน: $A_{{g,\\text{{actual}}}} = \\frac{{\\pi \\cdot {diameter_rec}^2}}{{4}} = {ag_actual:,.2f} \\text{{ cm}}^2$")
+
+        st.markdown("##### **ขั้นตอนที่ 4: ประมาณเนื้อที่เหล็กเสริมรวมตามข้อแนะนำ (1% - 2%)**")
+        st.latex(r"A_{st,\text{min}} = A_{g,\text{actual}} \times 0.01 \quad \text{และ} \quad A_{st,\text{max}} = A_{g,\text{actual}} \times 0.02")
+        st.latex(f"A_{{st}} = {ast_min:,.2f} \\text{{ ถึง }} {ast_max:,.2f} \\text{{ cm}}^2")
+        st.caption("หมายเหตุ: ค่าเหล็กเสริมนี้เป็นค่าประมาณเบื้องต้นเพื่อใช้ล็อกปริมาณเหล็กในแบบร่าง วิศวกรต้องนำขนาดหน้าตัดนี้ไปเช็กกำลังรับแรงอัดร่วมกับโมเมนต์ดัด (Interaction Diagram) ที่ละเอียดอีกครั้ง")
