@@ -2347,8 +2347,8 @@ with tab8:
         
         st.markdown("**3. กำลังอัดออกแบบจำกัดสูงสุด (Max Design Capacity, $\phi P_{n,\max}$)**")
         st.latex(r"\phi P_{n,\max} = \phi \cdot \alpha \cdot P_o")
-        st.latex(fr"\phi P_{n,\max} = {phi_c:.2f} \times {alpha_max:.2f} \times {P1:,.2f}")
-        st.latex(fr"\phi P_{n,\max} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}")
+        st.latex(fr"\phi P_{{n,\max}} = {phi_c:.2f} \times {alpha_max:.2f} \times {P1:,.2f}")
+        st.latex(fr"\phi P_{{n,\max}} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}")
 
     with t2:
         st.pyplot(draw_compact_profile(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension"), bbox_inches='tight')
@@ -2423,7 +2423,7 @@ with tab8:
         with col_f2:
             st.markdown("**3. สรุปแรงลัพธ์และโมเมนต์ดัดบริสุทธิ์ระบุ ($M_n$)**")
             st.latex(fr"C_c = {Cc4/1000:,.2f} \text{{ t}}, \quad C_s = {Cs4/1000:,.2f} \text{{ t}}, \quad T = {T4/1000:,.2f} \text{{ t}}")
-            st.latex(r"P_n = C_c + C_s - T \approx \mathbf{{0.00 \text{{ ton}}}}")
+            st.latex(r"P_n = C_c + C_s - T \approx \mathbf{0.00 \text{ ton}}")
             st.latex(r"M_n = \sum (\text{Force} \times \text{Lever Arm})")
             st.latex(fr"M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} \Rightarrow \phi M_n = \mathbf{{{M4*phi4:,.2f} \text{{ ton-m}}}}")
 
