@@ -2076,16 +2076,18 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
-    st.header("📈 P-M Interaction Diagram (Biaxial & Capacity)")
-    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา (MKS Unit: ksc, ton, cm, ton-m) โดยสมมติเหล็กเสริมสมมาตร 2 ด้าน")
+    st.header("📈 P-M Interaction Diagram (Advanced Biaxial & Capacity)")
+    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity และรายการคำนวณแบบละเอียด (MKS Unit)")
 
     import numpy as np
-    import plotly.graph_objects as go  # เปลี่ยนมาใช้ plotly ตามไลบรารีที่มีในโปรเจกต์ของคุณ
+    import pandas as pd
+    import plotly.graph_objects as go
 
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.subheader("📥 1. กำหนดหน้าตัด (Section Inputs)")
+        st.subheader("📥 1. กำหนดพารามิเตอร์หน้าตัด")
+        col_type = st.radio("ประเภทเสา (Column Type)", ["ปลอกเดี่ยว (Tied)", "ปลอกเกลียว (Spiral)"], horizontal=True, key="pm_type")
         b = st.number_input("ความกว้างเสา, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_b")
         h = st.number_input("ความลึกเสา, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_h")
         cover = st.number_input("ระยะหุ้มถึงศูนย์กลางเหล็ก, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_cov")
@@ -2096,19 +2098,23 @@ with tab8:
         ast = st.number_input("พื้นที่เหล็กเสริมรวม, Ast (cm²)", min_value=2.0, value=15.0, step=1.0, key="pm_ast")
 
         st.markdown("---")
-        st.markdown("⭐ **ตรวจสอบจุดพิกัดแรง (Demand Check)**")
-        pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=0.0, key="pm_pu_chk")
-        mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=0.0, key="pm_mu_chk")
+        st.markdown("⭐ **จุดตรวจสอบแรงใช้งาน (Demand Check)**")
+        pu_check = st.number_input("แรงอัดใช้งานประลัย, Pu (ton)", value=50.0, key="pm_pu_chk")
+        mu_check = st.number_input("โมเมนต์ใช้งานประลัย, Mu (ton-m)", value=5.0, key="pm_mu_chk")
 
     with col2:
-        st.subheader("📊 2. กราฟ P-M Diagram")
+        st.subheader("📊 2. กราฟ P-M Interaction Diagram")
         
-        # --- การคำนวณพื้นฐาน ---
+        # --- ตัวแปรพื้นฐาน ---
         Es = 2040000.0 
         ecu = 0.003    
         d = h - cover
         Ag = b * h
         As_half = ast / 2.0 
+        
+        # ตัวคูณลดกำลังพื้นฐาน
+        phi_c = 0.65 if "Tied" in col_type else 0.75
+        alpha_max = 0.80 if "Tied" in col_type else 0.85
         
         if fc <= 280:
             beta1 = 0.85
@@ -2116,130 +2122,166 @@ with tab8:
             beta1 = 0.85 - 0.05 * ((fc - 280) / 70.0)
             beta1 = max(beta1, 0.65)
 
-        def calc_pm(c):
-            if c <= 0: return 0.0, 0.0
+        # ฟังก์ชันคำนวณรายการอย่างละเอียด
+        def calc_pm_detailed(c):
+            if c <= 0.001: 
+                return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.90
+            
             a = min(beta1 * c, h)
             Cc = 0.85 * fc * a * b
+            
             eps_s_prime = ecu * (c - cover) / c
-            eps_s = ecu * (d - c) / c
+            eps_t = ecu * (d - c) / c  # ความเครียดเหล็กรับดึง
+            
             fs_prime = min(Es * eps_s_prime, fy) if eps_s_prime >= 0 else max(Es * eps_s_prime, -fy)
-            fs = min(Es * eps_s, fy) if eps_s >= 0 else max(Es * eps_s, -fy)
+            fs = min(Es * eps_t, fy) if eps_t >= 0 else max(Es * eps_t, -fy)
+            
             Cs = As_half * (fs_prime - 0.85 * fc) if eps_s_prime > 0 else As_half * fs_prime
             T = As_half * fs 
+            
             Pn = (Cc + Cs - T) / 1000.0
             Mn = (Cc * (h/2 - a/2) + Cs * (h/2 - cover) + T * (d - h/2)) / 100000.0
-            return Pn, Mn
-
-        # --- คำนวณ 5 จุดสำคัญ ---
-        Po_kg = 0.85 * fc * (Ag - ast) + fy * ast
-        P1, M1 = Po_kg / 1000.0, 0.0
-        
-        P2, M2 = calc_pm(d)
-        
-        eps_y = fy / Es
-        cb = d * (ecu / (ecu + eps_y))
-        P3, M3 = calc_pm(cb)
-        
-        c_vals = np.linspace(0.01*d, h, 1000)
-        P_vals, M_vals = [], []
-        for c_val in c_vals:
-            p_n, m_n = calc_pm(c_val)
-            P_vals.append(p_n)
-            M_vals.append(m_n)
             
-        idx_m0 = np.argmin(np.abs(np.array(P_vals)))
-        c_m0 = c_vals[idx_m0]
-        P4, M4 = calc_pm(c_m0)
-        
-        P5, M5 = -(fy * ast) / 1000.0, 0.0
+            # คำนวณ Phi ตาม Strain (ACI)
+            if eps_t <= 0.002:
+                phi = phi_c
+            elif eps_t >= 0.005:
+                phi = 0.90
+            else:
+                phi = phi_c + (0.90 - phi_c) * (eps_t - 0.002) / 0.003
+                
+            return a, eps_s_prime, eps_t, fs_prime, fs, Cc, Cs, T, Pn, Mn, phi
 
-        # --- สร้างกราฟด้วย Plotly ---
+        # --- คำนวณกราฟ P-M 1000 จุด ---
+        c_vals = np.linspace(0.01*d, h*1.5, 500)[::-1] # ไล่จาก c มาก (แรงอัด) ไป c น้อย (แรงดึง)
+        
+        P_nom, M_nom, P_des, M_des = [], [], [], []
+        
+        Po_kg = 0.85 * fc * (Ag - ast) + fy * ast
+        Pn_max = (alpha_max * Po_kg) / 1000.0
+        phi_Pn_max = phi_c * Pn_max
+        
+        for c_val in c_vals:
+            _, _, _, _, _, _, _, _, pn, mn, phi = calc_pm_detailed(c_val)
+            P_nom.append(pn)
+            M_nom.append(mn)
+            P_des.append(min(pn * phi, phi_Pn_max)) # ตัดยอดที่ Pn,max
+            M_des.append(mn * phi)
+
+        # เติมจุด Pure Tension
+        P_nom.append(-(fy * ast) / 1000.0)
+        M_nom.append(0.0)
+        P_des.append(-(fy * ast) / 1000.0 * 0.90)
+        M_des.append(0.0)
+
+        # --- Plotly Graph ระดับ Pro ---
         fig = go.Figure()
         
-        # เส้นโค้ง Nominal Capacity
+        # 1. Area ใต้กราฟ Design Capacity (Safe Zone)
         fig.add_trace(go.Scatter(
-            x=M_vals, y=P_vals, mode='lines', 
-            name='Nominal Capacity (Pn, Mn)', 
-            line=dict(color='royalblue', width=3)
+            x=M_des, y=P_des, mode='lines', fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.2)',
+            name='Design Capacity (φPn, φMn)', line=dict(color='green', width=3)
         ))
         
-        # เส้นประต่อขอบบนล่าง
+        # 2. เส้น Nominal Capacity
         fig.add_trace(go.Scatter(
-            x=[0, M1], y=[P5, P1], mode='lines', 
-            name='Boundary Limit', 
-            line=dict(color='royalblue', width=1, dash='dash')
+            x=M_nom, y=P_nom, mode='lines', 
+            name='Nominal Capacity (Pn, Mn)', line=dict(color='royalblue', width=2, dash='dash')
         ))
         
-        # จุด 5 จุดสำคัญ
-        pts_M = [M1, M2, M3, M4, M5]
-        pts_P = [P1, P2, P3, P4, P5]
-        labels = ['1. Pure Comp', '2. Zero Tension', '3. Balanced', '4. Pure Bending', '5. Pure Tension']
-        
+        # 3. เส้นขีดจำกัด Pn,max
         fig.add_trace(go.Scatter(
-            x=pts_M, y=pts_P, mode='markers+text', 
-            name='Key Points',
-            text=["   " + l for l in labels], 
-            textposition="middle right",
-            textfont=dict(color="firebrick", size=11),
-            marker=dict(color='red', size=8, line=dict(color='darkred', width=1))
+            x=[0, max(M_nom)*1.1], y=[Pn_max, Pn_max], mode='lines',
+            name=f'Pn,max limit ({alpha_max}Po)', line=dict(color='red', width=1, dash='dot')
         ))
 
-        # จุด Demand Check (Pu, Mu)
+        # 4. จุด Demand Check (Pu, Mu)
         if pu_check != 0 or mu_check != 0:
+            # เช็กสถานะว่าปลอดภัยหรือไม่ (อย่างง่ายจากกราฟ)
+            status_color = 'darkorange'
             fig.add_trace(go.Scatter(
-                x=[mu_check], y=[pu_check], mode='markers', 
-                name='Demand (Pu, Mu)',
-                marker=dict(color='darkorange', size=12, symbol='star', line=dict(color='black', width=1))
+                x=[mu_check], y=[pu_check], mode='markers+text', 
+                name='Demand (Pu, Mu)', text=["จุดใช้งาน"], textposition="top right",
+                marker=dict(color=status_color, size=12, symbol='star', line=dict(color='black', width=1))
             ))
 
         fig.update_layout(
-            xaxis_title="Bending Moment, Mn (ton-m)",
-            yaxis_title="Axial Load, Pn (ton)",
-            showlegend=True,
-            plot_bgcolor='rgba(240, 240, 240, 0.5)',
-            margin=dict(l=20, r=20, t=20, b=20)
+            xaxis_title="Bending Moment, M (ton-m)", yaxis_title="Axial Load, P (ton)",
+            showlegend=True, legend=dict(x=0.6, y=0.95),
+            margin=dict(l=20, r=20, t=20, b=20), hovermode="x unified"
         )
-        
-        # เส้นแกน 0
-        fig.add_hline(y=0, line_width=1.5, line_color="black")
-        fig.add_vline(x=0, line_width=1.5, line_color="black")
+        fig.add_hline(y=0, line_width=1, line_color="black")
+        fig.add_vline(x=0, line_width=1, line_color="black")
 
         st.plotly_chart(fig, use_container_width=True)
 
-    # === ส่วนแสดงวิธีทำแบบละเอียด 5 จุด ===
+    # === ส่วนรายการคำนวณแบบละเอียดสุดๆ (Detailed Calculation Report) ===
     st.markdown("---")
-    with st.expander("📚 แสดงวิธีการคิดและสมการทั้ง 5 จุดอย่างละเอียด (Detailed 5-Points Calculation)", expanded=False):
-        st.markdown("ในการคำนวณโค้งปฏิสัมพันธ์จะใช้หลักการความสอดคล้องของความเครียด (Strain Compatibility) โดยตั้งสมมติฐานว่าความเครียดประลัยของคอนกรีตขอบนอกสุด $\epsilon_{cu} = 0.003$ และการกระจายตัวเป็นเส้นตรง")
+    st.subheader("📋 รายการคำนวณโดยละเอียด (Detailed Calculation Report)")
+    st.markdown("แสดงพารามิเตอร์ของ Strain, Stress และแรงภายใน ($C_c, C_s, T$) ที่จุดควบคุมทั้ง 5 จุด เพื่อใช้ประกอบรายการคำนวณ")
+
+    # คำนวณ 5 จุดสำคัญเพื่อแสดงในตาราง
+    c_pts = [
+        h * 1.5,                      # 1. Pure Comp (Approx)
+        d,                            # 2. Zero Tension
+        d * (ecu / (ecu + (fy/Es))),  # 3. Balanced
+        d * 0.15,                     # 4. Pure Bending (Approximate c_m0 for display)
+        0.0001                        # 5. Pure Tension
+    ]
+    
+    # วนลูปหา Pure Bending ที่แท้จริง
+    idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
+    c_pts[3] = c_vals[idx_m0]
+
+    report_data = []
+    labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
+    
+    for i, c_val in enumerate(c_pts):
+        if i == 0: # Pure Comp แท้จริง
+            P1 = Po_kg / 1000.0
+            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", "-", round(P1,1), 0.0, phi_c, round(phi_c*P1,1), 0.0])
+        elif i == 4: # Pure Tension แท้จริง
+            P5 = -(fy * ast) / 1000.0
+            report_data.append([labels[i], "-", "-", "-", "-", "-", "-", "-", "-", round(P5,1), 0.0, 0.90, round(0.90*P5,1), 0.0])
+        else:
+            a, e_s, e_t, fs_p, fs, Cc, Cs, T, Pn, Mn, phi = calc_pm_detailed(c_val)
+            report_data.append([
+                labels[i], round(c_val,2), round(a,2), 
+                f"{e_s:.4f}", f"{e_t:.4f}", 
+                round(Cc/1000,1), round(Cs/1000,1), round(T/1000,1),
+                round(Pn,1), round(Mn,2), 
+                round(phi,3), round(Pn*phi,1), round(Mn*phi,2)
+            ])
+
+    # สร้าง DataFrame เพื่อแสดงผลตารางที่สวยงาม
+    df_report = pd.DataFrame(report_data, columns=[
+        "สภาวะ (Condition)", "c (cm)", "a (cm)", 
+        "ε'_s (อัด)", "ε_t (ดึง)", 
+        "Cc (ton)", "Cs (ton)", "T (ton)", 
+        "Pn (ton)", "Mn (t-m)", 
+        "φ", "φPn (ton)", "φMn (t-m)"
+    ])
+    st.dataframe(df_report, use_container_width=True)
+
+    with st.expander("📌 ดูสมการและวิธีคิดแรงภายใน (Internal Forces Formula)"):
+        st.markdown(f"**พารามิเตอร์พื้นฐาน:** $E_s = 2.04 \\times 10^6$ ksc, $\\epsilon_{{cu}} = 0.003$, $\\beta_1 = {beta1:.2f}$")
+        st.markdown("""
+        **1. ระยะบล็อกแรงอัดคอนกรีต:** $a = \\beta_1 c$
+        **2. ความเครียดในเหล็กเสริม (Strain):**
+        - เหล็กรับอัด: $\\epsilon'_s = 0.003 \\times \\frac{c - d'}{c}$
+        - เหล็กรับดึง: $\\epsilon_t = 0.003 \\times \\frac{d - c}{c}$
         
-        st.markdown("#### 1️⃣ จุดที่ 1: รับแรงอัดแกนล้วน (Pure Compression)")
-        st.markdown("หน้าตัดรับแรงอัดเต็มพื้นที่โดยไม่มีโมเมนต์ดัด คอนกรีตและเหล็กเสริมรับแรงสม่ำเสมอจนถึงขีดจำกัด")
-        st.markdown(r"**สูตร:** $P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}$")
-        st.markdown(f"**แทนค่า:** $P_o = 0.85({fc})({Ag} - {ast}) + {fy}({ast}) = {Po_kg:,.0f}$ kgf $= {P1:,.1f}$ ton")
-        st.markdown(f"**พิกัดจุดที่ 1:** $(M_n = {M1:.2f}$ ton-m, $P_n = {P1:.2f}$ ton$)$")
-
-        st.markdown("---")
-        st.markdown("#### 2️⃣ จุดที่ 2: จุดเริ่มเกิดแรงดึง (Zero Tension Point)")
-        st.markdown("สภาวะที่ความเครียดของเหล็กเสริมขอบฝั่งดึงมีค่าเป็นศูนย์พอดี ทำให้ระยะแกนสะเทินเท่ากับความลึกประสิทธิผล ($c = d$)")
-        st.markdown(f"**สมดุลแรง:** ระยะ $c = d = {d}$ cm, $\\rightarrow a = \\beta_1 c = ({beta1:.2f})({d}) = {beta1*d:.2f}$ cm")
-        st.markdown(r"**สูตร:** $P_n = C_c + C_s - T$ และ $M_n = C_c (\frac{h}{2} - \frac{a}{2}) + C_s (\frac{h}{2} - d')$")
-        st.markdown(f"**พิกัดจุดที่ 2:** $(M_n = {M2:.2f}$ ton-m, $P_n = {P2:.2f}$ ton$)$")
-
-        st.markdown("---")
-        st.markdown("#### 3️⃣ จุดที่ 3: สภาวะสมดุล (Balanced Point)")
-        st.markdown("สภาวะที่คอนกรีตถูกอัดแตกพังครากพร้อมๆ กับเหล็กเสริมฝั่งรับแรงดึงเกิดการครากพอดี ($\epsilon_s = \epsilon_y$)")
-        st.markdown(r"**สูตรแกนสะเทิน:** $c_b = d \left[ \frac{0.003}{0.003 + f_y/E_s} \right]$")
-        st.markdown(f"**แทนค่า:** $c_b = {d} [0.003 / (0.003 + {fy}/{Es})] = {cb:.2f}$ cm")
-        st.markdown(f"**พิกัดจุดที่ 3:** $(M_n = {M3:.2f}$ ton-m, $P_n = {P3:.2f}$ ton$)$")
-
-        st.markdown("---")
-        st.markdown("#### 4️⃣ จุดที่ 4: รับโมเมนต์ดัดล้วน (Pure Bending)")
-        st.markdown("หน้าตัดเสมือนคาน ไม่มีแรงอัดแกนกระทำ ($P_n = 0$) ต้อง Iteration หาระยะแกนสะเทิน $c$ ที่ทำให้แรงอัดเท่ากับแรงดึง ($C_c + C_s = T$)")
-        st.markdown(f"**ผลจากการ Iteration:** สภาวะสมดุลแรงเกิดที่ระยะ $c \\approx {c_m0:.2f}$ cm")
-        st.markdown(f"**พิกัดจุดที่ 4:** $(M_n = {M4:.2f}$ ton-m, $P_n = 0.00$ ton$)$")
-
-        st.markdown("---")
-        st.markdown("#### 5️⃣ จุดที่ 5: รับแรงดึงล้วน (Pure Tension)")
-        st.markdown("คอนกรีตไม่รับแรงดึง หน้าตัดเสาจึงต้านทานแรงดึงด้วยเหล็กเสริมทั้งหมดเท่านั้น")
-        st.markdown(r"**สูตร:** $P_{nt} = -A_{st} f_y$")
-        st.markdown(f"**แทนค่า:** $P_{{nt}} = -({ast})({fy}) = {-(ast*fy):,.0f}$ kgf $= {P5:,.1f}$ ton")
-        st.markdown(f"**พิกัดจุดที่ 5:** $(M_n = 0.00$ ton-m, $P_n = {P5:.2f}$ ton$)$")
+        **3. แรงภายในหน้าตัด (Internal Forces):**
+        - แรงอัดคอนกรีต: $C_c = 0.85 f'_c a b$
+        - แรงอัดเหล็กเสริม: $C_s = A'_s (f'_s - 0.85 f'_c)$ *(หักพื้นที่คอนกรีต)*
+        - แรงดึงเหล็กเสริม: $T = A_s f_s$
+        
+        **4. กำลังรับแรงระบุ (Nominal Capacity):**
+        - $P_n = C_c + C_s - T$
+        - $M_n = C_c(h/2 - a/2) + C_s(h/2 - d') + T(d - h/2)$
+        
+        **5. ตัวคูณลดกำลัง (Strength Reduction Factor, $\\phi$):**
+        - Compression Controlled ($\\epsilon_t \\le 0.002$): $\\phi = 0.65$ (Tied) หรือ $0.75$ (Spiral)
+        - Tension Controlled ($\\epsilon_t \\ge 0.005$): $\\phi = 0.90$
+        - Transition Zone: Interpolate เชิงเส้น
+        """)
