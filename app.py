@@ -2236,7 +2236,6 @@ with tab8:
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 4), gridspec_kw={'width_ratios': [1, 1.2, 1.5]})
         fig.patch.set_facecolor('white')
         
-        # Helper for drawing dimensions
         def draw_dim(ax, x, y1, y2, text, color='gray'):
             ax.annotate('', xy=(x, y1), xytext=(x, y2), arrowprops=dict(arrowstyle='<->', color=color, lw=1))
             ax.text(x + 0.5, (y1+y2)/2, text, color=color, va='center', ha='left', fontsize=8, rotation=270)
@@ -2313,106 +2312,147 @@ with tab8:
 
     with t1:
         st.pyplot(draw_compact_profile(b, h, cover, h*5, h, ecu, 0, fy, 0, P1*1000, 0, 0, "Pure Compression"), bbox_inches='tight')
-        st.markdown(f"""
-        **1. ข้อมูลรูปทรงเรขาคณิต (Geometry Data)**
-        พื้นที่หน้าตัดรวมคอนกรีต:
-        $$ A_g = b \\times h = {b} \\times {h} = {Ag:,.2f} \\text{{ cm}}^2 $$
+        st.markdown(fr"""
+        ### 1. ข้อมูลรูปทรงเรขาคณิต (Geometry Data)
+        * **[สูตร]** $A_g = b \times h$
+        * **[แทนค่า]** $A_g = {b} \times {h}$
+        * **[ตอบ]** $A_g = {Ag:,.2f} \text{{ cm}}^2$
 
-        **2. กำลังรับแรงระบุ (Nominal Capacity)**
-        สมการสมดุลแรงตามแนวแกนสำหรับเสารับแรงอัดล้วน:
-        $$ P_o = 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}} $$
-        แทนค่าพารามิเตอร์:
-        $$ P_o = 0.85({fc})({Ag:,.2f} - {ast:.2f}) + {fy}({ast:.2f}) $$
-        $$ P_o = {0.85*fc*(Ag-ast):,.0f} + {fy*ast:,.0f} = {P1*1000:,.0f} \\text{{ kgf}} = \mathbf{{{P1:,.2f} \\text{{ ton}}}} $$
-        เนื่องจากไม่มีความเยื้องศูนย์:
-        $$ M_n = \mathbf{{0.00 \\text{{ ton-m}}}} $$
+        ### 2. กำลังรับแรงระบุ (Nominal Capacity)
+        * **[สูตร]** $P_o = 0.85 f'_c (A_g - A_{{st}}) + f_y A_{{st}}$
+        * **[แทนค่า]** $P_o = 0.85 \times {fc} \times ({Ag:,.2f} - {ast:.2f}) + {fy} \times {ast:.2f}$
+        * **[ตอบ]** $P_o = {P1*1000:,.0f} \text{{ kgf}} = \mathbf{{{P1:,.2f} \text{{ ton}}}}$
+        * **[สูตร]** $M_n = 0.00$
+        * **[ตอบ]** $M_n = \mathbf{{0.00 \text{{ ton-m}}}}$
 
-        **3. กำลังรับแรงออกแบบ (Design Capacity)**
-        พิจารณาตัวคูณลดกำลังสำหรับเสารับแรงอัด $\\phi = {phi_c}$ และตัวคูณขีดจำกัดความเยื้องศูนย์ $\\alpha = {alpha_max}$:
-        $$ \\phi P_{{n,\\max}} = \\phi \\cdot \\alpha \\cdot P_o = {phi_c} \\times {alpha_max} \\times {P1:,.2f} = \mathbf{{{phi_Pn_max:,.2f} \\text{{ ton}}}} $$
+        ### 3. กำลังรับแรงออกแบบ (Design Capacity)
+        * **[สูตร]** $\phi P_{{n,\max}} = \phi \cdot \alpha \cdot P_o$
+        * **[แทนค่า]** $\phi P_{{n,\max}} = {phi_c} \times {alpha_max} \times {P1:,.2f}$
+        * **[ตอบ]** $\phi P_{{n,\max}} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}$
         """)
 
     with t2:
         st.pyplot(draw_compact_profile(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension"), bbox_inches='tight')
-        st.markdown(f"""
-        **1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)**
-        สภาวะเริ่มเกิดแรงดึง (Zero Tension) กำหนดให้ความเครียดที่เหล็กเสริมชั้นล่างสุด $\\epsilon_t = 0$ ส่งผลให้ระยะแกนสะเทิน $c$ มีค่าเท่ากับความลึกประสิทธิผล $d$:
-        $$ c = h - d' = {h} - {cover} = {d:.2f} \\text{{ cm}} $$
-        ความลึกบล็อกหน่วยแรงอัดสมมูล (Equivalent Rectangular Stress Block):
-        $$ a = \\beta_1 c = {beta1} \\times {d:.2f} = {a2:.2f} \\text{{ cm}} $$
-        ความเครียดในเหล็กเสริมรับแรงอัด (จากความคล้ายของสามเหลี่ยมความเครียด):
-        $$ \\epsilon'_s = 0.003 \\left( \\frac{{c - d'}}{{c}} \\right) = 0.003 \\left( \\frac{{{d:.2f} - {cover}}}{{{d:.2f}}} \\right) = {eps_s_prime2:.5f} $$
+        st.markdown(fr"""
+        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
+        * **[สูตร]** $c = h - d'$
+        * **[แทนค่า]** $c = {h} - {cover}$
+        * **[ตอบ]** $c = {d:.2f} \text{{ cm}}$
+        * **[สูตร]** $a = \beta_1 \cdot c$
+        * **[แทนค่า]** $a = {beta1} \times {d:.2f}$
+        * **[ตอบ]** $a = {a2:.2f} \text{{ cm}}$
+        * **[สูตร]** $\epsilon'_s = 0.003 \left( \frac{{c - d'}}{{c}} \right)$
+        * **[แทนค่า]** $\epsilon'_s = 0.003 \times \left( \frac{{{d:.2f} - {cover}}}{{{d:.2f}}} \right)$
+        * **[ตอบ]** $\epsilon'_s = {eps_s_prime2:.5f}$
 
-        **2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)**
-        แรงอัดในคอนกรีต:
-        $$ C_c = 0.85 f'_c a b = 0.85({fc})({a2:.2f})({b}) = {Cc2:,.0f} \\text{{ kgf}} $$
-        หน่วยแรงในเหล็กเสริมรับแรงอัด:
-        $$ f'_s = \\min(E_s \\epsilon'_s, f_y) = \\min(2040000 \\times {eps_s_prime2:.5f}, {fy}) = {fs_prime2:,.0f} \\text{{ ksc}} $$
-        แรงอัดสุทธิในเหล็กเสริม:
-        $$ C_s = A'_s (f'_s - 0.85f'_c) = {As_half:.2f} ({fs_prime2:,.0f} - 0.85 \\times {fc}) = {Cs2:,.0f} \\text{{ kgf}} $$
-        แรงดึงในเหล็กเสริมชั้นล่าง (เนื่องจาก $\\epsilon_t = 0$):
-        $$ T = A_s f_s = {As_half:.2f}(0) = 0 \\text{{ kgf}} $$
+        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
+        * **[สูตร]** $C_c = 0.85 f'_c a b$
+        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a2:.2f} \times {b}$
+        * **[ตอบ]** $C_c = {Cc2:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $f'_s = \min(E_s \epsilon'_s, f_y)$
+        * **[แทนค่า]** $f'_s = \min(2040000 \times {eps_s_prime2:.5f}, {fy})$
+        * **[ตอบ]** $f'_s = {fs_prime2:,.0f} \text{{ ksc}}$
+        * **[สูตร]** $C_s = A'_s (f'_s - 0.85 f'_c)$
+        * **[แทนค่า]** $C_s = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc})$
+        * **[ตอบ]** $C_s = {Cs2:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $T = A_s f_s$
+        * **[แทนค่า]** $T = {As_half:.2f} \times {fs2:,.0f}$
+        * **[ตอบ]** $T = {T2:,.0f} \text{{ kgf}}$
 
-        **3. กำลังรับแรงระบุ (Nominal Capacity)**
-        นำแรงลัพธ์ภายในทั้งหมดมาหาผลรวม:
-        $$ P_n = \\sum F_y = (C_c + C_s - T) \\times 10^{{-3}} = ({Cc2:,.0f} + {Cs2:,.0f} - 0) \\times 10^{{-3}} = \mathbf{{{P2:,.2f} \\text{{ ton}}}} $$
-        คำนวณโมเมนต์รอบจุดศูนย์กลางพลาสติก (Plastic Centroid):
-        $$ M_n = \\left[ C_c(h/2 - a/2) + C_s(h/2 - d') \\right] \\times 10^{{-5}} = \mathbf{{{M2:,.2f} \\text{{ ton-m}}}} $$
+        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
+        * **[สูตร]** $P_n = C_c + C_s - T$
+        * **[แทนค่า]** $P_n = {Cc2:,.0f} + {Cs2:,.0f} - {T2:,.0f}$
+        * **[ตอบ]** $P_n = {P2*1000:,.0f} \text{{ kgf}} = \mathbf{{{P2:,.2f} \text{{ ton}}}}$
+        * **[สูตร]** $M_n = C_c (h/2 - a/2) + C_s (h/2 - d') + T (d - h/2)$
+        * **[แทนค่า]** $M_n = \left[ {Cc2:,.0f} \times ({h}/2 - {a2:.2f}/2) + {Cs2:,.0f} \times ({h}/2 - {cover}) + {T2:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
+        * **[ตอบ]** $M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}$
         """)
 
     with t3:
         st.pyplot(draw_compact_profile(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced"), bbox_inches='tight')
-        st.markdown(f"""
-        **1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)**
-        สภาวะสมดุล (Balanced Condition) คือสภาวะที่คอนกรีตถึงจุดวิกฤต ($\\epsilon_{{cu}} = 0.003$) พร้อมกับที่เหล็กเสริมรับแรงดึงถึงจุดครากพอดี ($\\epsilon_t = \\epsilon_y$):
-        $$ \\epsilon_y = \\frac{{f_y}}{{E_s}} = \\frac{{{fy}}}{{2040000}} = {ety:.5f} $$
-        $$ c_b = d \\left( \\frac{{0.003}}{{0.003 + \\epsilon_y}} \\right) = {d:.2f} \\left( \\frac{{0.003}}{{0.003 + {ety:.5f}}} \\right) = {cb:.2f} \\text{{ cm}} $$
-        $$ a_b = \\beta_1 c_b = {beta1} \\times {cb:.2f} = {a3:.2f} \\text{{ cm}} $$
-        $$ \\epsilon'_s = 0.003 \\left( \\frac{{c_b - d'}}{{c_b}} \\right) = 0.003 \\left( \\frac{{{cb:.2f} - {cover}}}{{{cb:.2f}}} \\right) = {eps_s_prime3:.5f} $$
+        st.markdown(fr"""
+        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
+        * **[สูตร]** $\epsilon_y = \frac{{f_y}}{{E_s}}$
+        * **[แทนค่า]** $\epsilon_y = \frac{{{fy}}}{{2040000}}$
+        * **[ตอบ]** $\epsilon_y = {ety:.5f}$
+        * **[สูตร]** $c_b = d \left( \frac{{0.003}}{{0.003 + \epsilon_y}} \right)$
+        * **[แทนค่า]** $c_b = {d:.2f} \times \left( \frac{{0.003}}{{0.003 + {ety:.5f}}} \right)$
+        * **[ตอบ]** $c_b = {cb:.2f} \text{{ cm}}$
+        * **[สูตร]** $a_b = \beta_1 c_b$
+        * **[แทนค่า]** $a_b = {beta1} \times {cb:.2f}$
+        * **[ตอบ]** $a_b = {a3:.2f} \text{{ cm}}$
+        * **[สูตร]** $\epsilon'_s = 0.003 \left( \frac{{c_b - d'}}{{c_b}} \right)$
+        * **[แทนค่า]** $\epsilon'_s = 0.003 \times \left( \frac{{{cb:.2f} - {cover}}}{{{cb:.2f}}} \right)$
+        * **[ตอบ]** $\epsilon'_s = {eps_s_prime3:.5f}$
 
-        **2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)**
-        $$ C_c = 0.85 f'_c a_b b = 0.85({fc})({a3:.2f})({b}) = {Cc3:,.0f} \\text{{ kgf}} $$
-        $$ f'_s = \\min(E_s \\epsilon'_s, f_y) = {fs_prime3:,.0f} \\text{{ ksc}} $$
-        $$ C_s = A'_s (f'_s - 0.85f'_c) = {As_half:.2f} ({fs_prime3:,.0f} - 0.85 \\times {fc}) = {Cs3:,.0f} \\text{{ kgf}} $$
-        $$ T = A_s f_y = {As_half:.2f}({fy}) = {T3:,.0f} \\text{{ kgf}} $$
+        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
+        * **[สูตร]** $C_c = 0.85 f'_c a_b b$
+        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a3:.2f} \times {b}$
+        * **[ตอบ]** $C_c = {Cc3:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $f'_s = \min(E_s \epsilon'_s, f_y)$
+        * **[แทนค่า]** $f'_s = \min(2040000 \times {eps_s_prime3:.5f}, {fy})$
+        * **[ตอบ]** $f'_s = {fs_prime3:,.0f} \text{{ ksc}}$
+        * **[สูตร]** $C_s = A'_s (f'_s - 0.85 f'_c)$
+        * **[แทนค่า]** $C_s = {As_half:.2f} \times ({fs_prime3:,.0f} - 0.85 \times {fc})$
+        * **[ตอบ]** $C_s = {Cs3:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $T = A_s f_y$
+        * **[แทนค่า]** $T = {As_half:.2f} \times {fy}$
+        * **[ตอบ]** $T = {T3:,.0f} \text{{ kgf}}$
 
-        **3. กำลังรับแรงระบุ (Nominal Capacity)**
-        $$ P_n = ({Cc3:,.0f} + {Cs3:,.0f} - {T3:,.0f}) \\times 10^{{-3}} = \mathbf{{{P3:,.2f} \\text{{ ton}}}} $$
-        $$ M_n = \\left[ C_c(h/2 - a_b/2) + C_s(h/2 - d') + T(d - h/2) \\right] \\times 10^{{-5}} = \mathbf{{{M3:,.2f} \\text{{ ton-m}}}} $$
+        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
+        * **[สูตร]** $P_n = C_c + C_s - T$
+        * **[แทนค่า]** $P_n = {Cc3:,.0f} + {Cs3:,.0f} - {T3:,.0f}$
+        * **[ตอบ]** $P_n = {P3*1000:,.0f} \text{{ kgf}} = \mathbf{{{P3:,.2f} \text{{ ton}}}}$
+        * **[สูตร]** $M_n = C_c (h/2 - a_b/2) + C_s (h/2 - d') + T (d - h/2)$
+        * **[แทนค่า]** $M_n = \left[ {Cc3:,.0f} \times ({h}/2 - {a3:.2f}/2) + {Cs3:,.0f} \times ({h}/2 - {cover}) + {T3:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
+        * **[ตอบ]** $M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}$
         """)
 
     with t4:
         st.pyplot(draw_compact_profile(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending"), bbox_inches='tight')
-        st.markdown(f"""
-        **1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)**
-        สภาวะดัดล้วน (Pure Bending) คือสภาวะที่ไม่มีแรงตามแนวแกน ($P_n = 0$) ทำให้แรงอัดรวมเท่ากับแรงดึงรวม ($C_c + C_s = T$) จากการประมวลผลหาระยะ $c$ ที่ทำให้สมการสมดุลเป็นจริง จะได้:
-        $$ c = {c_m0:.2f} \\text{{ cm}} $$
-        $$ a = \\beta_1 c = {beta1} \\times {c_m0:.2f} = {a4:.2f} \\text{{ cm}} $$
-        $$ \\epsilon_t = 0.003 \\left( \\frac{{d - c}}{{c}} \\right) = 0.003 \\left( \\frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \\right) = {eps_t4:.5f} $$
-        *(วิเคราะห์: เนื่องจาก $\\epsilon_t > 0.005$ หน้าตัดจึงมีพฤติกรรมรับแรงดึงสมบูรณ์ (Tension-Controlled) ยอมให้ใช้ $\\phi = 0.90$)*
+        st.markdown(fr"""
+        ### 1. ความเครียดและระยะแกนสะเทิน (Strain & Neutral Axis)
+        * **[สูตร]** วนลูปหาค่า $c$ ที่ทำให้ $C_c + C_s = T$ (หรือ $P_n = 0$)
+        * **[แทนค่า]** $c \approx {c_m0:.2f} \text{{ cm}}, \quad a = {beta1} \times {c_m0:.2f}$
+        * **[ตอบ]** $c = {c_m0:.2f} \text{{ cm}}, \quad a = {a4:.2f} \text{{ cm}}$
+        * **[สูตร]** $\epsilon_t = 0.003 \left( \frac{{d - c}}{{c}} \right)$
+        * **[แทนค่า]** $\epsilon_t = 0.003 \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right)$
+        * **[ตอบ]** $\epsilon_t = {eps_t4:.5f}$ *(วิเคราะห์: เนื่องจาก $\epsilon_t > 0.005 \rightarrow$ รับแรงดึงสมบูรณ์ $\phi = 0.90$)*
 
-        **2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)**
-        $$ C_c = 0.85 f'_c a b = 0.85({fc})({a4:.2f})({b}) = {Cc4:,.0f} \\text{{ kgf}} $$
-        $$ f'_s = E_s \\epsilon'_s = {fs_prime4:,.0f} \\text{{ ksc}} \\quad \\rightarrow \\quad C_s = {Cs4:,.0f} \\text{{ kgf}} $$
-        $$ T = A_s f_y = {As_half:.2f}({fy}) = {T4:,.0f} \\text{{ kgf}} $$
-        *(ตรวจสอบความถูกต้องสมดุลแรง: $C_c + C_s = {Cc4+Cs4:,.0f} \\text{{ kgf}} \\approx T$)*
+        ### 2. หน่วยแรงและแรงลัพธ์ภายใน (Stress & Internal Forces)
+        * **[สูตร]** $C_c = 0.85 f'_c a b$
+        * **[แทนค่า]** $C_c = 0.85 \times {fc} \times {a4:.2f} \times {b}$
+        * **[ตอบ]** $C_c = {Cc4:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $f'_s = E_s \epsilon'_s, \quad C_s = A'_s (f'_s - 0.85 f'_c)$
+        * **[แทนค่า]** $f'_s = {fs_prime4:,.0f} \text{{ ksc}}$
+        * **[ตอบ]** $C_s = {Cs4:,.0f} \text{{ kgf}}$
+        * **[สูตร]** $T = A_s f_y$
+        * **[แทนค่า]** $T = {As_half:.2f} \times {fy}$
+        * **[ตอบ]** $T = {T4:,.0f} \text{{ kgf}}$
+        * **[ตรวจสอบสมดุล]** $C_c + C_s \approx T \rightarrow {Cc4+Cs4:,.0f} \text{{ kgf}} \approx {T4:,.0f} \text{{ kgf}}$
 
-        **3. กำลังรับแรงระบุ (Nominal Capacity)**
-        $$ P_n = \mathbf{{0.00 \\text{{ ton}}}} $$
-        $$ M_n = \\left[ C_c(h/2 - a/2) + C_s(h/2 - d') + T(d - h/2) \\right] \\times 10^{{-5}} = \mathbf{{{M4:,.2f} \\text{{ ton-m}}}} $$
+        ### 3. กำลังรับแรงระบุ (Nominal Capacity)
+        * **[สูตร]** $P_n = 0.00 \text{{ ton}}$
+        * **[ตอบ]** $P_n = \mathbf{{0.00 \text{{ ton}}}}$
+        * **[สูตร]** $M_n = C_c (h/2 - a/2) + C_s (h/2 - d') + T (d - h/2)$
+        * **[แทนค่า]** $M_n = \left[ {Cc4:,.0f} \times ({h}/2 - {a4:.2f}/2) + {Cs4:,.0f} \times ({h}/2 - {cover}) + {T4:,.0f} \times ({d:.2f} - {h}/2) \right] \times 10^{{-5}}$
+        * **[ตอบ]** $M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}}$
         """)
 
     with t5:
         st.pyplot(draw_compact_profile(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension"), bbox_inches='tight')
-        st.markdown(f"""
-        **1. สภาพของหน้าตัด (Section Behavior)**
-        สภาวะรับแรงดึงล้วน (Pure Tension) คอนกรีตถือว่าแตกร้าวทะลุเต็มหน้าตัดและไม่สามารถรับแรงดึงได้เลย ($c = 0$ และ $a = 0$):
-        $$ C_c = 0 \\text{{ kgf}} \\quad , \\quad C_s = 0 \\text{{ kgf}} $$
+        st.markdown(fr"""
+        ### 1. สภาพของหน้าตัด (Section Behavior)
+        * **[สูตร]** คอนกรีตแตกร้าวเต็มหน้าตัด ไม่สามารถต้านทานแรงดึงได้
+        * **[ตอบ]** $C_c = 0 \text{{ kgf}}, \quad C_s = 0 \text{{ kgf}}$
 
-        **2. กำลังรับแรงระบุและออกแบบ (Nominal & Design Capacity)**
-        หน้าตัดต้านทานแรงดึงด้วยกำลังครากของเหล็กเสริมทางยาวทั้งหมด ($A_{{st}}$) เพียงอย่างเดียว:
-        $$ P_n = -A_{{st}} f_y = -({ast:.2f}) \\times {fy} = {P5*1000:,.0f} \\text{{ kgf}} = \mathbf{{{P5:,.2f} \\text{{ ton}}}} $$
-        $$ M_n = \mathbf{{0.00 \\text{{ ton-m}}}} $$
-        เนื่องจากเป็นแรงดึงล้วน จึงอยู่ในเขต Tension-Controlled แน่นอน (ใช้ $\\phi = 0.90$):
-        $$ \\phi P_{{n}} = 0.90 \\times ({P5:,.2f}) = \mathbf{{{P5*0.90:,.2f} \\text{{ ton}}}} $$
+        ### 2. กำลังรับแรงระบุและออกแบบ (Nominal & Design Capacity)
+        * **[สูตร]** $P_n = -A_{{st}} f_y$
+        * **[แทนค่า]** $P_n = -{ast:.2f} \times {fy}$
+        * **[ตอบ]** $P_n = {P5*1000:,.0f} \text{{ kgf}} = \mathbf{{{P5:,.2f} \text{{ ton}}}}$
+        * **[สูตร]** $M_n = 0.00$
+        * **[ตอบ]** $M_n = \mathbf{{0.00 \text{{ ton-m}}}}$
+        * **[สูตร]** $\phi P_n = 0.90 \times P_n$
+        * **[แทนค่า]** $\phi P_n = 0.90 \times ({P5:,.2f})$
+        * **[ตอบ]** $\phi P_n = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}}$
         """)
