@@ -2242,6 +2242,7 @@ with tab8:
 
 
     # ─── 5. DETAILED PROFILES & CALCULATIONS (CLEAN DESIGN WITH EXACT SUBSTITUTION) ───
+    # ─── 5. DETAILED PROFILES & CALCULATIONS (CLEAN DESIGN WITH EXACT SUBSTITUTION) ───
     st.markdown("---")
     st.subheader("📐 4. รายการคำนวณแบบจำลองหน้าตัด (Detailed Section Analysis)")
     
@@ -2337,17 +2338,17 @@ with tab8:
         
         st.markdown("**1. พื้นที่หน้าตัดคอนกรีตทั้งหมด (Gross Concrete Area, $A_g$)**")
         st.latex(r"A_g = b \times h")
-        st.latex(f"A_g = {b:.1f} \times {h:.1f} = \mathbf{{{Ag:,.2f} \text{{ cm}}^2}}")
+        st.latex(fr"A_g = {b:.1f} \times {h:.1f} = \mathbf{{{Ag:,.2f} \text{{ cm}}^2}}")
         
         st.markdown("**2. กำลังรับแรงอัดระบุสูงสุดสุทธิ (Nominal Axial Strength, $P_o$)**")
         st.latex(r"P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}")
-        st.latex(f"P_o = 0.85 \times {fc:.0f} \times ({Ag:,.2f} - {ast:.2f}) + {fy:.0f} \times {ast:.2f}")
-        st.latex(f"P_o = {Po_kg:,.1f} \text{{ kgf}} = \mathbf{{{P1:,.2f} \text{{ ton}}}}")
+        st.latex(fr"P_o = 0.85 \times {fc:.0f} \times ({Ag:,.2f} - {ast:.2f}) + {fy:.0f} \times {ast:.2f}")
+        st.latex(fr"P_o = {Po_kg:,.1f} \text{{ kgf}} = \mathbf{{{P1:,.2f} \text{{ ton}}}}")
         
         st.markdown("**3. กำลังอัดออกแบบจำกัดสูงสุด (Max Design Capacity, $\phi P_{n,\max}$)**")
         st.latex(r"\phi P_{n,\max} = \phi \cdot \alpha \cdot P_o")
-        st.latex(f"\phi P_{n,\max} = {phi_c:.2f} \times {alpha_max:.2f} \times {P1:,.2f}")
-        st.latex(f"\phi P_{n,\max} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}")
+        st.latex(fr"\phi P_{n,\max} = {phi_c:.2f} \times {alpha_max:.2f} \times {P1:,.2f}")
+        st.latex(fr"\phi P_{n,\max} = \mathbf{{{phi_Pn_max:,.2f} \text{{ ton}}}}")
 
     with t2:
         st.pyplot(draw_compact_profile(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension"), bbox_inches='tight')
@@ -2357,29 +2358,29 @@ with tab8:
         with col_f1:
             st.markdown("**1. ข้อมูลรูปทรงและแกนสะเทิน ($c, a$)**")
             st.latex(r"c = h - d'")
-            st.latex(f"c = {h:.1f} - {cover:.1f} = \mathbf{{{d:.2f} \text{{ cm}}}}")
+            st.latex(fr"c = {h:.1f} - {cover:.1f} = \mathbf{{{d:.2f} \text{{ cm}}}}")
             st.latex(r"a = \beta_1 \cdot c")
-            st.latex(f"a = {beta1:.2f} \times {d:.2f} = \mathbf{{{a2:.2f} \text{{ cm}}}}")
+            st.latex(fr"a = {beta1:.2f} \times {d:.2f} = \mathbf{{{a2:.2f} \text{{ cm}}}}")
             
             st.markdown("**2. ความเครียดและหน่วยแรงเหล็กอัด ($\epsilon'_s, f'_s$)**")
             st.latex(r"\epsilon'_s = \epsilon_{cu} \left( \frac{c - d'}{c} \right)")
-            st.latex(f"\epsilon'_s = {ecu:.3f} \times \left( \frac{{{d:.2f} - {cover:.1f}}}{{{d:.2f}}} \right) = \mathbf{{{eps_s_prime2:.5f}}}")
+            st.latex(fr"\epsilon'_s = {ecu:.3f} \times \left( \frac{{{d:.2f} - {cover:.1f}}}{{{d:.2f}}} \right) = \mathbf{{{eps_s_prime2:.5f}}}")
             st.latex(r"f'_s = \min(E_s \cdot \epsilon'_s, f_y)")
-            st.latex(f"f'_s = \min(2,040,000 \times {eps_s_prime2:.5f}, {fy:.0f}) = \mathbf{{{fs_prime2:,.0f} \text{{ ksc}}}}")
+            st.latex(fr"f'_s = \min(2,040,000 \times {eps_s_prime2:.5f}, {fy:.0f}) = \mathbf{{{fs_prime2:,.0f} \text{{ ksc}}}}")
 
         with col_f2:
             st.markdown("**3. แรงลัพธ์ภายในจากวัสดุ (Internal Forces)**")
             st.latex(r"C_c = 0.85 f'_c \cdot a \cdot b")
-            st.latex(f"C_c = 0.85 \times {fc:.0f} \times {a2:.2f} \times {b:.1f} = \mathbf{{{Cc2/1000:,.2f} \text{{ ton}}}}")
+            st.latex(fr"C_c = 0.85 \times {fc:.0f} \times {a2:.2f} \times {b:.1f} = \mathbf{{{Cc2/1000:,.2f} \text{{ ton}}}}")
             st.latex(r"C_s = A'_s (f'_s - 0.85 f'_c)")
-            st.latex(f"C_s = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc:.0f}) = \mathbf{{{Cs2/1000:,.2f} \text{{ ton}}}}")
+            st.latex(fr"C_s = {As_half:.2f} \times ({fs_prime2:,.0f} - 0.85 \times {fc:.0f}) = \mathbf{{{Cs2/1000:,.2f} \text{{ ton}}}}")
             st.latex(r"T = A_s \cdot f_s \quad (\text{strain } \epsilon_t = 0)")
-            st.latex(f"T = {As_half:.2f} \times {fs2:,.0f} = \mathbf{{{T2/1000:,.2f} \text{{ ton}}}}")
+            st.latex(fr"T = {As_half:.2f} \times {fs2:,.0f} = \mathbf{{{T2/1000:,.2f} \text{{ ton}}}}")
             
             st.markdown("**4. กำลังรับแรงรวมของหน้าตัด ($P_n, M_n$)**")
             st.latex(r"P_n = C_c + C_s - T")
-            st.latex(f"P_n = {Cc2/1000:,.1f} + {Cs2/1000:,.1f} - {T2/1000:,.1f} = \mathbf{{{P2:,.2f} \text{{ ton}}}}")
-            st.latex(f"M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}")
+            st.latex(fr"P_n = {Cc2/1000:,.1f} + {Cs2/1000:,.1f} - {T2/1000:,.1f} = \mathbf{{{P2:,.2f} \text{{ ton}}}}")
+            st.latex(fr"M_n = \mathbf{{{M2:,.2f} \text{{ ton-m}}}}")
 
     with t3:
         st.pyplot(draw_compact_profile(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced"), bbox_inches='tight')
@@ -2389,21 +2390,21 @@ with tab8:
         with col_f1:
             st.markdown("**1. ความเครียดครากและแกนสะเทินสมดุล ($\epsilon_y, c_b$)**")
             st.latex(r"\epsilon_y = \frac{f_y}{E_s}")
-            st.latex(f"\epsilon_y = \frac{{{fy:.0f}}}{{2,040,000}} = \mathbf{{{ety:.5f}}}")
+            st.latex(fr"\epsilon_y = \frac{{{fy:.0f}}}{{2,040,000}} = \mathbf{{{ety:.5f}}}")
             st.latex(r"c_b = d \left( \frac{\epsilon_{cu}}{\epsilon_{cu} + \epsilon_y} \right)")
-            st.latex(f"c_b = {d:.2f} \times \left( \frac{{{ecu:.3f}}}{{{ecu:.3f} + {ety:.5f}}} \right) = \mathbf{{{cb:.2f} \text{{ cm}}}}")
+            st.latex(fr"c_b = {d:.2f} \times \left( \frac{{{ecu:.3f}}}{{{ecu:.3f} + {ety:.5f}}} \right) = \mathbf{{{cb:.2f} \text{{ cm}}}}")
             st.latex(r"a_b = \beta_1 \cdot c_b")
-            st.latex(f"a_b = {beta1:.2f} \times {cb:.2f} = \mathbf{{{a3:.2f} \text{{ cm}}}}")
+            st.latex(fr"a_b = {beta1:.2f} \times {cb:.2f} = \mathbf{{{a3:.2f} \text{{ cm}}}}")
 
         with col_f2:
             st.markdown("**2. แรงลัพธ์และกำลังต้านทานระบุ ณ จุดสมดุล**")
             st.latex(r"C_c = 0.85 f'_c \cdot a_b \cdot b")
-            st.latex(f"C_c = 0.85 \times {fc:.0f} \times {a3:.2f} \times {b:.1f} = \mathbf{{{Cc3/1000:,.2f} \text{{ ton}}}}")
+            st.latex(fr"C_c = 0.85 \times {fc:.0f} \times {a3:.2f} \times {b:.1f} = \mathbf{{{Cc3/1000:,.2f} \text{{ ton}}}}")
             st.latex(r"T = A_s \cdot f_y")
-            st.latex(f"T = {As_half:.2f} \times {fy:.0f} = \mathbf{{{T3/1000:,.2f} \text{{ ton}}}}")
+            st.latex(fr"T = {As_half:.2f} \times {fy:.0f} = \mathbf{{{T3/1000:,.2f} \text{{ ton}}}}")
             st.markdown("<br>", unsafe_allow_html=True)
-            st.latex(f"P_n = \mathbf{{{P3:,.2f} \text{{ ton}}}}")
-            st.latex(f"M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}")
+            st.latex(fr"P_n = \mathbf{{{P3:,.2f} \text{{ ton}}}}")
+            st.latex(fr"M_n = \mathbf{{{M3:,.2f} \text{{ ton-m}}}}")
 
     with t4:
         st.pyplot(draw_compact_profile(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending"), bbox_inches='tight')
@@ -2412,19 +2413,19 @@ with tab8:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             st.markdown("**1. ระยะแกนสะเทินที่คำนวณได้ (สุ่มจน $P_n \approx 0$)**")
-            st.latex(f"c = \mathbf{{{c_m0:.2f} \text{{ cm}}}}, \quad a = \mathbf{{{a4:.2f} \text{{ cm}}}}")
+            st.latex(fr"c = \mathbf{{{c_m0:.2f} \text{{ cm}}}}, \quad a = \mathbf{{{a4:.2f} \text{{ cm}}}}")
             
             st.markdown("**2. ตรวจสอบความเครียดที่ผิวเหล็กดึงเพื่อหาค่า $\phi$**")
             st.latex(r"\epsilon_t = \epsilon_{cu} \left( \frac{d - c}{c} \right)")
-            st.latex(f"\epsilon_t = {ecu:.3f} \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right) = \mathbf{{{eps_t4:.5f}}}")
-            st.markdown(f"*(เนื่องจาก $\epsilon_t = {eps_t4:.5f} \ge 0.005$ หน้าตัดจึงเป็น Tension-Controlled $\Rightarrow \phi = \mathbf{{0.90}}$)*")
+            st.latex(fr"\epsilon_t = {ecu:.3f} \times \left( \frac{{{d:.2f} - {c_m0:.2f}}}{{{c_m0:.2f}}} \right) = \mathbf{{{eps_t4:.5f}}}")
+            st.markdown(fr"*(เนื่องจาก $\epsilon_t = {eps_t4:.5f} \ge 0.005$ หน้าตัดจึงเป็น Tension-Controlled $\Rightarrow \phi = \mathbf{{0.90}}$)*")
 
         with col_f2:
             st.markdown("**3. สรุปแรงลัพธ์และโมเมนต์ดัดบริสุทธิ์ระบุ ($M_n$)**")
-            st.latex(f"C_c = {Cc4/1000:,.2f} \text{{ t}}, \quad C_s = {Cs4/1000:,.2f} \text{{ t}}, \quad T = {T4/1000:,.2f} \text{{ t}}")
+            st.latex(fr"C_c = {Cc4/1000:,.2f} \text{{ t}}, \quad C_s = {Cs4/1000:,.2f} \text{{ t}}, \quad T = {T4/1000:,.2f} \text{{ t}}")
             st.latex(r"P_n = C_c + C_s - T \approx \mathbf{{0.00 \text{{ ton}}}}")
             st.latex(r"M_n = \sum (\text{Force} \times \text{Lever Arm})")
-            st.latex(f"M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} \Rightarrow \phi M_n = \mathbf{{{M4*phi4:,.2f} \text{{ ton-m}}}}")
+            st.latex(fr"M_n = \mathbf{{{M4:,.2f} \text{{ ton-m}}}} \Rightarrow \phi M_n = \mathbf{{{M4*phi4:,.2f} \text{{ ton-m}}}}")
 
     with t5:
         st.pyplot(draw_compact_profile(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension"), bbox_inches='tight')
@@ -2435,6 +2436,6 @@ with tab8:
         
         st.markdown("**2. กำลังรับแรงดึงระบุและการออกแบบสอดคล้องตามมาตรฐาน**")
         st.latex(r"P_n = -A_{st} \times f_y")
-        st.latex(f"P_n = -{ast:.2f} \times {fy:.0f} = {P5*1000:,.1f} \text{{ kgf}} = \mathbf{{{P5:,.2f} \text{{ ton}}}}")
+        st.latex(fr"P_n = -{ast:.2f} \times {fy:.0f} = {P5*1000:,.1f} \text{{ kgf}} = \mathbf{{{P5:,.2f} \text{{ ton}}}}")
         st.latex(r"\phi P_n = 0.90 \times P_n")
-        st.latex(f"\phi P_n = 0.90 \times ({P5:,.2f}) = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}}")
+        st.latex(fr"\phi P_n = 0.90 \times ({P5:,.2f}) = \mathbf{{{P5*0.90:,.2f} \text{{ ton}}}}")
