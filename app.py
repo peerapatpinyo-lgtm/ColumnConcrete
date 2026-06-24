@@ -860,13 +860,14 @@ with col_main:
     # ══════════════════════════════════════════════════════════════════════════
     # TABS
     # ══════════════════════════════════════════════════════════════════════════
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📥 Overview & 3D",
         "📊 P-M Interaction",
         "🧊 Section Detail",
         "🌪️ Shear & Seismic",
         "📝 Calc Report",
         "⚡ Quick Sizing",
+        "⚡ Quick Sizing2",
     ])
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1910,3 +1911,118 @@ $$T_{{th}} = \\phi\\,0.026\\sqrt{{f'_c}}\\frac{{A_{{cp}}^2}}{{p_{{cp}}}}$$
             st.latex(rf"h_{{min}} = \frac{{KL}}{{0.3 \times {q_klr_lim}}} = {min_h:.2f} \rightarrow {sug_h}\text{{ cm}}")
             st.markdown("**Circular** — r ≈ 0.25D:")
             st.latex(rf"D_{{min}} = \frac{{KL}}{{0.25 \times {q_klr_lim}}} = {min_D:.2f} \rightarrow {sug_D}\text{{ cm}}")
+with tab7:
+    st.header("🏢 Preliminary Column Sizing (ACI SP-17M(14) Sec 9.8)")
+    st.markdown("""
+    เครื่องมือประมาณขนาดหน้าตัดเสาคอนกรีตเสริมเหล็กขั้นต้นเพื่อใช้ขึ้นรูปโครงสร้าง 
+    *(คำนวณตามระบบหน่วยหลักของแอปพลิเคชัน: **ton, ksc, cm**)*
+    """)
+
+    # แบ่งหน้าจอเป็น 2 คอลัมน์ (ฝั่งรับค่าป้อนข้อมูล กับ ฝั่งแสดงผลลัพธ์)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📥 ป้อนข้อมูลแรงและวัสดุ (MKS)")
+        
+        # รับค่าแรงอัดปรับกำลังสูงสุด Pu (ton)
+        p_u = st.number_input(
+            "แรงอัดปรับกำลังสูงสุดจากโครงสร้าง, Pu (ton)", 
+            min_value=0.0, 
+            value=150.0, 
+            step=10.0,
+            key="prelim_pu"
+        )
+        
+        # รับค่ากำลังอัดคอนกรีต f'c (ksc)
+        f_c = st.number_input(
+            "กำลังอัดของคอนกรีต, f'c (ksc)", 
+            min_value=50.0, 
+            value=280.0, 
+            step=10.0,
+            key="prelim_fc"
+        )
+        
+        # ประเภทของโครงสร้างตามเงื่อนไขแรงด้านข้าง
+        structure_type = st.selectbox(
+            "ประเภทของโครงสร้าง / การรับแรงแผ่นดินไหว",
+            options=[
+                "Ordinary (อาคารทั่วไป / แรงลมปกติ)", 
+                "High Seismic (เขตแผ่นดินไหวรุนแรง)"
+            ],
+            key="prelim_struct_type"
+        )
+        
+        # รูปทรงหน้าตัดเสาที่ต้องการ
+        column_shape = st.selectbox(
+            "รูปทรงหน้าตัดเสาที่ต้องการออกแบบ",
+            options=["สี่เหลี่ยมจัตุรัส (Square)", "สี่เหลี่ยมผืนผ้า (Rectangular)", "กลม (Circular)"],
+            key="prelim_col_shape"
+        )
+
+        # เงื่อนไขเพิ่มเติมกรณีเลือกเสาสี่เหลี่ยมผืนผ้า
+        if column_shape == "สี่เหลี่ยมผืนผ้า (Rectangular)":
+            b_input = st.number_input(
+                "กำหนดความกว้างหน้าตัดเสาด้านหนึ่ง, b (cm)", 
+                min_value=15.0, 
+                value=30.0, 
+                step=5.0,
+                key="prelim_b_input"
+            )
+
+    with col2:
+        st.subheader("📊 ผลการวิเคราะห์หน้าตัดเสาขั้นต้น")
+        
+        # คัดเลือกตัวหาร (Factor) และจัดรูปแบบสูตรแสดงบนหน้าจอตามประเภทอาคาร
+        if "Ordinary" in structure_type:
+            factor = 0.4
+            st.markdown(r"**สูตรตามคู่มือ:** $A_g = \frac{P_u}{0.4 f'_c}$")
+        else:
+            factor = 0.3
+            st.markdown(r"**สูตรตามคู่มือ:** $A_g = \frac{P_u}{0.3 f'_c}$")
+            
+        # คำนวณ Ag ที่ต้องการ (แปลง Pu จาก ton เป็น kgf โดยคูณ 1000 เพื่อตัดหน่วยกับ ksc)
+        p_u_kg = p_u * 1000.0
+        ag_required = p_u_kg / (factor * f_c)
+        
+        st.metric(
+            label="พื้นที่หน้าตัดคอนกรีตขั้นต่ำที่ต้องการ (Ag Required)", 
+            value=f"{ag_required:,.2f} cm²"
+        )
+        
+        # ฟังก์ชันช่วยปัดมิติเสาขึ้นทีละ 5 cm ตามขนาดไม้แบบมาตรฐานไทย
+        def round_up_to_5(val):
+            import numpy as np
+            return int(np.ceil(val / 5.0) * 5.0)
+
+        st.markdown("---")
+        st.markdown("### 📐 มิติหน้าตัดเสาที่แนะนำให้ใช้:")
+        
+        import numpy as np
+        if column_shape == "สี่เหลี่ยมจัตุรัส (Square)":
+            side_req = np.sqrt(ag_required)
+            side_rec = max(round_up_to_5(side_req), 20)  # กำหนดขนาดขั้นต่ำไว้ที่ 20 cm
+            ag_actual = side_rec * side_rec
+            st.success(f"🟩 **ใช้เสาสี่เหลี่ยมขนาด:** {side_rec} × {side_rec} cm")
+            st.write(f"• พื้นที่หน้าตัดหน้างานจริง: **{ag_actual:,.0f} cm²**")
+
+        elif column_shape == "สี่เหลี่ยมผืนผ้า (Rectangular)":
+            h_req = ag_required / b_input
+            h_rec = max(round_up_to_5(h_req), 20)
+            ag_actual = b_input * h_rec
+            st.success(f"🟪 **ใช้เสาสี่เหลี่ยมขนาด:** {int(b_input)} × {h_rec} cm")
+            st.write(f"• พื้นที่หน้าตัดหน้างานจริง: **{ag_actual:,.0f} cm²**")
+            
+        elif column_shape == "กลม (Circular)":
+            diameter_req = np.sqrt((4 * ag_required) / np.pi)
+            diameter_rec = max(round_up_to_5(diameter_req), 20)
+            ag_actual = (np.pi / 4) * (diameter_rec ** 2)
+            st.success(f"🔵 **ใช้เสากลมเส้นผ่านศูนย์กลาง Ø:** {diameter_rec} cm")
+            st.write(f"• พื้นที่หน้าตัดหน้างานจริง: **{ag_actual:,.0f} cm²**")
+
+        # ส่วนประเมินเหล็กเสริมเบื้องต้น (Rule of thumb 1% - 2%)
+        st.markdown("---")
+        st.markdown("### 🔩 ประมาณการปริมาณเหล็กเสริมรวมเบื้องต้น (As,est)")
+        st.markdown("แนะนำให้ใส่เหล็กเสริมในช่วง **1% ถึง 2%** ของพื้นที่เสาจริง เพื่อความประหยัดและลดความแออัดของเหล็ก")
+        ast_min = ag_actual * 0.01
+        ast_max = ag_actual * 0.02
+        st.info(f"💡 ควรเลือกจัดกลุ่มเหล็กเสริมให้มีพื้นที่รวมอยู่ระหว่าง: **{ast_min:,.2f} ถึง {ast_max:,.2f} cm²**")
