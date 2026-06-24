@@ -2077,7 +2077,7 @@ with tab7:
 
 with tab8:
     st.header("📈 P-M Interaction Diagram (Advanced Biaxial & Capacity)")
-    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity, รูปวาดแผนภาพความเครียด และรายการคำนวณแบบละเอียด (MKS Unit)")
+    st.markdown("วิเคราะห์กำลังรับแรงอัดและโมเมนต์ดัดของหน้าตัดเสา พร้อมเส้น Design Capacity และรายการคำนวณแบบละเอียด (MKS Unit)")
 
     import numpy as np
     import pandas as pd
@@ -2088,15 +2088,25 @@ with tab8:
 
     with col1:
         st.subheader("📥 1. กำหนดพารามิเตอร์หน้าตัด")
-        col_type = st.radio("ประเภทเสา (Column Type)", ["ปลอกเดี่ยว (Tied)", "ปลอกเกลียว (Spiral)"], horizontal=True, key="pm_type")
+        col_type = st.radio("ประเภทเสา", ["ปลอกเดี่ยว (Tied)", "ปลอกเกลียว (Spiral)"], horizontal=True, key="pm_type")
         b = st.number_input("ความกว้างเสา, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_b")
         h = st.number_input("ความลึกเสา, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_h")
         cover = st.number_input("ระยะหุ้มถึงศูนย์กลางเหล็ก, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_cov")
         
         st.markdown("---")
         fc = st.number_input("กำลังอัดคอนกรีต, f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_fc")
-        fy = st.number_input("กำลังครากเหล็กเสริม, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_fy")
-        ast = st.number_input("พื้นที่เหล็กเสริมรวม, Ast (cm²)", min_value=2.0, value=15.0, step=1.0, key="pm_ast")
+        fy = st.number_input("กำลังครากเหล็ก, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_fy")
+        
+        st.markdown("---")
+        st.markdown("🔩 **การจัดเหล็กเสริม (Reinforcement)**")
+        rebar_dict = {"DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB25": 2.5, "DB28": 2.8, "DB32": 3.2}
+        rebar_choice = st.selectbox("ขนาดเหล็กแกน", list(rebar_dict.keys()), index=2, key="pm_rb")
+        n_bars = st.number_input("จำนวนเส้น (รวมทั้งหน้าตัด)", min_value=4, value=8, step=2, key="pm_n")
+        
+        # คำนวณ Ast อัตโนมัติ
+        db_dia = rebar_dict[rebar_choice]
+        ast = n_bars * (np.pi * db_dia**2) / 4.0
+        st.info(f"พื้นที่เหล็กเสริมรวม, Ast = **{ast:.2f} cm²** (ρ = {(ast/(b*h))*100:.2f}%)")
 
         st.markdown("---")
         st.markdown("⭐ **จุดตรวจสอบแรงใช้งาน (Demand Check)**")
@@ -2189,10 +2199,12 @@ with tab8:
     st.markdown("---")
     st.subheader("📋 รายการคำนวณโดยละเอียด (Calculation Report)")
 
-    with st.expander("📝 1. ตารางสรุปพฤติกรรมหน้าตัด (Summary Table of 5 Key Points)", expanded=False):
-        c_pts = [h * 1.5, d, d * (ecu / (ecu + (fy/Es))), d * 0.15, 0.0001]
-        idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
-        c_pts[3] = c_vals[idx_m0]
+    # หาจุด Pure Bending จริงๆ
+    idx_m0 = np.argmin(np.abs(np.array(P_nom[:-1])))
+    c_m0 = c_vals[idx_m0]
+
+    with st.expander("📝 1. ตารางสรุปพฤติกรรมหน้าตัด 5 จุดสำคัญ (Summary Table)", expanded=False):
+        c_pts = [h * 1.5, d, d * (ecu / (ecu + (fy/Es))), c_m0, 0.0001]
         report_data = []
         labels = ["1. Pure Comp", "2. Zero Tension (c=d)", "3. Balanced Point", "4. Pure Bending (Pn=0)", "5. Pure Tension"]
         
@@ -2210,29 +2222,24 @@ with tab8:
         df_report = pd.DataFrame(report_data, columns=["Condition", "c (cm)", "a (cm)", "ε'_s", "ε_t", "Cc (t)", "Cs (t)", "T (t)", "Pn (t)", "Mn (t-m)", "φ", "φPn", "φMn"])
         st.dataframe(df_report, use_container_width=True)
 
-    with st.expander("📐 2. แผนภาพหน้าตัด ความเครียด และหน่วยแรง (Section, Strain & Stress Diagrams)", expanded=True):
-        st.markdown("ภาพจำลองพฤติกรรมของหน้าตัดที่ **สภาวะสมดุล (Balanced Point)** ซึ่งเป็นจุดสำคัญที่สุดในการออกแบบเสา (จุดที่เหล็กดึงครากพร้อมกับคอนกรีตอัดแตก)")
-        
+    with st.expander("📐 2. แผนภาพหน้าตัด ความเครียด และหน่วยแรง (Diagrams at Balanced Point)", expanded=False):
         eps_y = fy / Es
         cb = d * (ecu / (ecu + eps_y))
         ab = beta1 * cb
         
         fig_diag = make_subplots(rows=1, cols=3, subplot_titles=("1. Cross Section", "2. Strain Profile", "3. Stress & Forces"), shared_yaxes=True)
         
-        # 1. Cross Section
         fig_diag.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h, line=dict(color="black", width=2), col=1, row=1)
         fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[h-cover, h-cover], mode='markers', marker=dict(color='blue', size=12), name='As (Comp)'), row=1, col=1)
         fig_diag.add_trace(go.Scatter(x=[b/4, 3*b/4], y=[cover, cover], mode='markers', marker=dict(color='red', size=12), name='As (Tens)'), row=1, col=1)
         fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", annotation_text=" N.A.", row=1, col=1)
 
-        # 2. Strain Profile
         fig_diag.add_trace(go.Scatter(x=[0, 0.003], y=[h, h], mode='lines', line=dict(color='black')), row=1, col=2)
         fig_diag.add_trace(go.Scatter(x=[0, -eps_y], y=[cover, cover], mode='lines', line=dict(color='black')), row=1, col=2)
         fig_diag.add_trace(go.Scatter(x=[0.003, -eps_y], y=[h, cover], mode='lines+markers', line=dict(color='green', width=2), name='Strain'), row=1, col=2)
         fig_diag.add_vline(x=0, line_color="black", line_width=1, row=1, col=2)
         fig_diag.add_hline(y=h-cb, line_dash="dash", line_color="gray", row=1, col=2)
 
-        # 3. Stress Block & Forces
         fig_diag.add_shape(type="rect", x0=0, y0=h-ab, x1=0.85*fc, y1=h, fillcolor="rgba(52, 152, 219, 0.3)", line=dict(color="blue", width=1), col=3, row=1)
         fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-ab/2], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='blue'), text=[" Cc"], textposition="middle right", name='Cc'), row=1, col=3)
         fig_diag.add_trace(go.Scatter(x=[0.85*fc], y=[h-cover], mode='markers+text', marker=dict(symbol="triangle-left", size=10, color='darkblue'), text=[" Cs"], textposition="middle right", name='Cs'), row=1, col=3)
@@ -2243,46 +2250,80 @@ with tab8:
         fig_diag.update_layout(height=400, showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_diag, use_container_width=True)
 
-    with st.expander("🧮 3. แสดงวิธีทำและแทนค่าโดยละเอียด (Step-by-Step Calculation for Balanced Point)", expanded=True):
-        st.markdown("แสดงวิธีการคำนวณที่สภาวะสมดุล (Balanced Point) ทีละขั้นตอน พร้อมแทนค่าตัวเลขจริง:")
-        
-        # คำนวณสดสำหรับแสดงใน Report
-        eps_y_val = fy / Es
-        cb_val = d * (ecu / (ecu + eps_y_val))
-        ab_val = beta1 * cb_val
-        eps_s_prime_val = ecu * (cb_val - cover) / cb_val
-        fs_prime_val = min(Es * eps_s_prime_val, fy)
-        Cc_val = 0.85 * fc * ab_val * b
-        Cs_val = As_half * (fs_prime_val - 0.85 * fc)
-        T_val = As_half * fy
-        Pn_val = (Cc_val + Cs_val - T_val) / 1000
-        Mn_val = (Cc_val * (h/2 - ab_val/2) + Cs_val * (h/2 - cover) + T_val * (d - h/2)) / 100000
+    with st.expander("🧮 3. แสดงวิธีทำและแทนค่าโดยละเอียด ทั้ง 5 จุด (Step-by-Step 5 Points)", expanded=True):
+        st.markdown("คลิกที่ Tab ด้านล่างเพื่อดูรายการคำนวณและสมการแทนค่าของแต่ละสภาวะ:")
+        tab_p1, tab_p2, tab_p3, tab_p4, tab_p5 = st.tabs([
+            "1. Pure Compression", "2. Zero Tension", "3. Balanced Point", "4. Pure Bending", "5. Pure Tension"
+        ])
 
-        col_calc1, col_calc2 = st.columns(2)
-        with col_calc1:
-            st.markdown("**1. หาระยะแกนสะเทิน (c) และบล็อกแรงอัด (a)**")
-            st.markdown(f"เหล็กครากพอดี $\\epsilon_s = f_y / E_s = {fy:,.0f} / {Es:,.0f} = {eps_y_val:.4f}$")
-            st.markdown(r"$c_b = d \times \frac{0.003}{0.003 + \epsilon_y}$")
-            st.markdown(f"$c_b = {d} \\times \\frac{{0.003}}{{0.003 + {eps_y_val:.4f}}} = \mathbf{{{cb_val:.2f} \text{{ cm}}}}$")
-            st.markdown(f"$a_b = \\beta_1 c_b = {beta1:.2f} \\times {cb_val:.2f} = \mathbf{{{ab_val:.2f} \text{{ cm}}}}$")
-            
-            st.markdown("<br>**2. หาความเครียดและหน่วยแรงในเหล็กรับอัด**", unsafe_allow_html=True)
-            st.markdown(r"$\epsilon'_s = 0.003 \times \frac{c - d'}{c}$")
-            st.markdown(f"$\epsilon'_s = 0.003 \\times \\frac{{{cb_val:.2f} - {cover}}}{{{cb_val:.2f}}} = {eps_s_prime_val:.5f}$")
-            st.markdown(f"$f'_s = E_s \epsilon'_s = 2.04\\times10^6 \\times {eps_s_prime_val:.5f} = {fs_prime_val:,.0f} \text{{ ksc}}$")
+        with tab_p1:
+            st.markdown("#### จุดที่ 1: รับแรงอัดแกนล้วน (Pure Compression)")
+            st.markdown("สภาวะที่หน้าตัดรับแรงอัดเต็มพื้นที่ ไม่มีโมเมนต์ดัดเข้ามาเกี่ยวข้อง")
+            st.markdown(r"**สมการ:** $P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}$")
+            st.markdown(f"$P_o = 0.85({fc})({Ag} - {ast:.2f}) + {fy}({ast:.2f})$")
+            P1_kg = 0.85*fc*(Ag - ast) + fy*ast
+            st.markdown(f"$P_o = \mathbf{{{P1_kg:,.0f} \text{{ kgf}}}} = \mathbf{{{P1_kg/1000:,.2f} \text{{ ton}}}}$")
+            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = {P1_kg/1000:,.2f}$ ton, $M_n = 0.00$ ton-m")
 
-        with col_calc2:
-            st.markdown("**3. คำนวณแรงภายใน (Internal Forces)**")
-            st.markdown(r"$C_c = 0.85 f'_c a b$")
-            st.markdown(f"$C_c = 0.85({fc})({ab_val:.2f})({b}) = \mathbf{{{Cc_val:,.0f} \text{{ kgf}}}}$")
-            st.markdown(r"$C_s = A'_s (f'_s - 0.85f'_c)$")
-            st.markdown(f"$C_s = {As_half}({fs_prime_val:,.0f} - 0.85({fc})) = \mathbf{{{Cs_val:,.0f} \text{{ kgf}}}}$")
-            st.markdown(r"$T = A_s f_y$")
-            st.markdown(f"$T = {As_half}({fy:,.0f}) = \mathbf{{{T_val:,.0f} \text{{ kgf}}}}$")
+        with tab_p2:
+            st.markdown("#### จุดที่ 2: เริ่มเกิดแรงดึง (Zero Tension)")
+            st.markdown("สภาวะที่ความเครียดของเหล็กดึงเป็นศูนย์พอดี ($c = d$)")
+            a2, eps_s_prime2, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, Pn2, Mn2, phi2 = calc_pm_detailed(d)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**ระยะและหน่วยแรง:**")
+                st.markdown(f"$c = d = {d}$ cm")
+                st.markdown(f"$a = \\beta_1 c = {beta1:.2f}({d}) = {a2:.2f}$ cm")
+                st.markdown(f"$f'_s = \mathbf{{{fs_prime2:,.0f}}}$ ksc, $f_s = 0$ ksc")
+            with col_b:
+                st.markdown(f"**แรงภายในหน้าตัด:**")
+                st.markdown(f"$C_c = 0.85({fc})({a2:.2f})({b}) = \mathbf{{{Cc2:,.0f}}}$ kgf")
+                st.markdown(f"$C_s = {As_half:.2f}({fs_prime2:,.0f} - 0.85({fc})) = \mathbf{{{Cs2:,.0f}}}$ kgf")
+                st.markdown(f"$T = 0$ kgf")
+            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = \mathbf{{{Pn2:,.2f}}}$ ton, $M_n = \mathbf{{{Mn2:,.2f}}}$ ton-m")
 
-            st.markdown("<br>**4. คำนวณกำลังรับแรง (Nominal Capacity)**", unsafe_allow_html=True)
-            st.markdown(r"$P_n = C_c + C_s - T$")
-            st.markdown(f"$P_n = {Cc_val:,.0f} + {Cs_val:,.0f} - {T_val:,.0f} = \mathbf{{{Pn_val:,.2f} \text{{ ton}}}}$")
-            st.markdown(r"$M_n = C_c(h/2 - a/2) + C_s(h/2 - d') + T(d - h/2)$")
-            st.markdown(f"$M_n = {Cc_val:,.0f}({h/2 - ab_val/2:.2f}) + {Cs_val:,.0f}({h/2 - cover}) + {T_val:,.0f}({d - h/2})$")
-            st.markdown(f"$M_n = \mathbf{{{Mn_val:,.2f} \text{{ ton-m}}}}$")
+        with tab_p3:
+            st.markdown("#### จุดที่ 3: สภาวะสมดุล (Balanced Point)")
+            st.markdown("คอนกรีตอัดแตก ($\epsilon_c=0.003$) พร้อมกับเหล็กดึงครากพอดี ($\epsilon_s=\epsilon_y$)")
+            eps_y = fy / Es
+            cb = d * (0.003 / (0.003 + eps_y))
+            a3, eps_s_prime3, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, Pn3, Mn3, phi3 = calc_pm_detailed(cb)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**ระยะและหน่วยแรง:**")
+                st.markdown(f"$c_b = {d} [ 0.003 / (0.003 + {eps_y:.4f}) ] = {cb:.2f}$ cm")
+                st.markdown(f"$a_b = \\beta_1 c_b = {beta1:.2f}({cb:.2f}) = {a3:.2f}$ cm")
+                st.markdown(f"$f'_s = \mathbf{{{fs_prime3:,.0f}}}$ ksc, $f_s = \mathbf{{{fs3:,.0f}}}$ ksc")
+            with col_b:
+                st.markdown(f"**แรงภายในหน้าตัด:**")
+                st.markdown(f"$C_c = 0.85({fc})({a3:.2f})({b}) = \mathbf{{{Cc3:,.0f}}}$ kgf")
+                st.markdown(f"$C_s = {As_half:.2f}({fs_prime3:,.0f} - 0.85({fc})) = \mathbf{{{Cs3:,.0f}}}$ kgf")
+                st.markdown(f"$T = {As_half:.2f}({fs3:,.0f}) = \mathbf{{{T3:,.0f}}}$ kgf")
+            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = \mathbf{{{Pn3:,.2f}}}$ ton, $M_n = \mathbf{{{Mn3:,.2f}}}$ ton-m")
+
+        with tab_p4:
+            st.markdown("#### จุดที่ 4: รับโมเมนต์ดัดล้วน (Pure Bending)")
+            st.markdown("พฤติกรรมเสมือนคาน ไม่มีแรงแกน ($P_n = 0$) ต้อง Iteration หาระยะ $c$ ที่ $C_c + C_s = T$")
+            a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, Pn4, Mn4, phi4 = calc_pm_detailed(c_m0)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**ระยะและหน่วยแรง (จากการ Iteration):**")
+                st.markdown(f"$c \\approx \mathbf{{{c_m0:.2f}}}$ cm")
+                st.markdown(f"$a \\approx {a4:.2f}$ cm")
+                st.markdown(f"$f'_s = \mathbf{{{fs_prime4:,.0f}}}$ ksc, $f_s = \mathbf{{{fs4:,.0f}}}$ ksc")
+            with col_b:
+                st.markdown(f"**แรงภายในหน้าตัด:**")
+                st.markdown(f"$C_c = \mathbf{{{Cc4:,.0f}}}$ kgf")
+                st.markdown(f"$C_s = \mathbf{{{Cs4:,.0f}}}$ kgf")
+                st.markdown(f"$T = \mathbf{{{T4:,.0f}}}$ kgf")
+                st.markdown(f"*(เช็กสมดุล: $C_c + C_s \\approx T$)*")
+            st.markdown(f"**กำลังรับแรงระบุ:** $P_n \approx 0.00$ ton, $M_n = \mathbf{{{Mn4:,.2f}}}$ ton-m")
+
+        with tab_p5:
+            st.markdown("#### จุดที่ 5: รับแรงดึงล้วน (Pure Tension)")
+            st.markdown("คอนกรีตแตกร้าวไม่รับแรง หน้าตัดต้านทานด้วยแรงดึงของเหล็กเสริมทั้งหมด")
+            st.markdown(r"**สมการ:** $P_{nt} = -A_{st} f_y$")
+            st.markdown(f"$P_{{nt}} = -({ast:.2f})({fy})$")
+            P5_kg = -ast * fy
+            st.markdown(f"$P_{{nt}} = \mathbf{{{P5_kg:,.0f} \text{{ kgf}}}} = \mathbf{{{P5_kg/1000:,.2f} \text{{ ton}}}}$")
+            st.markdown(f"**กำลังรับแรงระบุ:** $P_n = {P5_kg/1000:,.2f}$ ton, $M_n = 0.00$ ton-m")
