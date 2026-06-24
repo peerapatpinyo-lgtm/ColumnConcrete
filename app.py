@@ -2076,6 +2076,7 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
+
     st.header("📈 Advanced P-M Interaction & φ-Factor Dashboard")
     st.markdown("วิเคราะห์กำลังหน้าตัดเสาและการเปลี่ยนแปลงค่าตัวคูณลดกำลัง (Strength Reduction Factor) ตามมาตรฐาน ACI 318-19")
 
@@ -2089,22 +2090,22 @@ with tab8:
 
     with col_input:
         st.subheader("📥 1. พารามิเตอร์หน้าตัดและการจัดเหล็ก")
-        col_type = st.radio("ประเภทเสา / ปลอก", ["ปลอกเดี่ยว (Tied Column)", "ปลอกเกลียว (Spiral Column)"], horizontal=True, key="pm_v2_type")
+        col_type = st.radio("ประเภทเสา / ปลอก", ["ปลอกเดี่ยว (Tied Column)", "ปลอกเกลียว (Spiral Column)"], horizontal=True, key="pm_v3_type")
         
         c1, c2 = st.columns(2)
         with c1:
-            b = st.number_input("ความกว้าง, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_v2_b")
-            cover = st.number_input("ระยะหุ้ม, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_v2_cov")
+            b = st.number_input("ความกว้าง, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_v3_b")
+            cover = st.number_input("ระยะหุ้ม, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_v3_cov")
         with c2:
-            h = st.number_input("ความลึก, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_v2_h")
-            fc = st.number_input("f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_v2_fc")
+            h = st.number_input("ความลึก, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_v3_h")
+            fc = st.number_input("f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_v3_fc")
             
-        fy = st.number_input("กำลังครากเหล็กแกน, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_v2_fy")
+        fy = st.number_input("กำลังครากเหล็กแกน, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_v3_fy")
         
         st.markdown("🔩 **การจัดเรียงเหล็กเสริม**")
         rebar_dict = {"DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB25": 2.5, "DB28": 2.8, "DB32": 3.2}
-        rebar_choice = st.selectbox("ขนาดเหล็กแกนหลัก", list(rebar_dict.keys()), index=2, key="pm_v2_rb")
-        n_bars = st.number_input("จำนวนเส้นรวมทั้งหมด (เลขคู่ ≥ 4)", min_value=4, value=8, step=2, key="pm_v2_n")
+        rebar_choice = st.selectbox("ขนาดเหล็กแกนหลัก", list(rebar_dict.keys()), index=2, key="pm_v3_rb")
+        n_bars = st.number_input("จำนวนเส้นรวมทั้งหมด (เลขคู่ ≥ 4)", min_value=4, value=8, step=2, key="pm_v3_n")
         
         db_dia = rebar_dict[rebar_choice]
         ast = n_bars * (np.pi * db_dia**2) / 4.0
@@ -2126,8 +2127,8 @@ with tab8:
 
         st.markdown("---")
         st.markdown("🎯 **จุดแรงใช้งานตรวจสอบ (Demand)**")
-        pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v2_pu")
-        mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=8.5, key="pm_v2_mu")
+        pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v3_pu")
+        mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=8.5, key="pm_v3_mu")
 
     # ─── 2. MECHANICS & SOLVER ENGINEERING ───
     Es = 2040000.0 
@@ -2158,7 +2159,7 @@ with tab8:
         Pn = (Cc + Cs - T) / 1000.0
         Mn = (Cc * (h/2 - a/2) + Cs * (h/2 - cover) + T * (d - h/2)) / 100000.0
         
-        # คำนวณค่า φ ตามความเครียดดึงเหล็กขอบนอกสุด (ACI 318-19 §21.2.2)
+        # คำนวณค่า φ ตามความเครียดดึงเหล็กขอบนอกสุด (ACI 318-19)
         if eps_t <= ety:
             phi = phi_c
         elif eps_t >= 0.005:
@@ -2185,29 +2186,34 @@ with tab8:
         eps_t_arr.append(et)
         phi_arr.append(ph)
 
+    # 🛠️ [FIXED BUG]: แตกตัวแปรออกให้ครบถ้วนเพื่อไม่ให้เกิด NameError
     # 5 จุดควบคุมวิกฤต
     P1, M1 = Po_kg / 1000.0, 0.0; eps_t1, phi1 = -0.002, phi_c
-    a2, _, eps_t2, _, _, Cc2, Cs2, T2, P2, M2, phi2 = calc_pm_detailed(d)
+    
+    a2, eps_s_prime2, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, P2, M2, phi2 = calc_pm_detailed(d)
+    
     cb = d * (0.003 / (0.003 + ety))
-    a3, _, eps_t3, _, _, Cc3, Cs3, T3, P3, M3, phi3 = calc_pm_detailed(cb)
+    a3, eps_s_prime3, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, P3, M3, phi3 = calc_pm_detailed(cb)
+    
     idx_m0 = np.argmin(np.abs(np.array(P_nom)))
     c_m0 = c_vals[idx_m0]
-    a4, _, eps_t4, _, _, Cc4, Cs4, T4, P4, M4, phi4 = calc_pm_detailed(c_m0)
+    a4, eps_s_prime4, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, P4, M4, phi4 = calc_pm_detailed(c_m0)
+    
     P5, M5 = -(fy * ast) / 1000.0, 0.0; eps_t5, phi5 = 0.010, 0.90
 
     # ค้นหาค่า φ และความเครียดของจุดตรวจสอบใช้งาน (Demand Point)
-    # ค้นหาด้วยจุดในดีไซน์ที่ใกล้ที่สุดเพื่อประมาณค่า ε_t ของจุดตรวจสอบ
     idx_chk = np.argmin((np.array(M_des) - mu_check)**2 + (np.array(P_des) - pu_check)**2)
     eps_t_chk = eps_t_arr[idx_chk]
     phi_chk = phi_arr[idx_chk]
 
-    # ─── 3. DRAWING CO-DASHBOARD (SIDE-BY-SIDE PLOTS) ───
+    # ─── 3. DRAWING CO-DASHBOARD (💥 ADJUSTED TO VERTICAL ON-BOTTOM LAYOUT) ───
     with col_dash:
-        st.subheader("📊 2. แผนภูมิคู่ขนานกำลังหน้าตัด และ ตัวคูณลดกำลัง (φ)")
+        st.subheader("📊 2. แผนภูมิวิเคราะห์กำลังหน้าตัด และ พฤติกรรมค่าตัวคูณลดกำลัง (φ)")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.8))
+        # ปรับเลย์เอาต์เป็น 2 แถว 1 คอลัมน์ (บน-ล่าง) และเพิ่ม figsize แนวตั้งให้สมดุล
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 10.5))
         
-        # -- กราฟซ้าย: P-M Interaction Diagram --
+        # -- กราฟบน: P-M Interaction Diagram --
         ax1.plot(M_nom, P_nom, color='#3b82f6', linestyle='--', linewidth=1.8, label='Nominal Capacity ($P_n, M_n$)')
         ax1.plot(M_des, P_des, color='#10b981', linewidth=2.5, label='Design Capacity ($\\phi P_n, \\phi M_n$)')
         ax1.fill_between(M_des, 0, P_des, color='#10b981', alpha=0.1)
@@ -2227,18 +2233,17 @@ with tab8:
         ax1.set_xlabel('Bending Moment, $M_u$ (ton-m)', weight='bold')
         ax1.set_ylabel('Axial Load, $P_u$ (ton)', weight='bold')
         ax1.grid(True, linestyle=':', alpha=0.6)
-        ax1.legend(loc='upper right', fontsize=8.5)
-        ax1.set_title("P-M Interaction Capacity Curve", weight='bold', color='#1e293b')
+        ax1.legend(loc='upper right', fontsize=9)
+        ax1.set_title("P-M Interaction Capacity Curve", weight='bold', color='#1e293b', fontsize=11)
 
-        # -- กราฟขวา: φ-Factor vs. Net Tensile Strain (ε_t) --
-        # พล็อตเส้นมาตรฐานเกณฑ์การลดค่า φ
+        # -- กราฟล่าง: φ-Factor vs. Net Tensile Strain (ε_t) --
         et_plot = np.linspace(-0.001, 0.008, 500)
         phi_plot = np.where(et_plot <= ety, phi_c, np.where(et_plot >= 0.005, 0.90, phi_c + (0.90 - phi_c)*(et_plot - ety)/(0.005 - ety)))
         
         ax2.plot(et_plot, phi_plot, color='#475569', linewidth=2.5, label='ACI 318-19 Rule')
         ax2.fill_between(et_plot, phi_c, phi_plot, color='#64748b', alpha=0.1)
         
-        # ไฮไลต์แบ่งโซนสีพื้นหลัง
+        # ไฮไลต์แบ่งโซนพฤติกรรมเสาตามความเหนียว
         ax2.axvspan(-0.001, ety, color='#fee2e2', alpha=0.4, label='Compression-Controlled')
         ax2.axvspan(ety, 0.005, color='#fef3c7', alpha=0.4, label='Transition Zone')
         ax2.axvspan(0.005, 0.008, color='#dcfce7', alpha=0.4, label='Tension-Controlled')
@@ -2252,8 +2257,8 @@ with tab8:
         ax2.set_ylabel('Strength Reduction Factor, $\\phi$', weight='bold')
         ax2.set_ylim(phi_c - 0.05, 0.95)
         ax2.grid(True, linestyle=':', alpha=0.6)
-        ax2.legend(loc='lower right', fontsize=8.5)
-        ax2.set_title("$\\phi$ Factor Behaviour Chart", weight='bold', color='#1e293b')
+        ax2.legend(loc='lower right', fontsize=9)
+        ax2.set_title("$\\phi$ Factor Behaviour Chart (Ductility Analysis)", weight='bold', color='#1e293b', fontsize=11)
         
         plt.tight_layout()
         st.pyplot(fig)
@@ -2275,7 +2280,7 @@ with tab8:
     st.markdown("---")
     st.subheader("📐 4. รายการคำนวณและภาพประกอบแจกแจงหน่วยแรง (Detailed Strain-Stress Profiles)")
 
-    def draw_detailed_profile_v2(b_w, h_d, cov, c_in, a_in, e_cu, e_t, fs_prime, fs, Cc, Cs, T, title_name):
+    def draw_detailed_profile_v3(b_w, h_d, cov, c_in, a_in, e_cu, e_t, fs_prime, fs, Cc, Cs, T, title_name):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 4.5), gridspec_kw={'width_ratios': [1, 1, 1.3]})
         
         # 1. Cross Section
@@ -2300,7 +2305,7 @@ with tab8:
         else:
             ax2.plot([e_cu, -e_t], [h_d, cov], color='#10b981', lw=2.5, marker='o')
             ax2.text(e_cu + 0.0002, h_d, f"$\\epsilon_{{cu}}$={e_cu:.3f}", color='#047857', weight='bold')
-            ax2.text(-e_t - 0.0005, cov, f"$\\epsilon_t$={-e_t:.4f}", color='#1e3a8a', weight='bold', ha='right')
+            ax2.text(-e_t - 0.0005, cov, f"$\\epsilon_t$={-e_t:.4f}", color='#1e3a8a', weight='bold', ha='right' if e_t>=0 else 'left')
         ax2.axis('off')
         ax2.set_title("Strain Profile ($\\epsilon$)", weight='bold', fontsize=10)
 
@@ -2332,7 +2337,7 @@ with tab8:
     t1, t2, t3, t4, t5 = st.tabs(["1. Pure Comp", "2. Zero Tension", "3. Balanced Point", "4. Pure Bending", "5. Pure Tension"])
     
     with t1:
-        draw_detailed_profile_v2(b, h, cover, h*5, h, ecu, 0, fy, 0, P1*1000, 0, 0, "Pure Compression")
+        draw_detailed_profile_v3(b, h, cover, h*5, h, ecu, 0, fy, 0, P1*1000, 0, 0, "Pure Compression")
         st.markdown(r"""
 **🧮 รายการแทนค่าสมการสภาวะแกนล้วน (Pure Compression):**
 - พื้นที่คอนกรีตสุทธิ: $A_g - A_{st} = %s - %s = \mathbf{%s \text{ cm}^2}$
@@ -2342,7 +2347,7 @@ with tab8:
         """ % (f"{Ag:,.1f}", f"{ast:.1f}", f"{Ag-ast:,.1f}", f"{fc}", f"{Ag-ast:,.1f}", f"{fy}", f"{ast:.1f}", f"{P1:,.2f}", f"{phi_c}", f"{alpha_max}", f"{P1:,.1f}", f"{phi_Pn_max:,.2f}"))
 
     with t2:
-        draw_detailed_profile_v2(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension")
+        draw_detailed_profile_v3(b, h, cover, d, a2, ecu, eps_t2, fs_prime2, fs2, Cc2, Cs2, T2, "Zero Tension")
         st.markdown(r"""
 **🧮 รายการแทนค่าสมการสภาวะ Zero Tension ($\epsilon_t = 0$):**
 - ระยะแกนสะเทิน: $c = d = \mathbf{%s \text{ cm}}$ | ความลึกบล็อกอัด: $a = \beta_1 c = %s \times %s = \mathbf{%s \text{ cm}}$
@@ -2352,7 +2357,7 @@ with tab8:
         """ % (f"{d:.2f}", f"{beta1:.2f}", f"{d:.2f}", f"{a2:.2f}", f"{fc}", f"{a2:.2f}", f"{b}", f"{Cc2/1000:.1f}", f"{eps_s_prime2:.5f}", f"{fs_prime2:,.1f}", f"{P2:,.2f}", f"{M2:,.2f}"))
 
     with t3:
-        draw_detailed_profile_v2(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced")
+        draw_detailed_profile_v3(b, h, cover, cb, a3, ecu, eps_t3, fs_prime3, fs3, Cc3, Cs3, T3, "Balanced")
         st.markdown(r"""
 **🧮 รายการแทนค่าสมการสภาวะสมดุล (Balanced Point):**
 - ความเครียดครากเหล็ก: $\epsilon_y = f_y / E_s = %s / 2,040,000 = \mathbf{%s}$
@@ -2362,7 +2367,7 @@ with tab8:
         """ % (f"{fy}", f"{ety:.5f}", f"{ety:.5f}", f"{d:.2f}", f"{cb:.2f}", f"{P3:,.2f}", f"{M3:,.2f}", f"{phi3:.2f}"))
 
     with t4:
-        draw_detailed_profile_v2(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending")
+        draw_detailed_profile_v3(b, h, cover, c_m0, a4, ecu, eps_t4, fs_prime4, fs4, Cc4, Cs4, T4, "Pure Bending")
         st.markdown(r"""
 **🧮 รายการแทนค่าสมการสภาวะรับแรงดัดล้วน (Pure Bending - $P_n \approx 0$):**
 - ค้นหาได้ระยะแกนสะเทินสมดุลภายใน: $c = \mathbf{%s \text{ cm}}$ | บล็อกหนา $a = \mathbf{%s \text{ cm}}$
@@ -2372,7 +2377,7 @@ with tab8:
         """ % (f"{c_m0:.2f}", f"{a4:.2f}", f"{Cc4/1000:.1f}", f"{Cs4/1000:.1f}", f"{(Cc4+Cs4)/1000:.1f}", f"{T4/1000:.1f}", f"{M4:,.2f}", f"{eps_t4:.4f}", f"{phi4:.2f}"))
 
     with t5:
-        draw_detailed_profile_v2(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension")
+        draw_detailed_profile_v3(b, h, cover, 0, 0, 0, 0.01, 0, -fy, 0, 0, -P5*1000, "Pure Tension")
         st.markdown(r"""
 **🧮 รายการแทนค่าสมการสภาวะแรงดึงแกนล้วน (Pure Tension):**
 - คอนกรีตร้าวเสียหายหมดสิ้น แรงดึงตกเป็นของเหล็กเสริมทั้งหมดร้อยเปอร์เซ็นต์:
