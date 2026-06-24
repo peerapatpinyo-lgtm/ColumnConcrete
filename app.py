@@ -2076,7 +2076,6 @@ with tab7:
 # นำบล็อกนี้ไปวางเยื้องใต้ตรรกะ st.tabs ของคุณ (เช่น สร้าง tab_pm ขึ้นมาใหม่)
 
 with tab8:
-
     st.header("📈 Advanced P-M Interaction & φ-Factor Dashboard")
     st.markdown("วิเคราะห์กำลังหน้าตัดเสาและตัวคูณลดกำลัง (ACI 318-19) พร้อมแสดงรายการคำนวณและแผนภาพหน้าตัดสมจริง")
 
@@ -2090,68 +2089,87 @@ with tab8:
 
     with col_input:
         st.subheader("📥 1. พารามิเตอร์หน้าตัดและการจัดเหล็ก")
-        col_type = st.radio("ประเภทเสา / ปลอก", ["ปลอกเดี่ยว (Tied)", "ปลอกเกลียว (Spiral)"], horizontal=True, key="pm_v7_type")
+        col_type = st.radio("ประเภทเสา / ปลอก", ["ปลอกเดี่ยว (Tied)", "ปลอกเกลียว (Spiral)"], horizontal=True, key="pm_v8_type")
         
         c1, c2 = st.columns(2)
         with c1:
-            b = st.number_input("ความกว้าง, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_v7_b")
-            cover = st.number_input("ระยะหุ้ม, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_v7_cov")
+            b = st.number_input("ความกว้าง, b (cm)", min_value=15.0, value=30.0, step=5.0, key="pm_v8_b")
+            cover = st.number_input("ระยะหุ้ม, d' (cm)", min_value=3.0, value=5.0, step=0.5, key="pm_v8_cov")
         with c2:
-            h = st.number_input("ความลึก, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_v7_h")
-            fc = st.number_input("f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_v7_fc")
+            h = st.number_input("ความลึก, h (cm)", min_value=15.0, value=50.0, step=5.0, key="pm_v8_h")
+            fc = st.number_input("f'c (ksc)", min_value=150.0, value=280.0, step=10.0, key="pm_v8_fc")
             
-        fy = st.number_input("กำลังครากเหล็กแกน, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_v7_fy")
+        fy = st.number_input("กำลังครากเหล็กแกน, fy (ksc)", min_value=2400.0, value=4000.0, step=100.0, key="pm_v8_fy")
         
         st.markdown("🔩 **การจัดเรียงเหล็กเสริมแกนหลัก**")
         rebar_dict = {"DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB25": 2.5, "DB28": 2.8, "DB32": 3.2}
-        rebar_choice = st.selectbox("ขนาดเหล็กแกนหลัก", list(rebar_dict.keys()), index=2, key="pm_v7_rb")
-        n_bars = st.number_input("จำนวนเส้นรวม (เลขคู่ ≥ 4)", min_value=4, value=8, step=2, key="pm_v7_n")
+        rebar_choice = st.selectbox("ขนาดเหล็กแกนหลัก", list(rebar_dict.keys()), index=2, key="pm_v8_rb")
+        n_bars = st.number_input("จำนวนเส้นรวม (เลขคู่ ≥ 4)", min_value=4, value=8, step=2, key="pm_v8_n")
         
         db_dia = rebar_dict[rebar_choice]
         ast = n_bars * (np.pi * db_dia**2) / 4.0
         rho_pct = (ast / (b * h)) * 100
         st.info(f"พื้นที่เหล็กเสริมรวม: **{ast:.2f} cm²** (ρ = {rho_pct:.2f}%)")
 
-        # ─── ADDED: STIRRUP & SPIRAL INPUTS & VALIDATION ───
         st.markdown("🔗 **การจัดเหล็กปลอก (Transverse Reinforcement)**")
         tie_dict = {"RB6": 0.6, "RB9": 0.9, "DB10": 1.0, "DB12": 1.2}
-        tie_choice = st.selectbox("ขนาดเหล็กปลอก", list(tie_dict.keys()), index=1, key="pm_v7_tie_rb")
+        tie_choice = st.selectbox("ขนาดเหล็กปลอก", list(tie_dict.keys()), index=1, key="pm_v8_tie_rb")
         dv_dia = tie_dict[tie_choice]
         
-        fyt = st.number_input("กำลังครากเหล็กปลอก, fyt (ksc)", min_value=2400.0, value=2400.0 if "RB" in tie_choice else 4000.0, step=100.0, key="pm_v7_fyt")
-        tie_s = st.number_input("ระยะห่างเหล็กปลอก, s (cm)", min_value=2.0, value=15.0, step=0.5, key="pm_v7_s")
+        fyt = st.number_input("กำลังครากเหล็กปลอก, fyt (ksc)", min_value=2400.0, value=2400.0 if "RB" in tie_choice else 4000.0, step=100.0, key="pm_v8_fyt")
+        tie_s = st.number_input("ระยะห่างเหล็กปลอก, s (cm)", min_value=2.0, value=15.0, step=0.5, key="pm_v8_s")
         
-        # ส่วนตรวจสอบมาตรฐานเหล็กปลอก (Stirrup Check)
-        if "Tied" in col_type:
-            s_max1 = 16 * db_dia
-            s_max2 = 48 * dv_dia
-            s_max3 = min(b, h)
-            s_max = min(s_max1, s_max2, s_max3)
-            
-            if tie_s <= s_max:
-                st.success(f"✅ ระยะปลอกเดี่ยวผ่านตามเกณฑ์ (s = {tie_s:.1f} cm ≤ s_max = {s_max:.1f} cm)")
+        # ─── แสดงรายการคำนวณเหล็กปลอกแบบละเอียด ───
+        with st.expander("📝 ดูรายการคำนวณและตรวจสอบเหล็กปลอก", expanded=False):
+            if "Tied" in col_type:
+                s_max1 = 16 * db_dia
+                s_max2 = 48 * dv_dia
+                s_max3 = min(b, h)
+                s_max = min(s_max1, s_max2, s_max3)
+                
+                st.markdown("**เกณฑ์ระยะเรียงสูงสุดของเสาปลอกเดี่ยว (ACI 318)**")
+                st.latex(r"s_{\max} = \min(16d_b, 48d_v, \text{ด้านแคบสุด})")
+                st.latex(fr"1.\; 16d_b = 16 \times {db_dia:.1f} = \mathbf{{{s_max1:.1f} \text{{ cm}}}}")
+                st.latex(fr"2.\; 48d_v = 48 \times {dv_dia:.1f} = \mathbf{{{s_max2:.1f} \text{{ cm}}}}")
+                st.latex(fr"3.\; \text{{Least Dim.}} = \min({b:.1f}, {h:.1f}) = \mathbf{{{s_max3:.1f} \text{{ cm}}}}")
+                st.latex(fr"\therefore s_{{\max}} = \mathbf{{{s_max:.1f} \text{{ cm}}}}")
+                
+                if tie_s <= s_max:
+                    st.success(f"✅ ระยะปลอกเดี่ยวผ่านเกณฑ์ ($s = {tie_s:.1f} \le {s_max:.1f}$ cm)")
+                else:
+                    st.error(f"❌ ระยะปลอกเกินมาตรฐาน! (ต้อง $\le {s_max:.1f}$ cm)")
             else:
-                st.error(f"❌ ระยะปลอกเกินมาตรฐาน! (ต้อง ≤ {s_max:.1f} cm)\n- 16 เท่าเหล็กแกน: {s_max1:.1f} cm\n- 48 เท่าเหล็กปลอก: {s_max2:.1f} cm\n- ด้านแคบสุดของเสา: {s_max3:.1f} cm")
-        else:
-            # คำนวณแกนคอนกรีตสำหรับปลอกเกลียว (Core Concrete)
-            D_c = min(b, h) - 2.0 * (cover - db_dia/2.0)
-            if D_c <= 0: D_c = min(b, h) * 0.8
-            A_c = (np.pi * D_c**2) / 4.0
-            Ag_temp = b * h
-            rho_s_req = 0.45 * ((Ag_temp / A_c) - 1.0) * (fc / fyt)
-            A_sp = (np.pi * dv_dia**2) / 4.0
-            rho_s_provided = (4.0 * A_sp) / (D_c * tie_s)
-            
-            if tie_s < 2.5 or tie_s > 7.5:
-                st.error(f"❌ ระยะพิชต์ปลอกเกลียวผิดข้อกำหนดมาตรฐาน! ต้องอยู่ระหว่าง 2.5 ถึง 7.5 cm (ปัจจุบัน: {tie_s:.1f} cm)")
-            elif rho_s_provided < rho_s_req:
-                st.error(f"❌ ปริมาณเหล็กปลอกเกลียวไม่เพียงพอ!\n- ต้องการ ρs: {rho_s_req:.4f}\n- ใส่จริง ρs: {rho_s_provided:.4f}")
-            else:
-                st.success(f"✅ ปลอกเกลียวผ่านตามเกณฑ์มาตรฐาน (ρs = {rho_s_provided:.4f} ≥ {rho_s_req:.4f})")
+                # คำนวณแกนคอนกรีตสำหรับปลอกเกลียว (Core Concrete)
+                D_c = min(b, h) - 2.0 * (cover - db_dia/2.0)
+                if D_c <= 0: D_c = min(b, h) * 0.8
+                A_c = (np.pi * D_c**2) / 4.0
+                Ag_temp = b * h
+                rho_s_req = 0.45 * ((Ag_temp / A_c) - 1.0) * (fc / fyt)
+                A_sp = (np.pi * dv_dia**2) / 4.0
+                rho_s_provided = (4.0 * A_sp) / (D_c * tie_s)
+                
+                st.markdown("**เกณฑ์เหล็กปลอกเกลียว (ACI 318)**")
+                st.latex(r"D_c = \text{Core Diameter} \approx " + f"{D_c:.2f} \\text{{ cm}}")
+                st.latex(fr"A_c = \frac{{\pi D_c^2}}{{4}} = {A_c:.2f} \text{{ cm}}^2")
+                
+                st.markdown("**1. ปริมาณเหล็กปลอกเกลียวที่ต้องการ ($\rho_{s,\min}$)**")
+                st.latex(r"\rho_{s,\min} = 0.45 \left( \frac{A_g}{A_c} - 1 \right) \frac{f'_c}{f_{yt}}")
+                st.latex(fr"\rho_{s,\min} = 0.45 \left( \frac{{{Ag_temp:.2f}}}{{{A_c:.2f}}} - 1 \right) \frac{{{fc:.0f}}}{{{fyt:.0f}}} = \mathbf{{{rho_s_req:.4f}}}")
+                
+                st.markdown("**2. ปริมาณเหล็กปลอกเกลียวที่ใส่จริง ($\rho_{s,\text{prov}}$)**")
+                st.latex(r"\rho_{s,\text{prov}} = \frac{4 A_{sp}}{D_c s}")
+                st.latex(fr"\rho_{s,\text{prov}} = \frac{{4 \times {A_sp:.2f}}}{{{D_c:.2f} \times {tie_s:.1f}}} = \mathbf{{{rho_s_provided:.4f}}}")
+                
+                if tie_s < 2.5 or tie_s > 7.5:
+                    st.error(f"❌ ระยะพิทช์ปลอกเกลียวผิดข้อกำหนด! ต้องอยู่ในช่วง 2.5 - 7.5 cm (ปัจจุบัน: {tie_s:.1f} cm)")
+                elif rho_s_provided < rho_s_req:
+                    st.error(f"❌ ปริมาณเหล็กปลอกเกลียวไม่เพียงพอ! (ใส่จริง {rho_s_provided:.4f} < ต้องการ {rho_s_req:.4f})")
+                else:
+                    st.success(f"✅ ปลอกเกลียวผ่านเกณฑ์ ($\rho_{{s,\text{{prov}}}} \ge \rho_{{s,\min}}$ และ $s$ อยู่ในช่วง 2.5-7.5 cm)")
 
         st.markdown("🎯 **จุดแรงใช้งานตรวจสอบ (Demand)**")
-        pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v7_pu")
-        mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=8.5, key="pm_v7_mu")
+        pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v8_pu")
+        mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=8.5, key="pm_v8_mu")
 
     # ─── 2. MECHANICS & SOLVER ───
     Es = 2040000.0 
@@ -2307,7 +2325,6 @@ with tab8:
         ax1.plot([0, b_w, b_w, 0, 0], [0, 0, h_d, h_d, 0], color='#1e293b', lw=2)
         ax1.fill([0, b_w, b_w, 0, 0], [0, 0, h_d, h_d, 0], color='#f8fafc')
         
-        # ─── UPDATED: DRAW TIE OR SPIRAL GRAPHIC IN PROFILE ───
         if "Tied" in col_type:
             tie_offset = cov * 0.7
             rect_tie = patches.Rectangle((tie_offset, tie_offset), b_w - 2*tie_offset, h_d - 2*tie_offset, fill=False, edgecolor='#64748b', linewidth=1.5, linestyle='-', zorder=2)
