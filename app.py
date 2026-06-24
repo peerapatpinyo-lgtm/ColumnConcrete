@@ -2129,15 +2129,15 @@ with tab8:
                 
                 st.markdown("**เกณฑ์ระยะเรียงสูงสุดของเสาปลอกเดี่ยว (ACI 318)**")
                 st.latex(r"s_{\max} = \min(16d_b, 48d_v, \text{ด้านแคบสุด})")
-                st.latex(fr"1.\; 16d_b = 16 \times {db_dia:.1f} = \mathbf{{{s_max1:.1f} \text{{ cm}}}}")
-                st.latex(fr"2.\; 48d_v = 48 \times {dv_dia:.1f} = \mathbf{{{s_max2:.1f} \text{{ cm}}}}")
-                st.latex(fr"3.\; \text{{Least Dim.}} = \min({b:.1f}, {h:.1f}) = \mathbf{{{s_max3:.1f} \text{{ cm}}}}")
-                st.latex(fr"\therefore s_{{\max}} = \mathbf{{{s_max:.1f} \text{{ cm}}}}")
+                st.latex(f"1.\\; 16d_b = 16 \\times {db_dia:.1f} = \\mathbf{{{s_max1:.1f} \\text{{ cm}}}}")
+                st.latex(f"2.\\; 48d_v = 48 \\times {dv_dia:.1f} = \\mathbf{{{s_max2:.1f} \\text{{ cm}}}}")
+                st.latex(f"3.\\; \\text{{Least Dim.}} = \\min({b:.1f}, {h:.1f}) = \\mathbf{{{s_max3:.1f} \\text{{ cm}}}}")
+                st.latex(f"\\therefore s_{{\\max}} = \\mathbf{{{s_max:.1f} \\text{{ cm}}}}")
                 
                 if tie_s <= s_max:
-                    st.success(f"✅ ระยะปลอกเดี่ยวผ่านเกณฑ์ ($s = {tie_s:.1f} \le {s_max:.1f}$ cm)")
+                    st.success(f"✅ ระยะปลอกเดี่ยวผ่านเกณฑ์ ($s = {tie_s:.1f} \\le {s_max:.1f}$ cm)")
                 else:
-                    st.error(f"❌ ระยะปลอกเกินมาตรฐาน! (ต้อง $\le {s_max:.1f}$ cm)")
+                    st.error(f"❌ ระยะปลอกเกินมาตรฐาน! (ต้อง $\\le {s_max:.1f}$ cm)")
             else:
                 # คำนวณแกนคอนกรีตสำหรับปลอกเกลียว (Core Concrete)
                 D_c = min(b, h) - 2.0 * (cover - db_dia/2.0)
@@ -2150,23 +2150,23 @@ with tab8:
                 
                 st.markdown("**เกณฑ์เหล็กปลอกเกลียว (ACI 318)**")
                 st.latex(r"D_c = \text{Core Diameter} \approx " + f"{D_c:.2f} \\text{{ cm}}")
-                st.latex(fr"A_c = \frac{{\pi D_c^2}}{{4}} = {A_c:.2f} \text{{ cm}}^2")
+                st.latex(f"A_c = \\frac{{\\pi D_c^2}}{{4}} = {A_c:.2f} \\text{{ cm}}^2")
                 
                 st.markdown("**1. ปริมาณเหล็กปลอกเกลียวที่ต้องการ ($\rho_{s,\min}$)**")
                 st.latex(r"\rho_{s,\min} = 0.45 \left( \frac{A_g}{A_c} - 1 \right) \frac{f'_c}{f_{yt}}")
-                st.latex(fr"\rho_{s,\min} = 0.45 \left( \frac{{{Ag_temp:.2f}}}{{{A_c:.2f}}} - 1 \right) \frac{{{fc:.0f}}}{{{fyt:.0f}}} = \mathbf{{{rho_s_req:.4f}}}")
+                st.latex(f"\\rho_{{s,\\min}} = 0.45 \\left( \\frac{{{Ag_temp:.2f}}}{{{A_c:.2f}}} - 1 \\right) \\frac{{{fc:.0f}}}{{{fyt:.0f}}} = \\mathbf{{{rho_s_req:.4f}}}")
                 
                 st.markdown("**2. ปริมาณเหล็กปลอกเกลียวที่ใส่จริง ($\rho_{s,\text{prov}}$)**")
                 st.latex(r"\rho_{s,\text{prov}} = \frac{4 A_{sp}}{D_c s}")
-                st.latex(fr"\rho_{s,\text{prov}} = \frac{{4 \times {A_sp:.2f}}}{{{D_c:.2f} \times {tie_s:.1f}}} = \mathbf{{{rho_s_provided:.4f}}}")
+                st.latex(f"\\rho_{{s,\\text{{prov}}}} = \\frac{{4 \\times {A_sp:.2f}}}{{{D_c:.2f} \\times {tie_s:.1f}}} = \\mathbf{{{rho_s_provided:.4f}}}")
                 
                 if tie_s < 2.5 or tie_s > 7.5:
                     st.error(f"❌ ระยะพิทช์ปลอกเกลียวผิดข้อกำหนด! ต้องอยู่ในช่วง 2.5 - 7.5 cm (ปัจจุบัน: {tie_s:.1f} cm)")
                 elif rho_s_provided < rho_s_req:
                     st.error(f"❌ ปริมาณเหล็กปลอกเกลียวไม่เพียงพอ! (ใส่จริง {rho_s_provided:.4f} < ต้องการ {rho_s_req:.4f})")
                 else:
-                    st.success(f"✅ ปลอกเกลียวผ่านเกณฑ์ ($\rho_{{s,\text{{prov}}}} \ge \rho_{{s,\min}}$ และ $s$ อยู่ในช่วง 2.5-7.5 cm)")
-
+                    st.success(f"✅ ปลอกเกลียวผ่านเกณฑ์ ($\rho_{{s,\\text{{prov}}}} \\ge \\rho_{{s,\\min}}$ และ $s$ อยู่ในช่วง 2.5-7.5 cm)")
+                  
         st.markdown("🎯 **จุดแรงใช้งานตรวจสอบ (Demand)**")
         pu_check = st.number_input("แรงอัดใช้งาน, Pu (ton)", value=45.0, key="pm_v8_pu")
         mu_check = st.number_input("โมเมนต์ใช้งาน, Mu (ton-m)", value=8.5, key="pm_v8_mu")
